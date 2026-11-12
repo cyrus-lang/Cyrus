@@ -10,14 +10,14 @@ struct Data {
 
 pub fn main() {
     var src = Data { id: 99, score: 99.5, flag: true };
-    var dst: Data;
+    var dest: Data;
 
-    // copy src to dst
-    @memcpy(&dst, &src, @sizeof(Data));
+    // Copy src to dest
+    @memcpy(&dest, &src, @sizeof(Data));
 
-    printf("id: %d, score: %.1f, flag: %d", dst.id, dst.score, dst.flag);
+    printf("id: %d, score: %.1f, flag: %d", dest.id, dest.score, dest.flag);
 
-    if ((dst.id == 99 && dst.score == 99.5) && dst.flag == true) {
+    if ((dest.id == 99 && dest.score == 99.5) && dest.flag == true) {
         printf(" | SUCCESS\n");
     } else {
         printf("FAILURE: data mismatch\n");

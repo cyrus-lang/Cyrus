@@ -15,7 +15,7 @@ import std::os::dir;
 import std::cli;
 import std::os;
 
-import .::codegen{Backend, CodegenContext, backend_from_name};
+import .::codegen{Backend, CodegenContext};
 import resolver::loader{ResolverOptions};
 import sema::context{AnalyzerContext};
 import .::analysis{AnalysisContext};
@@ -442,12 +442,12 @@ fn backend_from_action(action: cli::ActionContext) Option<Backend> {
         else => {}
     }
 
-    return backend_from_name(name.as_str_const());
+    return Backend.from_str(name.as_str_const());
 }
 
 // Joins every value of a repeatable option (`-z`, `-L`, `-l`) into
-// `dst` as a newline separated list, matching tcc::compile's inputs.
-fn collect_opt_values(opts: cli::Opts*, name: const uint8*, dst: String*) void {
+// `dest` as a newline separated list, matching `tcc::compile`s inputs.
+fn collect_opt_values(opts: cli::Opts*, name: const uint8*, dest: String*) void {
     switch (opts->find(name)) case .Some(opt) else {
         return;
     }
@@ -457,10 +457,10 @@ fn collect_opt_values(opts: cli::Opts*, name: const uint8*, dst: String*) void {
             case .Some(value) => {
                 switch (*value) {
                     case .Str(str) => {
-                        if (!dst->is_empty()) {
-                            dst->push('\n');
+                        if (!dest->is_empty()) {
+                            dest->push('\n');
                         }
-                        dst->push_str(str.as_str_const());
+                        dest->push_str(str.as_str_const());
                     }
                     else => {}
                 }

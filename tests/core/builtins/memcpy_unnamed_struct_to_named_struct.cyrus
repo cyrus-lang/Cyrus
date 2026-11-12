@@ -8,13 +8,13 @@ struct Data {
 }
 
 pub fn main() {
-    var dst: Data;
+    var dest: Data;
     var src = struct {
         name: "Cyrus",
         age: 2500
     };
 
-    @memcpy(&dst, &src, @sizeof(Data));
+    @memcpy(&dest, &src, @sizeof(Data));
 
-    printf("name: %s, age: %d\n", dst.name, dst.age);
+    printf("name: %s, age: %d\n", dest.name, dest.age);
 }

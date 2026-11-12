@@ -1688,7 +1688,7 @@ def cmd_analyze_corpus(cfg: Config, args: argparse.Namespace) -> int:
     the annotations exactly; every other file must analyze without errors
     (warnings are allowed).
     """
-    stage0_root = cfg.root / "tests" / "core"
+    stage0_root = cfg.root / "tests" / "stage0"
     ensure_stage1(cfg)
 
     files = sorted(stage0_root.rglob("*.cyrus"))
@@ -1696,7 +1696,7 @@ def cmd_analyze_corpus(cfg: Config, args: argparse.Namespace) -> int:
         files = [p for p in files if args.filter in str(p.relative_to(cfg.root))]
 
     if not files:
-        log(STYLE.yellow("no .cyrus files found under tests/core"))
+        log(STYLE.yellow("no .cyrus files found under tests/stage0"))
         return 0
 
     skipped: List[str] = []
@@ -1727,11 +1727,21 @@ def cmd_analyze_corpus(cfg: Config, args: argparse.Namespace) -> int:
             return rel, [f"cannot read: {exc}"]
 
         md = extract_test_metadata(content)
-        rel_input = str(f.relative_to(stage0_root))
+        rel_input = str(f.relative_to(cfg.root))
+        analyze_cmd = [str(cfg.stage1_binary), "dump", "analyzer", rel_input, _stdlib_flag(cfg)]
+        
+        # Only forward options that affect analysis. The remaining compiler
+        # args in the corpus are linker inputs (`-z=...`) or build-level
+        # switches (`--module-merge-mode=...`) that `dump` does not accept.
+        if md.compiler_args:
+            for arg in shlex.split(md.compiler_args):
+                if arg.startswith("--profile="):
+                    analyze_cmd.append(arg)
+        
         try:
             proc = run_cmd(
-                [str(cfg.stage1_binary), "dump", "analyzer", rel_input, _stdlib_flag(cfg)],
-                cwd=stage0_root,
+                analyze_cmd,
+                cwd=cfg.root,
                 capture=True,
                 check=False,
                 timeout=60,
@@ -1740,9 +1750,12 @@ def cmd_analyze_corpus(cfg: Config, args: argparse.Namespace) -> int:
             return rel, ["analyze timed out after 60s (possible hang)"]
         out = strip_ansi(proc.stdout or "")
         errs: List[str] = []
-        if proc.returncode != 0:
+        if proc.returncode != 0 and not md.error_annotations:
             detail = strip_ansi((proc.stderr or "").strip())
             errs.append(f"analyze exited with {proc.returncode}: {detail[:500]}")
+        elif proc.returncode < 0:
+            detail = strip_ansi((proc.stderr or "").strip())
+            errs.append(f"analyze crashed with {proc.returncode}: {detail[:500]}")
 
         diagnostics = parse_stage1_diagnostics(out)
         if md.error_annotations:

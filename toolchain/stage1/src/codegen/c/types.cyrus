@@ -72,6 +72,10 @@ pub struct TypeEmitter {
     pub tuple_sigs: Vec<String>,
     pub tuple_names: Vec<String>,
     pub tuple_counter: usize,
+    pub array_return_sigs: Vec<String>,
+    pub array_return_names: Vec<String>,
+    pub array_return_counter: usize,
+    pub used_float16: bool,
     pub generic_inst_sigs: Vec<String>,
     pub generic_inst_names: Vec<String>,
     pub deferred: Vec<cir::TypeDeclId>,
@@ -111,6 +115,10 @@ pub struct TypeEmitter {
             used_int128: false,
             used_bool: false,
             tuple_counter: 0,
+            array_return_sigs: Vec.new(allocator),
+            array_return_names: Vec.new(allocator),
+            array_return_counter: 0,
+            used_float16: false,
         };
     }
 
@@ -130,6 +138,14 @@ pub struct TypeEmitter {
 
         self->tuple_sigs.free();
         self->tuple_names.free();
+
+        for (var i: usize = 0; i < self->array_return_sigs.len(); i += 1) {
+            self->array_return_sigs.get(i).unwrap()->free();
+            self->array_return_names.get(i).unwrap()->free();
+        }
+
+        self->array_return_sigs.free();
+        self->array_return_names.free();
 
         for (var i: usize = 0; i < self->generic_inst_sigs.len(); i += 1) {
             self->generic_inst_sigs.get(i).unwrap()->free();
@@ -257,11 +273,14 @@ pub struct TypeEmitter {
         switch (plain) {
             case .Void 
             | .Null 
-            | .Float16 
             | .Float32 
             | .Float64 
             | .Float128 => {}
             
+            case .Float16 => {
+                self->used_float16 = true;
+            }
+
             case .Int128 
             | .UInt128 => {
                 self->used_int128 = true;
@@ -711,14 +730,29 @@ pub struct TypeEmitter {
             const field = struct_decl->fields.get_const(field_index).unwrap();
 
             var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
-            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
-            
-            self->type_out.push(' ');
-            self->type_out.push_str(field_decl.as_str_const());
-            self->type_out.push_str(";\n");
+
+            // A zero-sized `void` field cannot be declared in C; a
+            // zero-length array keeps the aggregate's size/alignment.
+            var void_name = self->type_name(&field->ty);
+            var is_void_field = void_name.as_str_const() == "void";
+            void_name.free();
+
+            if (is_void_field) {
+                self->used_stdint = true;
+                self->type_out.push_str(" uint8_t ");
+                self->type_out.push_str(field_name.as_str_const());
+                self->type_out.push_str("[0];\n");
+            } else {
+                var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+                
+                self->type_out.push(' ');
+                self->type_out.push_str(field_decl.as_str_const());
+                self->type_out.push_str(";\n");
+                
+                field_decl.free();
+            }
             
             field_name.free();
-            field_decl.free();
         }
 
         self->type_out.push_str("};\n\n");
@@ -797,13 +831,26 @@ pub struct TypeEmitter {
             const field = union_decl->fields.get_const(field_index).unwrap();
            
             var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
-            var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+
+            var void_name = self->type_name(&field->ty);
+            var is_void_field = void_name.as_str_const() == "void";
+            void_name.free();
+
+            if (is_void_field) {
+                self->used_stdint = true;
+                self->type_out.push_str(" uint8_t ");
+                self->type_out.push_str(field_name.as_str_const());
+                self->type_out.push_str("[0];\n");
+            } else {
+                var field_decl = self->build_decl(&field->ty, field_name.as_str_const());
+                
+                self->type_out.push(' ');
+                self->type_out.push_str(field_decl.as_str_const());
+                self->type_out.push_str(";\n");
+                
+                field_decl.free();
+            }
             
-            self->type_out.push(' ');
-            self->type_out.push_str(field_decl.as_str_const());
-            self->type_out.push_str(";\n");
-            
-            field_decl.free();
             field_name.free();
         }
 
@@ -1481,13 +1528,25 @@ pub struct TypeEmitter {
                             );
 
                             var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
-                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
-                            
-                            self->type_out.push(' ');
-                            self->type_out.push_str(field_decl.as_str_const());
-                            self->type_out.push_str(";\n");
-                            
-                            field_decl.free();
+
+                            var void_name = self->type_name(&subst);
+
+                            if (void_name.as_str_const() == "void") {
+                                self->used_stdint = true;
+                                self->type_out.push_str(" uint8_t ");
+                                self->type_out.push_str(field_name.as_str_const());
+                                self->type_out.push_str("[0];\n");
+                            } else {
+                                var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                                
+                                self->type_out.push(' ');
+                                self->type_out.push_str(field_decl.as_str_const());
+                                self->type_out.push_str(";\n");
+                                
+                                field_decl.free();
+                            }
+
+                            void_name.free();
                             field_name.free();
                         }
 
@@ -1562,14 +1621,26 @@ pub struct TypeEmitter {
                             );
                             
                             var field_name = mangle::sanitized(self->allocator, field->name.as_str_const());
-                            var field_decl = self->build_decl(&subst, field_name.as_str_const());
-                            
-                            self->type_out.push(' ');
-                            self->type_out.push_str(field_decl.as_str_const());
-                            self->type_out.push_str(";\n");
-                            
+
+                            var void_name = self->type_name(&subst);
+
+                            if (void_name.as_str_const() == "void") {
+                                self->used_stdint = true;
+                                self->type_out.push_str(" uint8_t ");
+                                self->type_out.push_str(field_name.as_str_const());
+                                self->type_out.push_str("[0];\n");
+                            } else {
+                                var field_decl = self->build_decl(&subst, field_name.as_str_const());
+                                
+                                self->type_out.push(' ');
+                                self->type_out.push_str(field_decl.as_str_const());
+                                self->type_out.push_str(";\n");
+                                
+                                field_decl.free();
+                            }
+
+                            void_name.free();
                             field_name.free();
-                            field_decl.free();
                         }
 
                         self->type_out.push_str("};\n\n");
@@ -1933,6 +2004,53 @@ pub struct TypeEmitter {
         self->tuple_names.push(owned_name);
 
         return tuple_name;
+    }
+
+    /// Returns the C struct type used to return an array by value.
+    ///
+    /// C has no array-returning functions, so an array return type `T[N]`
+    /// is represented by a generated `struct { T data[N]; }`. The same
+    /// name is returned for structurally identical array types so that
+    /// declarations, definitions and call sites always agree.
+    pub fn array_return_struct_name(self: Self*, array_ty: const cir::SemaType*) String {
+        var sig = self->type_name(array_ty);
+
+        for (var i: usize = 0; i < self->array_return_sigs.len(); i += 1) {
+            const existing = self->array_return_sigs.get_const(i).unwrap();
+
+            if (existing->as_str_const() == sig.as_str_const()) {
+                sig.free();
+                const existing_name = self->array_return_names.get_const(i).unwrap();
+                return String.from_str(self->allocator, existing_name->as_str_const());
+            }
+        }
+
+        var struct_name = String.new(self->allocator);
+        struct_name.push_str("__array_ret_");
+        push_usize_into(&struct_name, self->allocator, self->array_return_counter);
+        self->array_return_counter += 1;
+
+        // Strip a top-level `const` from the wrapped element type: the
+        // wrapper is an implementation detail and mutating its `data`
+        // field (via memcpy) must stay legal.
+        var field_ty = array_ty->const_inner();
+        var field_decl = self->build_decl(field_ty, "data");
+
+        self->type_out.push_str("typedef struct ");
+        self->type_out.push_str(struct_name.as_str_const());
+        self->type_out.push_str(" { ");
+        self->type_out.push_str(field_decl.as_str_const());
+        self->type_out.push_str("; } ");
+        self->type_out.push_str(struct_name.as_str_const());
+        self->type_out.push_str(";\n");
+
+        field_decl.free();
+        self->array_return_sigs.push(sig);
+
+        var owned_name = String.from_str(self->allocator, struct_name.as_str_const());
+        self->array_return_names.push(owned_name);
+
+        return struct_name;
     }
 }
 

@@ -70,7 +70,7 @@ pub fn build_module_maps(
         maps->file_modules.insert(tree->file_id, module);
 
         for (var i: usize = 0; i < tree->body_len(); i += 1) {
-            const stmt = tree->body_get(i);
+            const stmt = tree->body_get_const(i);
 
             switch (stmt->kind) {
                 case .Typedef(typedef) => {
@@ -166,14 +166,21 @@ pub fn free_module_maps(maps: ModuleMaps*) {
 }
 
 fn is_ident_char(char: uint8) bool {
-    switch (char) {
-        case 'a' ... 'z' 
-        | 'A' ... 'Z' 
-        | '0' ... '9' 
-        | '_' => return true;
-
-        else => return false;
+    // Explicit comparisons: `...` is an exclusive-ended range, so
+    // `'a' ... 'z'` would reject identifiers ending in 'z'.
+    if (char >= 'a' && char <= 'z') {
+        return true;
     }
+
+    if (char >= 'A' && char <= 'Z') {
+        return true;
+    }
+
+    if (char >= '0' && char <= '9') {
+        return true;
+    }
+
+    return char == '_';
 }
 
 pub fn sanitize_into(out: String*, name: const uint8*) {

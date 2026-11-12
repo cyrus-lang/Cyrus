@@ -161,7 +161,8 @@ pub struct ModuleGraph {
 
         for (var i: usize = 0; i < self->active.len(); i += 1) {
             const node = self->nodes.get_const(*self->active.get_const(i).unwrap()).unwrap();
-            paths.push(String.from_str(self->allocator, node->file_path.as_str_const()));
+            
+            paths.push(visit_key(self->allocator, node->file_path.as_str_const()));
         }
 
         diags::report_import_cycle(

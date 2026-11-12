@@ -73,6 +73,7 @@ pub struct Emitter {
     needs_panic_helper: bool,
     needs_assert_helper: bool,
     needs_memcpy_proto: bool,
+    needs_memcmp_proto: bool,
     needs_memset_proto: bool,
     needs_write_proto: bool,
     needs_abort_proto: bool,
@@ -119,6 +120,7 @@ pub struct Emitter {
             needs_stddef_header: false,
             needs_assert_helper: false,
             needs_memcpy_proto: false,
+            needs_memcmp_proto: false,
             needs_memset_proto: false,
             needs_write_proto: false,
             needs_abort_proto: false,
@@ -145,7 +147,7 @@ pub struct Emitter {
     /// Collects `tree`'s top-level statements, flattening `@builtin` blocks.
     fn collect_toplevel(self: Self*, tree: const cir::ProgramTree*, out: Vec<cir::Stmt>*) {
         for (var j: usize = 0; j < tree->body_len(); j += 1) {
-            self->push_toplevel_stmt(tree->body_get(j), out);
+            self->push_toplevel_stmt(tree->body_get_const(j), out);
         }
     }
 
@@ -496,23 +498,7 @@ pub struct Emitter {
             writer.write("    while (*p) { p += 1; } ");
             writer.write("    write(fd, s, (unsigned long)(p - s));\n");
             writer.write("} \n");
-        }
 
-        // FIXME: Move this into the header-only library.
-        if (self->needs_panic_helper) {
-            writer.write("static void __cyrus_panic_(const char *mesg) { ");
-            writer.write("    __cyrus_write_cstr(2, \"panic: \");\n");
-            writer.write("    __cyrus_write_cstr(2, mesg);\n");
-            writer.write("    __cyrus_write_cstr(2, \"");
-            writer.write_char('\\');
-            writer.write_char('n');
-            writer.write("\");\n");
-            writer.write("    abort();\n");
-            writer.write("} \n");
-        }
-
-        // FIXME: Move this into the header-only library.
-        if (self->needs_assert_helper) {
             writer.write("static void __cyrus_write_int(int fd, int value) { ");
             writer.write("    char buf[16];\n");
             writer.write("    int i = 15;\n");
@@ -524,13 +510,32 @@ pub struct Emitter {
             writer.write("    write(fd, buf + i, (unsigned long)(15 - i));\n");
             writer.write("} \n");
 
-            writer.write("static void __cyrus_assert_fail_(const char *file, int line, const char *mesg) { ");
-            writer.write("    __cyrus_write_cstr(2, \"assertion failed: \");\n");
-            writer.write("    __cyrus_write_cstr(2, mesg);\n");
+            // The reference runtime prints the current thread name and the
+            // source location of the failing builtin. The main thread name is
+            // the executable name, which is what `pthread_getname_np` returns.
+            writer.write("unsigned long pthread_self(void);\n");
+            writer.write("int pthread_getname_np(unsigned long, char *, unsigned long);\n");
+
+            writer.write("static void __cyrus_fail_(const char *kind, const char *prefix, const char *file, int line, int col, const char *mesg) { ");
+            writer.write("    char name[64];\n");
+            writer.write("    name[0] = 0;\n");
+            writer.write("    pthread_getname_np(pthread_self(), name, 64);\n");
+            writer.write("    __cyrus_write_cstr(2, \"thread '\");\n");
+            writer.write("    __cyrus_write_cstr(2, name);\n");
+            writer.write("    __cyrus_write_cstr(2, \"' \");\n");
+            writer.write("    __cyrus_write_cstr(2, kind);\n");
             writer.write("    __cyrus_write_cstr(2, \" at \");\n");
             writer.write("    __cyrus_write_cstr(2, file);\n");
             writer.write("    __cyrus_write_cstr(2, \":\");\n");
             writer.write("    __cyrus_write_int(2, line);\n");
+            writer.write("    __cyrus_write_cstr(2, \":\");\n");
+            writer.write("    __cyrus_write_int(2, col);\n");
+            writer.write("    __cyrus_write_cstr(2, \"");
+            writer.write_char('\\');
+            writer.write_char('n');
+            writer.write("\");\n");
+            writer.write("    __cyrus_write_cstr(2, prefix);\n");
+            writer.write("    __cyrus_write_cstr(2, mesg);\n");
             writer.write("    __cyrus_write_cstr(2, \"");
             writer.write_char('\\');
             writer.write_char('n');
@@ -539,7 +544,54 @@ pub struct Emitter {
             writer.write("} \n");
         }
 
+        // REVIEW: Temporary implementation
+        //
         // FIXME: Move this into the header-only library.
+        //
+        // `float16` is represented as a C `float` (tcc has no half type),
+        // so values are explicitly rounded to IEEE-754 binary16 at every
+        // conversion boundary to reproduce the reference semantics
+        if (self->types.used_float16) {
+            writer.write("static float __cyrus_f16_round(double d) { ");
+            writer.write("    union { float f; unsigned int u; } x;\n");
+            writer.write("    unsigned int sign, sig, q, rem, hlf, mant;\n");
+            writer.write("    int e, exp, sh;\n");
+            writer.write("    x.f = (float)d;\n");
+            writer.write("    sign = x.u & 0x80000000u;\n");
+            writer.write("    exp = (int)((x.u >> 23) & 0xffu);\n");
+            writer.write("    mant = x.u & 0x7fffffu;\n");
+            writer.write("    if (exp == 0xff) { return x.f; }\n");
+            writer.write("    if (exp == 0) { return (sign ? -0.0f : 0.0f); }\n");
+            writer.write("    e = exp - 127;\n");
+            writer.write("    if (e > 15) { x.u = sign | 0x7f800000u; return x.f; }\n");
+            writer.write("    sig = (1u << 23) | mant;\n");
+            writer.write("    if (e < -14) {\n");
+            writer.write("        sh = -e - 1;\n");
+            writer.write("        if (sh >= 32) { return (sign ? -0.0f : 0.0f); }\n");
+            writer.write("        q = sig >> sh;\n");
+            writer.write("        rem = sig & ((1u << sh) - 1u);\n");
+            writer.write("        hlf = 1u << (sh - 1);\n");
+            writer.write("        if (rem > hlf || (rem == hlf && (q & 1u))) { q += 1u; }\n");
+            writer.write("        if (q == 0) { return (sign ? -0.0f : 0.0f); }\n");
+            writer.write("        {\n");
+            writer.write("            int qe = 31;\n");
+            writer.write("            while ((q & (1u << qe)) == 0) { qe -= 1; }\n");
+            writer.write("            x.u = sign | ((unsigned int)(qe - 24 + 127) << 23) | ((q & ((1u << qe) - 1u)) << (23 - qe));\n");
+            writer.write("            return x.f;\n");
+            writer.write("        }\n");
+            writer.write("    }\n");
+            writer.write("    q = sig >> 13;\n");
+            writer.write("    rem = sig & 0x1fffu;\n");
+            writer.write("    hlf = 0x1000u;\n");
+            writer.write("    if (rem > hlf || (rem == hlf && (q & 1u))) {\n");
+            writer.write("        q += 1u;\n");
+            writer.write("        if (q == (1u << 11)) { q >>= 1; e += 1; if (e > 15) { x.u = sign | 0x7f800000u; return x.f; } }\n");
+            writer.write("    }\n");
+            writer.write("    x.u = sign | ((unsigned int)(e + 127) << 23) | ((q & 0x3ffu) << 13);\n");
+            writer.write("    return x.f;\n");
+            writer.write("} \n");
+        }
+
         if (self->types.used_int128) {
             writer.write("typedef struct { uint64_t lo; int64_t hi; } __cyrus_int128;\n");
             writer.write("typedef struct { uint64_t lo; uint64_t hi; } __cyrus_uint128;\n");
@@ -1111,7 +1163,13 @@ pub struct Emitter {
 
                 switch (ty) {
                     case .Array(array) => {
+                        // Arrays are passed as a pointer. The body copies
+                        // that pointer into a local array named after the
+                        // parameter (see emit_param_prologue), so the
+                        // pointer parameter itself gets a `__p` suffix to
+                        // avoid a redeclaration.
                         ty = .Pointer(array.element_type);
+                        name.push_str("__p");
                     }
                     else => {}
                 }
@@ -1142,6 +1200,24 @@ pub struct Emitter {
         full_name.push_str(param_list.as_str_const());
         full_name.push(')');
         param_list.free();
+
+        // C cannot return arrays by value. Array-returning functions are
+        // emitted as returning a generated struct wrapper instead.
+        switch (ret_type->as_array_type()) {
+            case .Some(_) => {
+                var ret_name = self->types.array_return_struct_name(ret_type);
+
+                var decl = String.new(self->allocator);
+                decl.push_str(ret_name.as_str_const());
+                decl.push(' ');
+                decl.push_str(full_name.as_str_const());
+
+                ret_name.free();
+                full_name.free();
+                return decl;
+            }
+            else => {}
+        }
 
         var decl = self->types.build_decl(
             ret_type,
@@ -1208,6 +1284,104 @@ pub struct Emitter {
                 }
 
                 return .Some(line);
+            }
+            else => {}
+        }
+
+        return .None;
+    }
+
+    /// Appends the C arguments describing a builtin's source location:
+    /// `"<path>", <line>, <col>`.
+    fn push_builtin_location(self: Self*, out: String*, builtin_func: const cir::BuiltinFunc*) {
+        switch (self->tree_for_source(builtin_func->span.source_id)) {
+            case .Some(tree) => {
+                var path = self->quoted_cstr(tree->file_name.as_str_const());
+                out->push_str(path.as_str_const());
+                path.free();
+            }
+            else => out->push_str("\"<unknown>\"");
+        }
+
+        out->push_str(", ");
+
+        switch (self->builtin_line_column(builtin_func, false)) {
+            case .Some(line) => push_usize(out, line);
+            else => out->push('0');
+        }
+
+        out->push_str(", ");
+
+        switch (self->builtin_line_column(builtin_func, true)) {
+            case .Some(col) => push_usize(out, col);
+            else => out->push('0');
+        }
+    }
+
+    fn is_float16_type(self: Self*, ty: const cir::SemaType*) bool {
+        switch (ty->as_plain_type()) {
+            case .Some(plain) => {
+                switch (plain) {
+                    case .Float16 => return true;
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        return false;
+    }
+
+    /// Rounds `value` to binary16 precision when `ty` is `float16`.
+    fn coerce_float16(self: Self*, value: String, ty: const cir::SemaType*) String {
+        if (!self->is_float16_type(ty)) {
+            return value;
+        }
+
+        self->types.used_float16 = true;
+
+        var out = String.from_str(self->allocator, "__cyrus_f16_round(");
+        out.push_str(value.as_str_const());
+        out.push(')');
+        value.free();
+        return out;
+    }
+
+    /// Returns the declared type of the fixed parameter at `index`, 
+    /// when it is known from the call dispatch.
+    fn func_call_param_type(
+        self: Self*,
+        func_call: const cir::FuncCall*,
+        index: usize
+    ) Option<cir::SemaType> {
+        switch (func_call->dispatch) {
+            case .Normal { func_decl_id } => {
+                switch (self->tables->funcs.get_const(func_decl_id)) {
+                    case .Some(func_decl) => {
+                        if (index < func_decl->params.list.len()) {
+                            const param = func_decl->params.list.get_const(index).unwrap();
+                            return .Some(param->ty());
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .Monomorph { monomorph_id } => {
+                switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                    case .Some(inst) => {
+                        if (index < inst->params.list.len()) {
+                            const param = inst->params.list.get_const(index).unwrap();
+                            return .Some(param->ty());
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .FunctionPointer { func_type } => {
+                if (index < func_type.params.list.len()) {
+                    const param_ty = func_type.params.list.get_const(index).unwrap();
+                    return .Some(*param_ty);
+                }
             }
             else => {}
         }
@@ -1493,6 +1667,8 @@ pub struct Emitter {
             }
 
             case .Goto(goto_) => {
+                var target_emitted = true;
+
                 // A goto leaves every defer scope deeper than the label
                 // it targets; run those defers before jumping.
                 switch (goto_.label_id) {
@@ -1501,19 +1677,28 @@ pub struct Emitter {
                             case .Some(depth) => {
                                 self->emit_defers_above(depth);
                             }
-                            else => {}
+                            case .None => {
+                                // The target label sits in code that the
+                                // analyzer removed as unreachable. The
+                                // reference backend drops the branch in this
+                                // situation, so do the same rather than emit
+                                // a jump to a label that will never exist.
+                                target_emitted = false;
+                            }
                         }
                     }
                     else => {}
                 }
 
-                var label = mangle::sanitized(self->allocator, goto_.name.as_str_const());
+                if (target_emitted) {
+                    var label = mangle::sanitized(self->allocator, goto_.name.as_str_const());
 
-                self->body_out.push_str(" goto ");
-                self->body_out.push_str(label.as_str_const());
-                self->body_out.push_str(";\n");
-                
-                label.free();
+                    self->body_out.push_str(" goto ");
+                    self->body_out.push_str(label.as_str_const());
+                    self->body_out.push_str(";\n");
+                    
+                    label.free();
+                }
             }
 
             case .Builtin(builtin) => {
@@ -1771,7 +1956,7 @@ pub struct Emitter {
                         var copy_array = false;
 
                         switch (rhs.kind) {
-                            case .Array(_) => {}
+                            case .Array => {}
                             else => {
                                 if (ty.is_array()) {
                                     copy_array = true;
@@ -1813,7 +1998,7 @@ pub struct Emitter {
                             expr.free();
 
                             self->body_out.push_str(", sizeof(");
-                            var size_name = self->types.type_name(&ty);
+                            var size_name = self->types.tyxpe_name(&ty);
                             self->body_out.push_str(size_name.as_str_const());
                             size_name.free();
                             self->body_out.push_str("))");
@@ -1845,12 +2030,13 @@ pub struct Emitter {
                                             var coerce = self->coerce_to_int128(&rhs, expr.as_str_const(), dest_128.unwrap());
                                             self->body_out.push_str(coerce.as_str_const());
                                             coerce.free();
+                                            expr.free();
                                         } else {
-                                            self->body_out.push_str(expr.as_str_const());
+                                            var coerce = self->coerce_float16(expr, &ty);
+                                            self->body_out.push_str(coerce.as_str_const());
+                                            coerce.free();
                                         }
                                     }
-
-                                    expr.free();
                                 }
                             }
                         }
@@ -1935,13 +2121,6 @@ pub struct Emitter {
         return out;
     }
 
-    /// Value for a struct/union member inside a designated initializer.
-    ///
-    /// C refuses an array member initialized from an array *expression*:
-    /// `((int[3]){1, 2, 3})` is rejected by GCC with "array initialized from
-    /// non-constant array expression", and tcc mis-parses it as a
-    /// pointer-to-integer cast and fills the union with garbage. Array
-    /// members therefore have to be spelled as a brace list here.
     fn emit_init_value(self: Self*, value: const cir::Expr*) String {
         switch (value->kind) {
             case .Array(array) => return self->emit_array_braces(&array);
@@ -1973,7 +2152,43 @@ pub struct Emitter {
 
         switch (return_->arg) {
             case .Some(arg) => {
+                // Array-returning functions dont really return a plain array. They return
+                // a generated struct wrapper. So we copy the
+                // array value into that wrapper's storage.
+                switch (arg.ty) {
+                    case .Some(ty) => {
+                        switch (ty.as_array_type()) {
+                            case .Some(_) => {
+                                var struct_name = self->types.array_return_struct_name(&ty);
+                                self->ensure_memcpy_proto();
+
+                                var expr = self->emit_expr(&arg);
+
+                                self->body_out.push_str(" return ({ ");
+                                self->body_out.push_str(struct_name.as_str_const());
+                                self->body_out.push_str(" __cyrus_ret; memcpy(__cyrus_ret.data, ");
+                                self->body_out.push_str(expr.as_str_const());
+                                self->body_out.push_str(", sizeof(__cyrus_ret.data)); __cyrus_ret; });\n");
+
+                                expr.free();
+                                struct_name.free();
+                                return;
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
                 var expr = self->emit_expr(&arg);
+
+                switch (arg.ty) {
+                    case .Some(ty) => {
+                        expr = self->coerce_float16(expr, &ty);
+                    }
+                    else => {}
+                }
+
                 self->body_out.push_str(" return ");
                 self->body_out.push_str(expr.as_str_const());
                 self->body_out.push_str(";\n");
@@ -2365,6 +2580,7 @@ pub struct Emitter {
         self->body_out.push(' ');
         self->body_out.push_str(decl.as_str_const());
         self->body_out.push_str(" = {0};\n");
+        
         decl.free();
 
         self->switch_binding_owned.push(c_name);
@@ -2386,6 +2602,56 @@ pub struct Emitter {
         }
 
         return self->fn_name_taken(candidate);
+    }
+
+    /// Hoists the bindings introduced by a nested pattern item matched
+    /// against a value of type `item_ty`.
+    fn hoist_nested_pattern_item(
+        self: Self*,
+        item: const cir::SwitchCasePattern*,
+        item_ty: const cir::SemaType*,
+        tags: const Vec<uint32>*
+    ) {
+        switch (item->kind) {
+            case .Binding { name, var_decl_id } => {
+                self->hoist_switch_binding(var_decl_id, &name, item_ty);
+            }
+
+            case .EnumTupleVariant | .EnumStructVariant => {
+                switch (item_ty->as_enum()) {
+                    case .Some(inner_enum_id) => {
+                        switch (self->tables->enums.get_const(inner_enum_id)) {
+                            case .Some(inner_decl) => {
+                                // A nested enum value carries its own
+                                // instantiated type arguments.
+                                var nested_args: const cir::TypeArgs* = null;
+
+                                switch (*item_ty->const_inner()) {
+                                    case .Named(named) => {
+                                        if (!named.type_args.is_empty()) {
+                                            nested_args = &named.type_args;
+                                        }
+                                    }
+                                    else => {}
+                                }
+
+                                self->hoist_switch_pattern_bindings(
+                                    item,
+                                    inner_decl,
+                                    tags,
+                                    nested_args,
+                                    item_ty
+                                );
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+
+            else => {}
+        }
     }
 
     fn hoist_switch_pattern_bindings(
@@ -2428,7 +2694,23 @@ pub struct Emitter {
                                                 self->hoist_switch_binding(var_decl_id, &name, &field_type);
                                             }
                                         }
-                                        else => {}
+                                        else => {
+                                            if (k < fields.len()) {
+                                                const field = fields.get_const(k).unwrap();
+
+                                                var nested_type = self->substitute_variant_field_type(
+                                                    enum_decl,
+                                                    &field->ty,
+                                                    inst_args
+                                                );
+
+                                                self->hoist_nested_pattern_item(
+                                                    item,
+                                                    &nested_type,
+                                                    tags
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -2446,7 +2728,24 @@ pub struct Emitter {
                                                 else => {}
                                             }
                                         }
-                                        else => {}
+                                        else => {
+                                            switch (value->ty) {
+                                                case .Some(value_ty) => {
+                                                    var nested_type = self->substitute_variant_field_type(
+                                                        enum_decl,
+                                                        &value_ty,
+                                                        inst_args
+                                                    );
+
+                                                    self->hoist_nested_pattern_item(
+                                                        item,
+                                                        &nested_type,
+                                                        tags
+                                                    );
+                                                }
+                                                else => {}
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -2487,7 +2786,26 @@ pub struct Emitter {
                                                 }
                                             }
                                         }
-                                        else => {}
+                                        else => {
+                                            for (var f: usize = 0; f < fields.len(); f += 1) {
+                                                const field = fields.get_const(f).unwrap();
+
+                                                if (field->name.str.as_str_const() == item->name.str.as_str_const()) {
+                                                    var nested_type = self->substitute_variant_field_type(
+                                                        enum_decl,
+                                                        &field->ty,
+                                                        inst_args
+                                                    );
+
+                                                    self->hoist_nested_pattern_item(
+                                                        &item->pattern,
+                                                        &nested_type,
+                                                        tags
+                                                    );
+                                                    break;
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -2497,6 +2815,404 @@ pub struct Emitter {
                     else => {}
                 }
             }
+            else => {}
+        }
+    }
+
+    /// Returns `ty` with the enum's generic arguments substituted, when the
+    /// declared field type mentions generic parameters.
+    fn substitute_variant_field_type(
+        self: Self*,
+        enum_decl: const cir::EnumDecl*,
+        ty: const cir::SemaType*,
+        inst_args: const cir::TypeArgs*
+    ) cir::SemaType {
+        if (inst_args != null) {
+            return cir::substitute_sema_type_with_type_args(
+                self->allocator,
+                ty,
+                &enum_decl->generic_params,
+                inst_args
+            );
+        }
+
+        return *ty;
+    }
+
+    /// C expression naming a tuple variant's payload field.
+    fn enum_tuple_payload_base(
+        self: Self*,
+        base: const uint8*,
+        tag: uint32,
+        index: usize
+    ) String {
+        var out = String.from_str(self->allocator, base);
+        out.push_str(".u.v");
+        push_uint32(&out, tag);
+        out.push('.');
+
+        var field_name = self->tuple_field_name(index);
+        out.push_str(field_name.as_str_const());
+        field_name.free();
+
+        return out;
+    }
+
+    /// C expression naming a valued variant's payload value.
+    fn enum_valued_payload_base(
+        self: Self*,
+        base: const uint8*,
+        tag: uint32
+    ) String {
+        var out = String.from_str(self->allocator, base);
+        out.push_str(".u.v");
+        push_uint32(&out, tag);
+        out.push_str(".value");
+        return out;
+    }
+
+    /// Appends a C boolean condition testing `base` (an enum lvalue
+    /// expression) against `pattern`, descending into nested payload
+    /// patterns. Existing conditions are joined with `&&`.
+    fn emit_enum_pattern_condition(
+        self: Self*,
+        pattern: const cir::SwitchCasePattern*,
+        enum_decl: const cir::EnumDecl*,
+        tags: const Vec<uint32>*,
+        base: const uint8*,
+        out: String*
+    ) {
+        switch (pattern->kind) {
+            case .EnumUnit(ident) => {
+                const tag = enum_decl->find_variant_tag(tags, ident.str.as_str_const());
+
+                if (out->len() > 0) {
+                    out->push_str(" && ");
+                }
+
+                out->push_str(base);
+                out->push_str(".tag == ");
+                push_uint32(out, tag);
+            }
+
+            case .EnumTupleVariant { ident, items } => {
+                const tag = enum_decl->find_variant_tag(tags, ident.str.as_str_const());
+
+                if (out->len() > 0) {
+                    out->push_str(" && ");
+                }
+
+                out->push_str(base);
+                out->push_str(".tag == ");
+                push_uint32(out, tag);
+
+                switch (enum_decl->lookup_variant(ident.str.as_str_const())) {
+                    case .Some(variant) => {
+                        switch (*variant) {
+                            case .Tuple { fields, .. } => {
+                                for (var k: usize = 0; k < items.len(); k += 1) {
+                                    if (k >= fields.len()) {
+                                        break;
+                                    }
+
+                                    const item = items.get_const(k).unwrap();
+                                    const field = fields.get_const(k).unwrap();
+
+                                    var child_base = self->enum_tuple_payload_base(base, tag, k);
+                                    self->emit_nested_pattern_condition(
+                                        item,
+                                        &field->ty,
+                                        child_base.as_str_const(),
+                                        out
+                                    );
+                                    child_base.free();
+                                }
+                            }
+
+                            case .Valued { value, .. } => {
+                                if (items.len() > 0) {
+                                    switch (value->ty) {
+                                        case .Some(value_ty) => {
+                                            const item = items.get_const(0).unwrap();
+
+                                            var child_base = self->enum_valued_payload_base(base, tag);
+                                            self->emit_nested_pattern_condition(
+                                                item,
+                                                &value_ty,
+                                                child_base.as_str_const(),
+                                                out
+                                            );
+                                            child_base.free();
+                                        }
+                                        else => {}
+                                    }
+                                }
+                            }
+
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+
+            case .EnumStructVariant { ident, items, .. } => {
+                const tag = enum_decl->find_variant_tag(tags, ident.str.as_str_const());
+
+                if (out->len() > 0) {
+                    out->push_str(" && ");
+                }
+
+                out->push_str(base);
+                out->push_str(".tag == ");
+                push_uint32(out, tag);
+
+                switch (enum_decl->lookup_variant(ident.str.as_str_const())) {
+                    case .Some(variant) => {
+                        switch (*variant) {
+                            case .Struct { fields, .. } => {
+                                for (var k: usize = 0; k < items.len(); k += 1) {
+                                    const item = items.get_const(k).unwrap();
+
+                                    for (var f: usize = 0; f < fields.len(); f += 1) {
+                                        const field = fields.get_const(f).unwrap();
+
+                                        if (field->name.str.as_str_const() == item->name.str.as_str_const()) {
+                                            var child_base = String.from_str(self->allocator, base);
+                                            child_base.push_str(".u.v");
+                                            push_uint32(&child_base, tag);
+                                            child_base.push('.');
+                                            mangle::sanitize_into(
+                                                &child_base,
+                                                item->name.str.as_str_const()
+                                            );
+
+                                            self->emit_nested_pattern_condition(
+                                                &item->pattern,
+                                                &field->ty,
+                                                child_base.as_str_const(),
+                                                out
+                                            );
+                                            child_base.free();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+
+            else => {}
+        }
+    }
+
+    /// Continues a pattern condition into a nested pattern whose matched
+    /// value has type `item_ty`.
+    fn emit_nested_pattern_condition(
+        self: Self*,
+        item: const cir::SwitchCasePattern*,
+        item_ty: const cir::SemaType*,
+        base: const uint8*,
+        out: String*
+    ) {
+        switch (item->kind) {
+            case .EnumUnit | .EnumTupleVariant | .EnumStructVariant => {
+                switch (item_ty->as_enum()) {
+                    case .Some(inner_enum_id) => {
+                        switch (self->tables->enums.get_const(inner_enum_id)) {
+                            case .Some(inner_decl) => {
+                                const inner_tags = self->types.tctx.enum_variant_tags(
+                                    inner_enum_id,
+                                    inner_decl
+                                );
+
+                                self->emit_enum_pattern_condition(
+                                    item,
+                                    inner_decl,
+                                    inner_tags,
+                                    base,
+                                    out
+                                );
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+    }
+
+    /// Assigns a hoisted switch binding from the C expression `base`.
+    fn assign_switch_binding(
+        self: Self*,
+        var_decl_id: cir::VarDeclId,
+        base: const uint8*
+    ) {
+        switch (self->switch_binding_names.get(var_decl_id)) {
+            case .Some(c_name) => {
+                self->body_out.push(' ');
+                self->body_out.push_str(c_name->as_str_const());
+                self->body_out.push_str(" = ");
+                self->body_out.push_str(base);
+                self->body_out.push_str(";\n");
+            }
+            else => {}
+        }
+    }
+
+    /// Emits assignments initializing hoisted bindings from `base`
+    /// according to a nested pattern whose matched value has type `item_ty`.
+    fn emit_nested_pattern_bindings(
+        self: Self*,
+        item: const cir::SwitchCasePattern*,
+        item_ty: const cir::SemaType*,
+        base: const uint8*
+    ) {
+        switch (item->kind) {
+            case .Binding { var_decl_id, .. } => {
+                self->assign_switch_binding(var_decl_id, base);
+            }
+
+            case .EnumTupleVariant | .EnumStructVariant => {
+                switch (item_ty->as_enum()) {
+                    case .Some(inner_enum_id) => {
+                        switch (self->tables->enums.get_const(inner_enum_id)) {
+                            case .Some(inner_decl) => {
+                                const inner_tags = self->types.tctx.enum_variant_tags(
+                                    inner_enum_id,
+                                    inner_decl
+                                );
+
+                                self->emit_enum_pattern_bindings(
+                                    item,
+                                    inner_decl,
+                                    inner_tags,
+                                    base
+                                );
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+
+            else => {}
+        }
+    }
+
+    /// Emits assignments initializing hoisted bindings from `base`
+    /// according to an enum variant `pattern`.
+    fn emit_enum_pattern_bindings(
+        self: Self*,
+        pattern: const cir::SwitchCasePattern*,
+        enum_decl: const cir::EnumDecl*,
+        tags: const Vec<uint32>*,
+        base: const uint8*
+    ) {
+        switch (pattern->kind) {
+            case .Binding { var_decl_id, .. } => {
+                self->assign_switch_binding(var_decl_id, base);
+            }
+
+            case .EnumTupleVariant { ident, items } => {
+                const tag = enum_decl->find_variant_tag(tags, ident.str.as_str_const());
+
+                switch (enum_decl->lookup_variant(ident.str.as_str_const())) {
+                    case .Some(variant) => {
+                        switch (*variant) {
+                            case .Tuple { fields, .. } => {
+                                for (var k: usize = 0; k < items.len(); k += 1) {
+                                    if (k >= fields.len()) {
+                                        break;
+                                    }
+
+                                    const item = items.get_const(k).unwrap();
+                                    const field = fields.get_const(k).unwrap();
+
+                                    var child_base = self->enum_tuple_payload_base(base, tag, k);
+                                    self->emit_nested_pattern_bindings(
+                                        item,
+                                        &field->ty,
+                                        child_base.as_str_const()
+                                    );
+                                    child_base.free();
+                                }
+                            }
+
+                            case .Valued { value, .. } => {
+                                if (items.len() > 0) {
+                                    switch (value->ty) {
+                                        case .Some(value_ty) => {
+                                            const item = items.get_const(0).unwrap();
+
+                                            var child_base = self->enum_valued_payload_base(base, tag);
+                                            self->emit_nested_pattern_bindings(
+                                                item,
+                                                &value_ty,
+                                                child_base.as_str_const()
+                                            );
+                                            child_base.free();
+                                        }
+                                        else => {}
+                                    }
+                                }
+                            }
+
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+
+            case .EnumStructVariant { ident, items, .. } => {
+                const tag = enum_decl->find_variant_tag(tags, ident.str.as_str_const());
+
+                switch (enum_decl->lookup_variant(ident.str.as_str_const())) {
+                    case .Some(variant) => {
+                        switch (*variant) {
+                            case .Struct { fields, .. } => {
+                                for (var k: usize = 0; k < items.len(); k += 1) {
+                                    const item = items.get_const(k).unwrap();
+
+                                    for (var f: usize = 0; f < fields.len(); f += 1) {
+                                        const field = fields.get_const(f).unwrap();
+
+                                        if (field->name.str.as_str_const() == item->name.str.as_str_const()) {
+                                            var child_base = String.from_str(self->allocator, base);
+                                            child_base.push_str(".u.v");
+                                            push_uint32(&child_base, tag);
+                                            child_base.push('.');
+                                            mangle::sanitize_into(
+                                                &child_base,
+                                                item->name.str.as_str_const()
+                                            );
+
+                                            self->emit_nested_pattern_bindings(
+                                                &item->pattern,
+                                                &field->ty,
+                                                child_base.as_str_const()
+                                            );
+                                            child_base.free();
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+
             else => {}
         }
     }
@@ -2616,133 +3332,63 @@ pub struct Emitter {
                         self->body_out.push_str(" } ");
                     }
                     case .EnumTupleVariant { ident, items } => {
-                        const tag = enum_decl->find_variant_tag(tags, ident.str.as_str_const());
+                        var cond = String.new(self->allocator);
+                        self->emit_enum_pattern_condition(
+                            pattern,
+                            enum_decl,
+                            tags,
+                            "__sw_op",
+                            &cond
+                        );
 
                         if (first) {
-                            self->body_out.push_str(" if (__sw_op.tag == ");
+                            self->body_out.push_str(" if (");
                             first = false;
                         } else {
-                            self->body_out.push_str(" else if (__sw_op.tag == ");
+                            self->body_out.push_str(" else if (");
                         }
-                        
-                        push_uint32(&self->body_out, tag);
+
+                        self->body_out.push_str(cond.as_str_const());
                         self->body_out.push_str(") { ");
+                        cond.free();
 
-                        switch (enum_decl->lookup_variant(ident.str.as_str_const())) {
-                            case .Some(variant) => {
-                                switch (*variant) {
-                                    case .Tuple { fields, .. } => {
-                                        for (var k: usize = 0; k < items.len(); k += 1) {
-                                            const item = items.get_const(k).unwrap();
-                                            
-                                            switch (item->kind) {
-                                                case .Binding { var_decl_id, .. } => {
-                                                    if (k < fields.len()) {
-                                                        switch (self->switch_binding_names.get(var_decl_id)) {
-                                                            case .Some(c_name) => {
-                                                                self->body_out.push(' ');
-                                                                self->body_out.push_str(c_name->as_str_const());
-                                                                self->body_out.push_str(" = __sw_op.u.v");
-                                                                push_uint32(&self->body_out, tag);
-                                                                self->body_out.push('.');
-
-                                                                var field_name = self->tuple_field_name(k);
-                                                                self->body_out.push_str(field_name.as_str_const());
-                                                                self->body_out.push_str(";\n");
-                                                                field_name.free();
-                                                            }
-                                                            else => {}
-                                                        }
-                                                    }
-                                                }
-                                                else => {}
-                                            }
-                                        }
-                                    }
-                                    case .Valued { .. } => {
-                                        for (var k: usize = 0; k < items.len(); k += 1) {
-                                            const item = items.get_const(k).unwrap();
-
-                                            switch (item->kind) {
-                                                case .Binding { var_decl_id, .. } => {
-                                                    switch (self->switch_binding_names.get(var_decl_id)) {
-                                                        case .Some(c_name) => {
-                                                            self->body_out.push(' ');
-                                                            self->body_out.push_str(c_name->as_str_const());
-                                                            self->body_out.push_str(" = __sw_op.u.v");
-                                                            push_uint32(&self->body_out, tag);
-                                                            self->body_out.push_str(".value;\n");
-                                                        }
-                                                        else => {}
-                                                    }
-                                                }
-                                                else => {}
-                                            }
-                                        }
-                                    }
-                                    else => {}
-                                }
-                            }
-                            else => {}
-                        }
+                        self->emit_enum_pattern_bindings(
+                            pattern,
+                            enum_decl,
+                            tags,
+                            "__sw_op"
+                        );
 
                         self->emit_block_stmts(case_->body, true);
                         self->body_out.push_str(" } ");
                     }
                     case .EnumStructVariant { ident, items, .. } => {
-                        const tag = enum_decl->find_variant_tag(tags, ident.str.as_str_const());
+                        var cond = String.new(self->allocator);
+                        self->emit_enum_pattern_condition(
+                            pattern,
+                            enum_decl,
+                            tags,
+                            "__sw_op",
+                            &cond
+                        );
 
                         if (first) {
-                            self->body_out.push_str(" if (__sw_op.tag == ");
+                            self->body_out.push_str(" if (");
                             first = false;
                         } else {
-                            self->body_out.push_str(" else if (__sw_op.tag == ");
+                            self->body_out.push_str(" else if (");
                         }
 
-                        push_uint32(&self->body_out, tag);
+                        self->body_out.push_str(cond.as_str_const());
                         self->body_out.push_str(") { ");
+                        cond.free();
 
-                        switch (enum_decl->lookup_variant(ident.str.as_str_const())) {
-                            case .Some(variant) => {
-                                switch (*variant) {
-                                    case .Struct { fields, .. } => {
-                                        for (var k: usize = 0; k < items.len(); k += 1) {
-                                            const item = items.get_const(k).unwrap();
-
-                                            switch (item->pattern.kind) {
-                                                case .Binding { var_decl_id, .. } => {
-                                                    for (var f: usize = 0; f < fields.len(); f += 1) {
-                                                        const field = fields.get_const(f).unwrap();
-
-                                                        if (field->name.str.as_str_const() == item->name.str.as_str_const()) {
-                                                            switch (self->switch_binding_names.get(var_decl_id)) {
-                                                                case .Some(c_name) => {
-                                                                    self->body_out.push(' ');
-                                                                    self->body_out.push_str(c_name->as_str_const());
-                                                                    self->body_out.push_str(" = __sw_op.u.v");
-                                                                    push_uint32(&self->body_out, tag);
-                                                                    self->body_out.push('.');
-                                                                    mangle::sanitize_into(
-                                                                        &self->body_out,
-                                                                        item->name.str.as_str_const()
-                                                                    );
-                                                                    self->body_out.push_str(";\n");
-                                                                }
-                                                                else => {}
-                                                            }
-                                                            break;
-                                                        }
-                                                    }
-                                                }
-                                                else => {}
-                                            }
-                                        }
-                                    }
-                                    else => {}
-                                }
-                            }
-                            else => {}
-                        }
+                        self->emit_enum_pattern_bindings(
+                            pattern,
+                            enum_decl,
+                            tags,
+                            "__sw_op"
+                        );
 
                         self->emit_block_stmts(case_->body, true);
                         self->body_out.push_str(" } ");
@@ -3193,6 +3839,38 @@ pub struct Emitter {
 
     /* ************* Expressions ************* */
 
+    /// Unwraps the result of an array-returning call.
+    ///
+    /// Array values decay to a pointer to their first element in C, and
+    /// array-returning functions return a struct wrapper. A statement
+    /// expression materialises the wrapper and yields its `data` array,
+    /// which then decays exactly like any other array value.
+    fn decay_array_value(self: Self*, expr: const cir::Expr*, value: String) String {
+        switch (expr->ty) {
+            case .Some(ty) => {
+                switch (ty.as_array_type()) {
+                    case .Some(_) => {
+                        var struct_name = self->types.array_return_struct_name(&ty);
+
+                        var out = String.from_str(self->allocator, "({ ");
+                        out.push_str(struct_name.as_str_const());
+                        out.push_str(" __cyrus_arr = ");
+                        out.push_str(value.as_str_const());
+                        out.push_str("; __cyrus_arr.data; })");
+
+                        struct_name.free();
+                        value.free();
+                        return out;
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        return value;
+    }
+
     fn emit_expr(self: Self*, expr: const cir::Expr*) String {
         switch (expr->kind) {
             case .Prefix(prefix) => {
@@ -3443,13 +4121,19 @@ pub struct Emitter {
                 }
             }
 
-            case .MethodCall(method_call) => return self->emit_method_call(&method_call);
+            case .MethodCall(method_call) => {
+                var call = self->emit_method_call(&method_call);
+                return self->decay_array_value(expr, call);
+            }
 
             case .EnumInit(enum_init) => return self->emit_enum_init(&enum_init);
 
             case .StructInit(struct_init) => return self->emit_struct_init(&struct_init);
             
-            case .FuncCall(func_call) => return self->emit_func_call(&func_call);
+            case .FuncCall(func_call) => {
+                var call = self->emit_func_call(&func_call);
+                return self->decay_array_value(expr, call);
+            }
 
             case .Dynamic(dynamic_) => return self->emit_dynamic(&dynamic_);
             
@@ -3494,11 +4178,86 @@ pub struct Emitter {
         }
     }
 
+    /// Returns the enum type when `expr` has a non-scalar enum type: such
+    /// values are C structs and must be compared as aggregates.
+    fn enum_aggregate_type_of_expr(self: Self*, expr: const cir::Expr*) Option<cir::SemaType> {
+        switch (expr->ty) {
+            case .Some(ty) => {
+                switch (ty.const_inner()->as_named_type()) {
+                    case .Some(named) => {
+                        switch (named.type_decl_id.as_enum()) {
+                            case .Some(enum_id) => {
+                                switch (self->tables->enums.get_const(enum_id)) {
+                                    case .Some(enum_decl) => {
+                                        if (!is_enum_scalar_optimizable(self->tables, enum_decl)) {
+                                            return .Some(ty);
+                                        }
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        return .None;
+    }
+
     fn emit_infix(self: Self*, infix: const cir::InfixExpr*) String {
         switch (infix->op) {
             case .Equal | .NotEqual => {
                 if (self->is_byte_string_compare(infix)) {
                     return self->emit_strcmp_compare(infix);
+                }
+
+                // Non-scalar enums are emitted as C structs; compare their
+                // full representation instead of emitting `a == b` on structs.
+                switch (self->enum_aggregate_type_of_expr(infix->lhs)) {
+                    case .Some(enum_ty) => {
+                        self->ensure_memcmp_proto();
+
+                        var type_name = self->types.type_name(&enum_ty);
+                        var lhs_expr = self->emit_expr(infix->lhs);
+                        var rhs_expr = self->emit_expr(infix->rhs);
+
+                        var out = String.new(self->allocator);
+                        out.push_str("({ ");
+                        out.push_str(type_name.as_str_const());
+                        out.push_str(" __ea = ");
+                        out.push_str(lhs_expr.as_str_const());
+                        out.push_str("; ");
+                        out.push_str(type_name.as_str_const());
+                        out.push_str(" __eb = ");
+                        out.push_str(rhs_expr.as_str_const());
+                        out.push_str("; memcmp(&__ea, &__eb, sizeof(");
+                        out.push_str(type_name.as_str_const());
+                        out.push_str(")) ");
+
+                        switch (infix->op) {
+                            case .Equal => {
+                                out.push_str("== 0");
+                            }
+                            case .NotEqual => {
+                                out.push_str("!= 0");
+                            }
+                            else => {
+                                out.push_str("== 0");
+                            }
+                        }
+
+                        out.push_str("; })");
+
+                        type_name.free();
+                        lhs_expr.free();
+                        rhs_expr.free();
+                        return out;
+                    }
+                    case .None => {}
                 }
             }
             else => {}
@@ -4137,6 +4896,14 @@ pub struct Emitter {
                 out.push_str(" = ");
                 
                 var rhs = self->emit_expr(assign->rhs);
+
+                switch (assign->lhs->ty) {
+                    case .Some(lhs_ty) => {
+                        rhs = self->coerce_float16(rhs, &lhs_ty);
+                    }
+                    else => {}
+                }
+
                 out.push_str(rhs.as_str_const());
                 rhs.free();
                 out.push(')');
@@ -4498,6 +5265,83 @@ pub struct Emitter {
         return String.from_str(self->allocator, "/*unresolved_symbol*/0");
     }
 
+    /// Returns the index of the first variadic argument when the callee
+    /// accepts varargs, so arguments at or after it can be promoted.
+    fn variadic_arg_start(self: Self*, func_call: const cir::FuncCall*) Option<usize> {
+        switch (func_call->dispatch) {
+            case .Normal { func_decl_id } => {
+                switch (self->tables->funcs.get_const(func_decl_id)) {
+                    case .Some(func_decl) => {
+                        switch (func_decl->params.variadic) {
+                            case .Some(_) => return .Some(func_decl->params.list.len());
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .Monomorph { monomorph_id } => {
+                switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                    case .Some(inst) => {
+                        switch (inst->params.variadic) {
+                            case .Some(_) => return .Some(inst->params.list.len());
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .FunctionPointer { func_type } => {
+                switch (func_type.params.variadic) {
+                    case .Some(_) => return .Some(func_type.params.list.len());
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        return .None;
+    }
+
+    /// Applies the default argument promotions for a variadic argument.
+    ///
+    /// The reference backend sign-extends narrow **unsigned** integers to
+    /// 32 bits (unsignedness is not part of the LLVM integer type, so its
+    /// generic integer cast ends up being a sign extension). Reproduce
+    /// that observable behaviour by routing the value through its signed
+    /// counterpart before widening to `uint32_t`.
+    fn emit_variadic_arg(self: Self*, arg: const cir::Expr*, value: String) String {
+        switch (arg->ty) {
+            case .Some(ty) => {
+                switch (ty.as_plain_type()) {
+                    case .Some(plain) => {
+                        switch (plain) {
+                            case .UInt8 => {
+                                var out = String.from_str(self->allocator, "((uint32_t)(int8_t)(");
+                                out.push_str(value.as_str_const());
+                                out.push_str("))");
+                                value.free();
+                                return out;
+                            }
+                            case .UInt16 => {
+                                var out = String.from_str(self->allocator, "((uint32_t)(int16_t)(");
+                                out.push_str(value.as_str_const());
+                                out.push_str("))");
+                                value.free();
+                                return out;
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        return value;
+    }
+
     fn emit_func_call(self: Self*, func_call: const cir::FuncCall*) String {
         var out = String.new(self->allocator);
         var callee: String;
@@ -4562,10 +5406,29 @@ pub struct Emitter {
         out.push_str(callee.as_str_const());
         out.push('(');
 
+        const variadic_start = self->variadic_arg_start(func_call);
+
         for (var i: usize = 0; i < func_call->args.len(); i += 1) {
             const arg = func_call->args.get_const(i).unwrap();
 
             var expr = self->emit_expr(arg);
+
+            switch (variadic_start) {
+                case .Some(start) => {
+                    if (i >= start) {
+                        expr = self->emit_variadic_arg(arg, expr);
+                    }
+                }
+                else => {}
+            }
+
+            switch (self->func_call_param_type(func_call, i)) {
+                case .Some(param_ty) => {
+                    expr = self->coerce_float16(expr, &param_ty);
+                }
+                else => {}
+            }
+
             out.push_str(expr.as_str_const());
             expr.free();
             
@@ -4607,9 +5470,8 @@ pub struct Emitter {
                     case .Pointer => {
                         var expr = self->emit_expr(operand);
 
+                        // Value receiver called through a pointer
                         if (self->is_self_by_value(method)) {
-                            // Value receiver called through a pointer:
-                            //    Deref to materialize the object
                             out->push_str("(*");
                             out->push_str(expr.as_str_const());
                             out->push(')');
@@ -5057,44 +5919,42 @@ pub struct Emitter {
             return out;
         }
 
-        self->ensure_memset_proto();
-        self->ensure_memcpy_proto();
-
         const variant = enum_decl->variants.get_const(variant_index).unwrap();
 
-        var out = String.from_str(self->allocator, "(({ ");
+        // A compound literal: it is a valid expression everywhere, and at
+        // file scope it is a constant initializer (unlike a statement
+        // expression, which tcc rejects for `const` globals).
+        var out = String.from_str(self->allocator, "((");
         out.push_str(name.as_str_const());
-        out.push_str(" __e; memset(&__e, 0, sizeof(__e)); __e.tag = ");
+        out.push_str("){ .tag = ");
         push_uint32(&out, tag);
-        out.push_str("; ");
 
         switch (*variant) {
             case .Unit => {}
 
             case .Valued { value, .. } => {
-                var variant = self->types.enum_variant_type_name(&name, tag);
-                out.push_str(variant.as_str_const());
-                out.push_str(" __p = { ");
-                
+                out.push_str(", .u = { .v");
+                push_uint32(&out, tag);
+                out.push_str(" = { ");
+
                 var expr = self->emit_expr(value);
                 out.push_str(expr.as_str_const());
                 expr.free();
-                
-                out.push_str(" }; memcpy(__e.u.raw, &__p, sizeof(__p)); ");
-                variant.free();
+
+                out.push_str(" } }");
             }
 
             case .Tuple { fields, .. } => {
-                var variant = self->types.enum_variant_type_name(&name, tag);
-                out.push_str(variant.as_str_const());
-                out.push_str(" __p = { ");
-                
+                out.push_str(", .u = { .v");
+                push_uint32(&out, tag);
+                out.push_str(" = { ");
+
                 switch (enum_init->arg) {
                     case .Tuple(exprs) => {
                         for (var j: usize = 0; j < fields.len(); j += 1) {
                             if (j < exprs.len()) {
                                 const element = exprs.get_const(j).unwrap();
-                                
+
                                 var expr = self->emit_expr(element);
                                 out.push_str(expr.as_str_const());
                                 expr.free();
@@ -5105,19 +5965,19 @@ pub struct Emitter {
                     else => {}
                 }
 
-                out.push_str(" }; memcpy(__e.u.raw, &__p, sizeof(__p)); ");
-                variant.free();
+                out.push_str(" } }");
             }
+
             case .Struct { fields, .. } => {
-                var variant = self->types.enum_variant_type_name(&name, tag);
-                out.push_str(variant.as_str_const());
-                out.push_str(" __p = { ");
+                out.push_str(", .u = { .v");
+                push_uint32(&out, tag);
+                out.push_str(" = { ");
 
                 switch (enum_init->arg) {
                     case .Struct(field_inits) => {
                         for (var j: usize = 0; j < fields.len(); j += 1) {
                             const field = fields.get_const(j).unwrap();
-                            
+
                             for (var k: usize = 0; k < field_inits.len(); k += 1) {
                                 const field_init = field_inits.get_const(k).unwrap();
 
@@ -5125,11 +5985,11 @@ pub struct Emitter {
                                     out.push('.');
                                     mangle::sanitize_into(&out, field->name.str.as_str_const());
                                     out.push_str(" = ");
-                                    
+
                                     var expr = self->emit_expr(field_init->value);
                                     out.push_str(expr.as_str_const());
                                     expr.free();
-                                    
+
                                     out.push_str(", ");
                                     break;
                                 }
@@ -5139,12 +5999,11 @@ pub struct Emitter {
                     else => {}
                 }
 
-                out.push_str(" }; memcpy(__e.u.raw, &__p, sizeof(__p)); ");
-                variant.free();
+                out.push_str(" } }");
             }
         }
 
-        out.push_str("__e; }))");
+        out.push_str(" })");
         name.free();
         return out;
     }
@@ -5624,7 +6483,9 @@ pub struct Emitter {
                             else => out.push_str("1");
                         }
 
-                        out.push_str(") ? (void)0 : __cyrus_assert_fail_(__FILE__, __LINE__, ");
+                        out.push_str(") ? (void)0 : __cyrus_fail_(\"panicked\", \"assertion failed: \", ");
+                        self->push_builtin_location(&out, builtin_func);
+                        out.push_str(", ");
 
                         switch (builtin_func->args.get_const(1)) {
                             case .Some(mesg) => {
@@ -5634,10 +6495,10 @@ pub struct Emitter {
                                         push_c_escaped(&out, mesg);
                                         out.push('"');
                                     }
-                                    case .None => out.push_str("\"assertion failed\"");
+                                    case .None => out.push_str("\"unknown\"");
                                 }
                             }
-                            case .None => out.push_str("\"assertion failed\"");
+                            case .None => out.push_str("\"unknown\"");
                         }
 
                         out.push_str(")))");
@@ -5647,7 +6508,9 @@ pub struct Emitter {
                     case .Panic => {
                         self->note_panic_use();
 
-                        var out = String.from_str(self->allocator, "__cyrus_panic_(");
+                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"panicked\", \"\", ");
+                        self->push_builtin_location(&out, builtin_func);
+                        out.push_str(", ");
                         
                         switch (builtin_func->args.get_const(0)) {
                             case .Some(mesg) => {
@@ -5657,10 +6520,10 @@ pub struct Emitter {
                                         push_c_escaped(&out, mesg);
                                         out.push('"');
                                     }
-                                    case .None => out.push_str("\"panic\"");
+                                    case .None => out.push_str("\"explicit panic\"");
                                 }
                             }
-                            case .None => out.push_str("\"panic\"");
+                            case .None => out.push_str("\"explicit panic\"");
                         }
 
                         out.push(')');
@@ -5669,17 +6532,77 @@ pub struct Emitter {
 
                     case .Unreachable => {
                         self->note_panic_use();
-                        return String.from_str(self->allocator, "__cyrus_panic_(\"unreachable\")");
+
+                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"entered unreachable code\", \"\", ");
+                        self->push_builtin_location(&out, builtin_func);
+                        out.push_str(", ");
+
+                        switch (builtin_func->args.get_const(0)) {
+                            case .Some(mesg) => {
+                                switch (mesg->literal_const_string_value()) {
+                                    case .Some(mesg) => {
+                                        out.push('"');
+                                        push_c_escaped(&out, mesg);
+                                        out.push('"');
+                                    }
+                                    case .None => out.push_str("\"entered unreachable code\"");
+                                }
+                            }
+                            case .None => out.push_str("\"entered unreachable code\"");
+                        }
+
+                        out.push(')');
+                        return out;
                     }
 
                     case .Todo => {
                         self->note_panic_use();
-                        return String.from_str(self->allocator, "__cyrus_panic_(\"todo\")");
+
+                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"hit TODO\", \"\", ");
+                        self->push_builtin_location(&out, builtin_func);
+                        out.push_str(", ");
+
+                        switch (builtin_func->args.get_const(0)) {
+                            case .Some(mesg) => {
+                                switch (mesg->literal_const_string_value()) {
+                                    case .Some(mesg) => {
+                                        out.push('"');
+                                        push_c_escaped(&out, mesg);
+                                        out.push('"');
+                                    }
+                                    case .None => out.push_str("\"not yet implemented\"");
+                                }
+                            }
+                            case .None => out.push_str("\"not yet implemented\"");
+                        }
+
+                        out.push(')');
+                        return out;
                     }
 
                     case .Unimplemented => {
                         self->note_panic_use();
-                        return String.from_str(self->allocator, "__cyrus_panic_(\"unimplemented\")");
+
+                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"hit UNIMPLEMENTED code\", \"\", ");
+                        self->push_builtin_location(&out, builtin_func);
+                        out.push_str(", ");
+
+                        switch (builtin_func->args.get_const(0)) {
+                            case .Some(mesg) => {
+                                switch (mesg->literal_const_string_value()) {
+                                    case .Some(mesg) => {
+                                        out.push('"');
+                                        push_c_escaped(&out, mesg);
+                                        out.push('"');
+                                    }
+                                    case .None => out.push_str("\"feature is not implemented\"");
+                                }
+                            }
+                            case .None => out.push_str("\"feature is not implemented\"");
+                        }
+
+                        out.push(')');
+                        return out;
                     }
 
                     case .Memcpy => {
@@ -6082,6 +7005,16 @@ pub struct Emitter {
     }
 
     /* ************* LIBC Helpers ************* */
+
+    fn ensure_memcmp_proto(self: Self*) {
+        if (self->needs_memcmp_proto) {
+            return;
+        }
+
+        self->needs_memcmp_proto = true;
+        self->needs_stddef_header = true;
+        self->libc_protos.push_str("int memcmp(const void *s1, const void *s2, size_t n);\n");
+    }
 
     fn ensure_memcpy_proto(self: Self*) {
         if (self->needs_memcpy_proto) {
