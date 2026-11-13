@@ -8,6 +8,7 @@ import std::libc{printf};
 pub fn main() {
      const allocator: Allocator = dynamic LibcAllocator.new();
      var arena = ArenaAllocator.new(allocator, 16);
+     
      var sum: int32 = 0;
      for (var i = 0; i <= 100; i += 1) {
           var x: int32* = arena.alloc(4);
@@ -37,6 +38,15 @@ pub fn main() {
      var a_realloc: int32* = @cast(int32*, arena.realloc(a, 16));
      @assert(a_realloc != null, "a realloc failed");
      @assert(*a_realloc == 111, "a value preserved");
+
+     // Test mark and restore
+     const mark = arena.mark();
+     var temp1: int32* = @cast(int32*, arena.alloc(4));
+     *temp1 = 555;
+     arena.restore(mark);
+     var temp2: int32* = @cast(int32*, arena.alloc(4));
+     @assert(temp1 == temp2, "mark/restore reuses memory");
+     *temp2 = 777;
 
      arena.destroy();
      printf("sum: %d\n", sum);

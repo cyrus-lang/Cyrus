@@ -4,6 +4,7 @@
 import std::string{String, str_contains_char};
 import std::collections::hash_map{HashMap};
 import std::hash{hash_usize, eq_usize};
+import std::mem::arena{ArenaAllocator};
 import std::io{Writer, StringWriter};
 import std::collections{Vec};
 import std::mem{Allocator};
@@ -35,6 +36,7 @@ import cir;
 
 pub struct Emitter {
     pub allocator: Allocator,
+    pub arena: ArenaAllocator,
     pub tables: DeclTables*,
     pub registry: GlobalSymbolRegistry*,
     pub trees: const Vec<cir::ProgramTree>*,
@@ -97,8 +99,11 @@ pub struct Emitter {
 
         func_proto_emitted.resize(tables->funcs.len(), 0);
 
+        const arena = ArenaAllocator.new(allocator, 65536);
+
         return Self {
             allocator,
+            arena,
             tables,
             registry,
             sctx,
@@ -194,7 +199,13 @@ pub struct Emitter {
 
         self->emit_func(func_def);
 
+        for (var i: usize = 0; i < self->defer_scopes.len(); i += 1) {
+            self->defer_scopes.get(i).unwrap()->free();
+        }
+        self->defer_scopes.free();
         self->defer_scopes = saved_defer_scopes;
+
+        self->loop_marks.free();
         self->loop_marks = saved_loop_marks;
 
         self->lambda_defs.push_str(self->body_out.as_str_const());
@@ -1998,7 +2009,7 @@ pub struct Emitter {
                             expr.free();
 
                             self->body_out.push_str(", sizeof(");
-                            var size_name = self->types.tyxpe_name(&ty);
+                            var size_name = self->types.type_name(&ty);
                             self->body_out.push_str(size_name.as_str_const());
                             size_name.free();
                             self->body_out.push_str("))");
@@ -2022,6 +2033,7 @@ pub struct Emitter {
                                         self->body_out.push_str(expr.as_str_const());
                                         self->body_out.push_str("))");
                                         cast_name.free();
+                                        expr.free();
                                     } else {
                                         var dest_128 = self->int128_kind_of(&ty);
                                         var src_128 = self->expr_int128_kind(&rhs);
@@ -2684,7 +2696,7 @@ pub struct Emitter {
 
                                                 if (inst_args != null) {
                                                     field_type = cir::substitute_sema_type_with_type_args(
-                                                        self->allocator,
+                                                        dynamic self->arena,
                                                         &field->ty,
                                                         &enum_decl->generic_params,
                                                         inst_args
@@ -2774,7 +2786,7 @@ pub struct Emitter {
 
                                                     if (inst_args != null) {
                                                         field_type = cir::substitute_sema_type_with_type_args(
-                                                            self->allocator,
+                                                            dynamic self->arena,
                                                             &field->ty,
                                                             &enum_decl->generic_params,
                                                             inst_args
@@ -2829,7 +2841,7 @@ pub struct Emitter {
     ) cir::SemaType {
         if (inst_args != null) {
             return cir::substitute_sema_type_with_type_args(
-                self->allocator,
+                dynamic self->arena,
                 ty,
                 &enum_decl->generic_params,
                 inst_args
@@ -3274,6 +3286,8 @@ pub struct Emitter {
         }
 
         if (has_operand_ty) {
+            const mark = self->arena.mark();
+
             for (var i: usize = 0; i < switch_->cases.len(); i += 1) {
                 const case_ = switch_->cases.get_const(i).unwrap();
 
@@ -3289,6 +3303,8 @@ pub struct Emitter {
                     );
                 }
             }
+
+            self->arena.restore(mark);
         }
 
         var operand = self->emit_expr(&switch_->operand);
@@ -4709,7 +4725,7 @@ pub struct Emitter {
 
         var name = self->int128_op_name(infix->op, unsigned_domain);
 
-        var out = String.new(self->allocator);
+        var out: String;
 
         switch (infix->op) {
             case .Equal 
@@ -4718,6 +4734,7 @@ pub struct Emitter {
             | .LessThan 
             | .GreaterEqual 
             | .LessEqual => {
+                out = String.new(self->allocator);
                 out.push('(');
                 out.push_str(name);
                 out.push('(');
@@ -4746,6 +4763,7 @@ pub struct Emitter {
                     zero_fn = "__cyrus_i128_iszero";
                 }
 
+                out = String.new(self->allocator);
                 out.push_str("(!");
                 out.push_str(zero_fn);
                 out.push('(');
@@ -4764,6 +4782,7 @@ pub struct Emitter {
                     zero_fn = "__cyrus_i128_iszero";
                 }
 
+                out = String.new(self->allocator);
                 out.push_str("(!");
                 out.push_str(zero_fn);
                 out.push('(');
@@ -4793,7 +4812,7 @@ pub struct Emitter {
 
             case .ShiftLeft 
             | .ShiftRight => {
-                var amount = String.new(self->allocator);
+                var amount: String;
 
                 if (self->expr_int128_kind(infix->rhs).is_some()) {
                     var to64 = "__cyrus_u128_to_u64(";
@@ -4873,7 +4892,6 @@ pub struct Emitter {
 
     fn emit_assign(self: Self*, assign: const cir::AssignExpr*) String {
         var lhs = self->emit_expr(assign->lhs);
-        var out = String.new(self->allocator);
 
         switch (self->expr_int128_kind(assign->lhs)) {
             case .Some(unsigned_domain) => {
@@ -4883,14 +4901,16 @@ pub struct Emitter {
                     unsigned_domain
                 );
                 lhs.free();
-                out.free();
                 return res;
             }
             else => {}
         }
 
+        var out: String;
+
         switch (assign->kind) {
             case .Default => {
+                out = String.new(self->allocator);
                 out.push('(');
                 out.push_str(lhs.as_str_const());
                 out.push_str(" = ");
@@ -4947,6 +4967,7 @@ pub struct Emitter {
             }
             
             case .BitwiseAndNotAssign => {
+                out = String.new(self->allocator);
                 var rhs = self->emit_expr(assign->rhs);
                 out.push('(');
                 out.push_str(lhs.as_str_const());
@@ -6075,7 +6096,13 @@ pub struct Emitter {
         self->fn_scope_names.free();
         self->fn_scope_names = saved_scope;
 
+        for (var i: usize = 0; i < self->defer_scopes.len(); i += 1) {
+            self->defer_scopes.get(i).unwrap()->free();
+        }
+        self->defer_scopes.free();
         self->defer_scopes = saved_defer_scopes;
+
+        self->loop_marks.free();
         self->loop_marks = saved_loop_marks;
 
         definition.push_str(self->body_out.as_str_const());
@@ -6982,7 +7009,7 @@ pub struct Emitter {
 
                                 if (interface_->is_generic() && !call_type_args->is_empty()) {
                                     ret_type = cir::substitute_sema_type_with_type_args(
-                                        self->allocator,
+                                        dynamic self->arena,
                                         &ret_type,
                                         &interface_->generic_params,
                                         call_type_args
@@ -7144,6 +7171,7 @@ pub struct Emitter {
         self->fn_ctx_owned.free();
         self->label_depth_ids.free();
         self->label_depths.free();
+        self->arena.destroy();
     }
 }
 

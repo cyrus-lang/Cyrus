@@ -100,6 +100,7 @@ pub fn command_dump_parser(action: cli::ActionContext) {
         command_exit_code = 1;
         return;
     }
+    defer program.free();
 
     lexical.dump_ast(program);
 

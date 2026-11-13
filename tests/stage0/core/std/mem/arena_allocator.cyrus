@@ -38,6 +38,15 @@ pub fn main() {
      @assert(a_realloc != null, "a realloc failed");
      @assert(*a_realloc == 111, "a value preserved");
 
+     // Test mark and restore
+     const m = arena.mark();
+     var temp1: int32* = @cast(int32*, arena.alloc(4));
+     *temp1 = 555;
+     arena.restore(m);
+     var temp2: int32* = @cast(int32*, arena.alloc(4));
+     @assert(temp1 == temp2, "mark/restore reuses memory");
+     *temp2 = 777;
+
      arena.destroy();
      printf("sum: %d\n", sum);
 }
