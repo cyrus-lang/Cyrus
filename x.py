@@ -953,6 +953,55 @@ def ensure_tcc(cfg: Config) -> Path:
     return tcc_build_dir
 
 
+def ensure_fcontext(cfg: Config) -> List[Path]:
+    """Assemble the bundled fcontext objects if any are missing or stale."""
+    fcontext_asm = cfg.root / "lib" / "std" / "fcontext" / "asm"
+    machine = os.uname().machine.lower() if hasattr(os, "uname") else ""
+    if machine in ("x86_64", "amd64"):
+        arch = "x86_64"
+    else:
+        raise SystemExit(f"error: unsupported architecture for fcontext assembly: {machine!r}")
+
+    if sys.platform == "darwin":
+        abi = "sysv_macho_gas"
+    elif sys.platform.startswith("linux") or sys.platform.startswith("freebsd"):
+        abi = "sysv_elf_gas"
+    else:
+        raise SystemExit(f"error: unsupported platform for fcontext assembly: {sys.platform!r}")
+
+    pairs = [
+        (fcontext_asm / "jump.o", fcontext_asm / f"jump_{arch}_{abi}.S"),
+        (fcontext_asm / "make.o", fcontext_asm / f"make_{arch}_{abi}.S"),
+        (fcontext_asm / "ontop.o", fcontext_asm / f"ontop_{arch}_{abi}.S"),
+    ]
+
+    needs_build = [
+        (obj, src)
+        for obj, src in pairs
+        if not obj.is_file() or (src.is_file() and src.stat().st_mtime > obj.stat().st_mtime)
+    ]
+    if needs_build:
+        cc = os.environ.get("CC")
+        if not cc:
+            linker_name = Path(cfg.linker).name
+            if any(k in linker_name for k in ("clang", "gcc", "cc")):
+                cc = cfg.linker
+        if not cc or not shutil.which(cc):
+            for candidate in ("clang", "gcc", "cc"):
+                if shutil.which(candidate):
+                    cc = candidate
+                    break
+        if not cc:
+            raise SystemExit("error: no C compiler found to assemble fcontext objects (set CC)")
+        log(STYLE.cyan(f"assembling fcontext objects in {fcontext_asm} ..."))
+        for obj, src in needs_build:
+            if not src.is_file():
+                raise SystemExit(f"error: missing fcontext assembly source: {src}")
+            run_cmd([cc, "-c", str(src), "-o", str(obj)], cwd=fcontext_asm, capture=False)
+
+    return [obj for obj, _ in pairs]
+
+
 def ensure_stage1(cfg: Config) -> None:
     """Build the stage1 (self-hosted) compiler using stage0."""
     if cfg.stage1_binary.is_file():
@@ -1070,18 +1119,7 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
             "--disable-modulefs-cache",
         ]
         
-    fcontext_asm = cfg.root / "lib" / "std" / "fcontext" / "asm"
-    fcontext_objects = [
-        fcontext_asm / "jump.o",
-        fcontext_asm / "make.o",
-        fcontext_asm / "ontop.o",
-    ]
-    missing = [p for p in fcontext_objects if not p.is_file()]
-    if missing:
-        raise SystemExit(
-            "error: missing fcontext objects: "
-            + ", ".join(str(p) for p in missing)
-        )
+    fcontext_objects = ensure_fcontext(cfg)
     args += [f"-z={p}" for p in fcontext_objects]
 
     args += list(extra_args)
@@ -1960,6 +1998,8 @@ def cmd_test(cfg: Config, args: argparse.Namespace) -> int:
         return 0
 
     # ************* Compiler binaries *************
+    ensure_fcontext(cfg)
+    
     if "stage0" in stages:
         ensure_stage0(cfg)
     if "stage1" in stages:
