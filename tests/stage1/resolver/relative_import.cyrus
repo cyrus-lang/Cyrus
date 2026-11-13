@@ -26,5 +26,5 @@ SYMBOL TREE
 SOURCE MAP
 
 ├── [0] tests/stage1/resolver/relative_import.cyrus
-└── [1] /home/tahad/Code/Cyrus/Cyrus/tests/stage1/resolver/helpers/_rel_sibling.cyrus
+└── [1] tests/stage1/resolver/helpers/_rel_sibling.cyrus
 @resolve*/
