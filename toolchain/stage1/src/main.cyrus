@@ -21,7 +21,7 @@ import driver::commands{
     exit_code,
 };
 
-pub fn main(argc: c_int, argv: c_char**) {
+fn app(argc: c_int, argv: c_char**) int32 {
     const allocator: Allocator = dynamic LibcAllocator.new();
 
     var opts = cli::Opts.new(allocator);
@@ -132,8 +132,8 @@ pub fn main(argc: c_int, argv: c_char**) {
         .help("Create new project");
 
     const run_cmd =
-        cli::Cmd.new(allocator, "run", command_run)
-        .help("Build and run")
+        cli::Cmd.new(allocator, "app", command_run)
+        .help("Build and app")
         ->optional_argument(.Str)
         ->add_option(extra_input_opt)
         ->add_option(library_path_opt)
@@ -242,8 +242,13 @@ pub fn main(argc: c_int, argv: c_char**) {
     app.register(*version_cmd);
 
     if (app.run(struct { argc, argv }).is_error()) {
-        exit(1);
+        return 1;
     }
 
-    exit(exit_code());
+    return exit_code();
+}
+
+pub fn main(argc: c_int, argv: c_char**) {
+    const code = app(argc, argv);
+    exit(code);
 }

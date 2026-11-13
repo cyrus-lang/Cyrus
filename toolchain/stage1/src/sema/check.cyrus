@@ -1631,7 +1631,7 @@ fn analyze_field_access(
         );
 
         const field_type = cir::substitute_sema_type_with_type_args(
-            context->allocator,
+            dynamic context->arena,
             &field->ty,
             &struct_decl->generic_params,
             &type_args
@@ -1693,7 +1693,7 @@ fn analyze_field_access(
         );
 
         const field_type = cir::substitute_sema_type_with_type_args(
-            context->allocator,
+            dynamic context->arena,
             &field->ty,
             &union_decl->generic_params,
             &type_args
@@ -6875,7 +6875,7 @@ fn analyze_switch_on_enum(
     const enum_decl = context->decl_tables->enums.get(enum_decl_id).unwrap();
 
     var inst_enum_decl = instantiate_enum_decl_with_type_args(
-        context->allocator, 
+        dynamic context->arena, 
         enum_decl, 
         &named.type_args
     );
@@ -7328,7 +7328,7 @@ fn analyze_nested_enum_pattern(
         enums.get(enum_decl_id).unwrap();
 
     var inst_enum_decl = instantiate_enum_decl_with_type_args(
-        context->allocator, 
+        dynamic context->arena, 
         enum_decl, 
         &named.type_args
     );

@@ -3,6 +3,7 @@
 
 import std::collections::hash_map{HashMap};
 import std::hash{hash_usize, eq_usize};
+import std::mem::arena{ArenaAllocator};
 import std::mem{Allocator, alloc_init};
 import std::collections{Vec};
 import std::option{Option};
@@ -28,6 +29,7 @@ pub struct TypeContext {
     enum_layouts: HashMap<usize, uintptr>,
     enum_tags: HashMap<usize, Vec<uint32>>,
     owned_layouts: Vec<uintptr>,
+    arena: ArenaAllocator,
 
     pub fn new(
         target_info: TargetInfo,
@@ -35,6 +37,7 @@ pub struct TypeContext {
         registry: const GlobalSymbolRegistry*
     ) Self {
         const allocator = tables->allocator;
+        const arena = ArenaAllocator.new(allocator, 32768);
 
         return Self {
             struct_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
@@ -42,6 +45,7 @@ pub struct TypeContext {
             enum_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
             enum_tags: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
             owned_layouts: Vec.new(allocator),
+            arena,
             target_info,
             registry,
             tables,
@@ -263,7 +267,7 @@ pub struct TypeContext {
                 for (var i: usize = 0; i < struct_decl->fields.len(); i += 1) {
                     const field = struct_decl->fields.get_const(i).unwrap();
                     const field_type = cir::substitute_sema_type_with_type_args(
-                        self->allocator(),
+                        dynamic self->arena,
                         &field->ty,
                         &struct_decl->generic_params,
                         &named->type_args
@@ -287,7 +291,7 @@ pub struct TypeContext {
                 for (var i: usize = 0; i < decl->fields.len(); i += 1) {
                     const field = decl->fields.get_const(i).unwrap();
                     const field_type = cir::substitute_sema_type_with_type_args(
-                        self->allocator(),
+                        dynamic self->arena,
                         &field->ty,
                         &decl->generic_params,
                         &named->type_args
@@ -310,7 +314,7 @@ pub struct TypeContext {
                 const typedef_decl = self->tables->typedefs.get_const(tyedef_decl_id).unwrap();
 
                 const subst = cir::substitute_sema_type_with_type_args(
-                    self->allocator(),
+                    dynamic self->arena,
                     typedef_decl->ty,
                     &typedef_decl->generic_params,
                     &named->type_args
@@ -523,7 +527,7 @@ pub struct TypeContext {
 
                             if (type_args != null) {
                                 layout_ty = cir::substitute_sema_type_with_type_args(
-                                    self->allocator(),
+                                    dynamic self->arena,
                                     &payload_type,
                                     &decl->generic_params,
                                     type_args
@@ -546,7 +550,7 @@ pub struct TypeContext {
 
                         if (type_args != null) {
                             field_type = cir::substitute_sema_type_with_type_args(
-                                self->allocator(),
+                                dynamic self->arena,
                                 &field->ty,
                                 &decl->generic_params,
                                 type_args
@@ -571,7 +575,7 @@ pub struct TypeContext {
 
                         if (type_args != null) {
                             field_type = cir::substitute_sema_type_with_type_args(
-                                self->allocator(),
+                                dynamic self->arena,
                                 &field->ty,
                                 &decl->generic_params,
                                 type_args
@@ -854,6 +858,7 @@ pub struct TypeContext {
         self->struct_layouts.free();
         self->union_layouts.free();
         self->enum_layouts.free();
+        self->arena.destroy();
     }
 }
 

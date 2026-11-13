@@ -32,6 +32,7 @@ pub struct Fiber {
         const entry_fn: fcontext::FContextFn = trampoline;
 
         var stack = fcontext::fcontext_create(entry_fn);
+        
         if (stack == null) {
             return .Error(());
         }

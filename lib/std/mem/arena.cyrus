@@ -3,8 +3,6 @@
 
 import std::collections::linked_list{SinglyLinkedList, SinglyNode};
 import std::mem{Allocator, alloc_init, align_up, is_power_of_two};
-import std::collections::hash_map{HashMap};
-import std::hash{uintptr_hash, uintptr_eq};
 import std::libc{memmove};
 
 struct ArenaNode {
@@ -13,33 +11,77 @@ struct ArenaNode {
     pub used: usize,
 }
 
+pub struct ArenaMark {
+    pub node: SinglyNode<ArenaNode>*,
+    pub used: usize,
+}
+
 pub struct ArenaAllocator : Allocator {
     child_allocator: Allocator,
     nodes: SinglyLinkedList<ArenaNode>*,
     default_capacity: usize,
-    live: HashMap<uintptr, usize>*,
+    last_alloc_ptr: void*,
+    last_alloc_size: usize,
 
     pub fn new(child_allocator: Allocator, capacity: usize) Self {
         const linked_list: SinglyLinkedList<ArenaNode> = SinglyLinkedList.new();
 
         var nodes = alloc_init(child_allocator, linked_list);
-        var map: HashMap<uintptr, usize> = HashMap.with_hasher(
-            child_allocator,
-            64,
-            uintptr_hash,
-            uintptr_eq
-        );
-        var live = alloc_init(child_allocator, map);
 
         var arena = Self { 
             child_allocator, 
             nodes,
             default_capacity: capacity,
-            live,
+            last_alloc_ptr: null,
+            last_alloc_size: 0,
         };
         
         arena.create_node(capacity);
         return arena;
+    }
+
+    pub fn mark(self: Self*) ArenaMark {
+        switch (self->nodes->peek_first()) {
+            case .Some(node) => {
+                return ArenaMark {
+                    node,
+                    used: node->value.used,
+                };
+            }
+            case .None => {
+                return ArenaMark {
+                    node: null,
+                    used: 0,
+                };
+            }
+        }
+    }
+    
+    // FIXME: Rename to rollback.
+    pub fn restore(self: Self*, mark: ArenaMark) {
+        if (mark.node == null) {
+            self->reset();
+            return;
+        }
+
+        while (self->nodes->head != null && self->nodes->head != mark.node) {
+            switch (self->nodes->pop_first()) {
+                case .Some(node) => {
+                    self->child_allocator.free(node->value.ptr);
+                    self->child_allocator.free(node);
+                }
+                case .None => {
+                    break;
+                }
+            }
+        }
+
+        if (self->nodes->head != null) {
+            self->nodes->head->value.used = mark.used;
+        }
+
+        self->last_alloc_ptr = null;
+        self->last_alloc_size = 0;
     }
 
     pub fn alloc(self: Self*, size: usize) void* {
@@ -53,24 +95,33 @@ pub struct ArenaAllocator : Allocator {
             return null;
         }
 
+        var effective_align = align;
+
+        if (effective_align < @sizeof(usize)) {
+            effective_align = @sizeof(usize);
+        }
+
         switch (self->nodes->peek_first()) case .Some(node) else {
             return null;
         }
 
         var arena = &node->value;
+
         const base_addr = @cast(uintptr, arena->ptr) + arena->used;
-        const aligned_addr = align_up(base_addr, align);
-        const padding = aligned_addr - base_addr;
-        const total_needed = padding + size;
+        const aligned_addr = align_up(base_addr + @sizeof(usize), effective_align);
+        const total_needed = (aligned_addr - base_addr) + size;
 
         if (arena->used + total_needed <= arena->capacity) {
             arena->used += total_needed;
             const ptr = @cast(void*, aligned_addr);
-            self->live->insert(@cast(uintptr, ptr), size);
+            *(@cast(usize*, aligned_addr) - 1) = size;
+            self->last_alloc_ptr = ptr;
+            self->last_alloc_size = size;
             return ptr;
         }
 
-        const needed = total_needed + align;
+        const needed = total_needed + effective_align;
+
         var next_cap = self->default_capacity;
 
         if (needed > next_cap) {
@@ -84,14 +135,18 @@ pub struct ArenaAllocator : Allocator {
         }
 
         var new_arena = &new_node->value;
+
         const new_base = @cast(uintptr, new_arena->ptr);
-        const new_aligned = align_up(new_base, align);
-        const new_padding = new_aligned - new_base;
-        const new_total = new_padding + size;
+        const new_aligned = align_up(new_base + @sizeof(usize), effective_align);
+        const new_total = (new_aligned - new_base) + size;
 
         new_arena->used += new_total;
+
         const ptr = @cast(void*, new_aligned);
-        self->live->insert(@cast(uintptr, ptr), size);
+        *(@cast(usize*, new_aligned) - 1) = size;
+        self->last_alloc_ptr = ptr;
+        self->last_alloc_size = size;
+        
         return ptr;
     }
 
@@ -110,61 +165,75 @@ pub struct ArenaAllocator : Allocator {
             return self->alloc(size);
         }
 
-        const key = @cast(uintptr, ptr);
-
-        var old_size: usize = 0;
-
-        switch (self->live->get(key)) {
-            case .Some(found) => {
-                old_size = *found;
-            }
-            case .None => {
-                @assert(false, "realloc of a pointer that was not allocated by this arena");
-                return null;
-            }
-        }
-
         if (size == 0) {
-            self->live->remove(key);
             return null;
         }
 
+        const old_size = *(@cast(usize*, ptr) - 1);
+
+        if (ptr == self->last_alloc_ptr) {
+            switch (self->nodes->peek_first()) {
+                case .Some(node) => {
+                    var arena = &node->value;
+                    if (size <= old_size) {
+                        arena->used -= (old_size - size);
+                        *(@cast(usize*, ptr) - 1) = size;
+                        self->last_alloc_size = size;
+                        return ptr;
+                    } else {
+                        const diff = size - old_size;
+                        if (arena->used + diff <= arena->capacity) {
+                            arena->used += diff;
+                            *(@cast(usize*, ptr) - 1) = size;
+                            self->last_alloc_size = size;
+                            return ptr;
+                        }
+                    }
+                }
+                case .None => {}
+            }
+        }
+
         const new_ptr = self->alloc(size);
+        
+        if (new_ptr == null) {
+            return null;
+        }
 
         var copy_size = old_size;
-
         if (copy_size > size) {
             copy_size = size;
         }
 
         memmove(new_ptr, ptr, copy_size);
-        self->live->remove(key);
         return new_ptr;
     }
 
     pub fn free(self: Self*, ptr: void*) void {
-        if (ptr == null) {
-            return;
-        }
-
-        self->live->remove(@cast(uintptr, ptr));
     }
 
     pub fn reset(self: Self*) {
-        var current = self->nodes->head;
-        
-        while (current != null) {
-            current->value.used = 0;
-            current = current->next;
+        while (self->nodes->size > 1) {
+            switch (self->nodes->pop_first()) {
+                case .Some(node) => {
+                    self->child_allocator.free(node->value.ptr);
+                    self->child_allocator.free(node);
+                }
+                case .None => {
+                    break;
+                }
+            }
         }
 
-        self->live->clear();
+        if (self->nodes->head != null) {
+            self->nodes->head->value.used = 0;
+        }
+
+        self->last_alloc_ptr = null;
+        self->last_alloc_size = 0;
     }
 
     pub fn destroy(self: Self*) {
-        self->live->free();
-        self->child_allocator.free(self->live);
-
         while (self->nodes->head != null) {
             switch (self->nodes->pop_first()) case .Some(node) else {
                 break;
@@ -175,6 +244,8 @@ pub struct ArenaAllocator : Allocator {
         }
 
         self->child_allocator.free(self->nodes);
+        self->last_alloc_ptr = null;
+        self->last_alloc_size = 0;
     }
 
     fn create_node(self: Self*, capacity: usize) {

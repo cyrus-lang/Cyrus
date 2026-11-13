@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::collections::hash_map{HashMap};
+import std::mem::arena{ArenaAllocator};
 import std::hash{hash_usize, eq_usize};
 import std::io{Writer, StringWriter};
 import std::collections{Vec};
@@ -63,6 +64,7 @@ pub struct DeclEmitState {
 
 pub struct TypeEmitter {
     pub allocator: Allocator,
+    pub arena: ArenaAllocator,
     pub tables: DeclTables*,
     pub registry: GlobalSymbolRegistry*,
     pub tctx: TypeContext,
@@ -97,8 +99,11 @@ pub struct TypeEmitter {
             format: .Elf,
         };
 
+        const arena = ArenaAllocator.new(allocator, 65536);
+
         return Self {
             allocator,
+            arena,
             tables,
             registry,
             maps,
@@ -154,6 +159,7 @@ pub struct TypeEmitter {
 
         self->generic_inst_sigs.free();
         self->generic_inst_names.free();
+        self->arena.destroy();
     }
 
     pub fn type_name(self: Self*, ty: const cir::SemaType*) String {
@@ -1496,7 +1502,7 @@ pub struct TypeEmitter {
                             const field = struct_decl->fields.get_const(field_index).unwrap();
                             
                             var subst = cir::substitute_sema_type_with_type_args(
-                                self->allocator,
+                                dynamic self->arena,
                                 &field->ty,
                                 &struct_decl->generic_params,
                                 type_args
@@ -1521,7 +1527,7 @@ pub struct TypeEmitter {
                             const field = struct_decl->fields.get_const(field_index).unwrap();
 
                             var subst = cir::substitute_sema_type_with_type_args(
-                                self->allocator,
+                                dynamic self->arena,
                                 &field->ty,
                                 &struct_decl->generic_params,
                                 type_args
@@ -1593,7 +1599,7 @@ pub struct TypeEmitter {
                             const field = union_decl->fields.get_const(field_index).unwrap();
                             
                             var subst = cir::substitute_sema_type_with_type_args(
-                                self->allocator,
+                                dynamic self->arena,
                                 &field->ty,
                                 &union_decl->generic_params,
                                 type_args
@@ -1614,7 +1620,7 @@ pub struct TypeEmitter {
                             const field = union_decl->fields.get_const(field_index).unwrap();
                             
                             var subst = cir::substitute_sema_type_with_type_args(
-                                self->allocator,
+                                dynamic self->arena,
                                 &field->ty,
                                 &union_decl->generic_params,
                                 type_args
@@ -1738,7 +1744,7 @@ pub struct TypeEmitter {
                                         switch (value->ty) {
                                             case .Some(payload_type) => {
                                                 var subst = cir::substitute_sema_type_with_type_args(
-                                                    self->allocator,
+                                                    dynamic self->arena,
                                                     &payload_type,
                                                     &enum_decl->generic_params,
                                                     type_args
@@ -1775,7 +1781,7 @@ pub struct TypeEmitter {
                                             const field = fields.get_const(field_index).unwrap();
                                             
                                             var subst = cir::substitute_sema_type_with_type_args(
-                                                self->allocator,
+                                                dynamic self->arena,
                                                 &field->ty,
                                                 &enum_decl->generic_params,
                                                 type_args
@@ -1792,7 +1798,7 @@ pub struct TypeEmitter {
                                             const field = fields.get_const(field_index).unwrap();
                                             
                                             var subst = cir::substitute_sema_type_with_type_args(
-                                                self->allocator,
+                                                dynamic self->arena,
                                                 &field->ty,
                                                 &enum_decl->generic_params,
                                                 type_args
@@ -1826,7 +1832,7 @@ pub struct TypeEmitter {
                                             const field = fields.get_const(field_index).unwrap();
                                             
                                             var subst = cir::substitute_sema_type_with_type_args(
-                                                self->allocator,
+                                                dynamic self->arena,
                                                 &field->ty,
                                                 &enum_decl->generic_params,
                                                 type_args
@@ -1843,7 +1849,7 @@ pub struct TypeEmitter {
                                             const field = fields.get_const(field_index).unwrap();
                                             
                                             var subst = cir::substitute_sema_type_with_type_args(
-                                                self->allocator,
+                                                dynamic self->arena,
                                                 &field->ty,
                                                 &enum_decl->generic_params,
                                                 type_args
