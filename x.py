@@ -377,21 +377,24 @@ def _root_string_candidates(root: Path) -> List[str]:
     """Yield textual variants of `root` that may appear in program output.
 
     Covers absolute/resolved forms, native and forward separators, with and
-    without a trailing separator, and never raises for odd inputs.
+    without a trailing separator, ordered longest-first so trailing-separator
+    variants match before bare root prefixes, and never yields `.` or `/`.
     """
     candidates: List[str] = []
     seen = set()
 
     def add(s: object) -> None:
         s = str(s)
-        if not s or s in seen:
+        if not s or s in (".", "./", ".\\", "/", "\\") or s in seen:
             return
         seen.add(s)
         candidates.append(s)
         # With/without trailing separator, both slash styles.
         for sep in (os.sep, "/"):
             if s.endswith(sep):
-                add(s.rstrip(sep) if len(s) > len(sep) else s)
+                stripped = s.rstrip(sep)
+                if stripped and stripped not in (".", "/", "\\"):
+                    add(stripped)
             else:
                 add(s + sep)
 
@@ -401,14 +404,16 @@ def _root_string_candidates(root: Path) -> List[str]:
             add(root.resolve())
         except OSError:
             pass
-        # Relative-to-cwd form (common when the compiler echoes cwd-relative
-        # arguments resolved against its cwd).
+        # Relative-to-cwd form when cwd is not already `root`.
         try:
-            add(Path(os.path.relpath(root.resolve(), Path.cwd())))
+            rel = os.path.relpath(root.resolve(), Path.cwd())
+            if rel not in (".", ""):
+                add(Path(rel))
         except (OSError, ValueError):
             pass
     except Exception:
         pass
+    candidates.sort(key=len, reverse=True)
     return candidates
 
 
@@ -429,18 +434,14 @@ def normalize_runtime_text(text: str, root: Optional[Path] = None) -> str:
     if root is not None:
         for root_s in _root_string_candidates(root):
             text = text.replace(root_s, "")
-            # Also handle paths made absolute in a sandbox/tmp mirror, e.g.
-            # /tmp/.../repo/... by stripping after a known marker.
-        marker = "/" + root.name + "/"
-        if marker in text and root.name:
-            start = 0
-            while True:
-                idx = text.find(marker, start)
-                if idx < 0:
-                    break
-                end = idx + len(marker)
-                text = text[:idx] + text[end:]
-                start = idx
+        # Also handle paths made absolute in a sandbox/tmp mirror, e.g.
+        # /tmp/.../<repo_name>/tests/... -> tests/...
+        if root.name:
+            text = re.sub(
+                r"/(?:[^/\s'\"]+/)*" + re.escape(root.name) + r"/",
+                "",
+                text,
+            )
     text = _THREAD_HASH_RE.sub(r"\1", text)
     return text
 
