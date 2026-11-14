@@ -2,14 +2,14 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::io{Writer, StdoutWriter, StringWriter};
-import std::arena::arena{ArenaAllocator};
-import std::arena::libc{LibcAllocator};
+import std::mem::arena{ArenaAllocator};
+import std::mem::libc{LibcAllocator};
 import std::path{Path, dir_of_file};
+import std::libc{printf, getenv};
 import std::errors{ErrorOr};
 import std::option{Option};
-import std::arena{Allocator};
 import std::string{String};
-import std::libc{printf, getenv};
+import std::mem{Allocator};
 import std::os::process;
 import std::os::dir;
 import std::cli;
