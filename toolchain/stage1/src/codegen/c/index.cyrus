@@ -12,6 +12,7 @@ import sema::vtables{VTableRegistry};
 import codegen::c::emitter{Emitter};
 import cir::tables{DeclTables};
 import codegen::c::mangle;
+import abi::target{TargetInfo};
 import source{SourceContext};
 import cir;
 
@@ -26,7 +27,8 @@ pub struct CodegenC {
         trees: const Vec<cir::ProgramTree>*,
         vtables: VTableRegistry*,
         monomorphs: MonomorphRegistry*,
-        sctx: const SourceContext*
+        sctx: const SourceContext*,
+        target: TargetInfo
     ) Self {
         var maps = mangle::new_module_maps(allocator, trees);
 
@@ -40,7 +42,8 @@ pub struct CodegenC {
             vtables, 
             monomorphs,
             maps,
-            sctx
+            sctx,
+            target
         );
 
         return Self { allocator, emitter };

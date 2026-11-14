@@ -11,6 +11,44 @@ import abi::args{
 };
 import cir;
 
+extern "C" fn uname(buf: uint8*) int32;
+
+fn cstr_eq_slice(a: const uint8*, start: usize, end: usize, lit: const uint8*) bool {
+    var i: usize = 0;
+    const len = end - start;
+
+    while (lit[i] != '\0') {
+        if (i >= len || a[start + i] != lit[i]) {
+            return false;
+        }
+        i += 1;
+    }
+
+    return i == len;
+}
+
+fn next_triple_part(triple: const uint8*, pos: usize*, out_start: usize*, out_end: usize*) bool {
+    const start = *pos;
+
+    if (triple[start] == '\0') {
+        return false;
+    }
+
+    var end = start;
+    while (triple[end] != '\0' && triple[end] != '-') {
+        end += 1;
+    }
+
+    *out_start = start;
+    *out_end = end;
+    if (triple[end] == '-') {
+        *pos = end + 1;
+    } else {
+        *pos = end;
+    }
+    return true;
+}
+
 pub enum OS {
     Unknown,
     Linux,
@@ -74,6 +112,117 @@ pub struct TargetInfo {
             case .X86_64 | .Aarch64 | .RiscV64 => return 32;
             case .Wasm32 => return 32;
         }
+    }
+
+    pub fn host() TargetInfo {
+        var arch: Arch = .X86_64;
+        var os: OS = .Linux;
+
+        var buf: uint8[2048];
+        for (var i: usize = 0; i < 2048; i += 1) {
+            buf[i] = 0;
+        }
+
+        if (uname(&buf[0]) == 0) {
+            const sysname: const uint8* = &buf[0];
+            var machine: const uint8* = null;
+
+            if (sysname == "Linux") {
+                os = .Linux;
+                machine = &buf[260];
+            } else if (sysname == "Darwin") {
+                os = .MacOS;
+                machine = &buf[1024];
+            } else {
+                os = .Unknown;
+            }
+
+            if (machine != null) {
+                if (machine == "x86_64" || machine == "amd64") {
+                    arch = .X86_64;
+                } else if (machine == "aarch64" || machine == "arm64") {
+                    arch = .Aarch64;
+                } else if (machine == "riscv64") {
+                    arch = .RiscV64;
+                } else if (machine == "wasm32") {
+                    arch = .Wasm32;
+                }
+            }
+        }
+
+        return TargetInfo {
+            arch,
+            os,
+            format: format_for_os(os),
+        };
+    }
+
+    pub fn from_triple(triple: const uint8*) Option<TargetInfo> {
+        if (triple == null || triple[0] == '\0') {
+            return .Some(TargetInfo.host());
+        }
+
+        var pos: usize = 0;
+        var s: usize = 0;
+        var e: usize = 0;
+
+        if (!next_triple_part(triple, &pos, &s, &e)) {
+            return .None;
+        }
+
+        var arch: Arch = .X86_64;
+        if (cstr_eq_slice(triple, s, e, "x86_64")) {
+            arch = .X86_64;
+        } else if (cstr_eq_slice(triple, s, e, "aarch64")) {
+            arch = .Aarch64;
+        } else if (cstr_eq_slice(triple, s, e, "riscv64")) {
+            arch = .RiscV64;
+        } else if (cstr_eq_slice(triple, s, e, "wasm32")) {
+            arch = .Wasm32;
+        } else {
+            return .None;
+        }
+
+        const host_info = TargetInfo.host();
+        var os: OS = host_info.os;
+        var matched_os = false;
+
+        while (next_triple_part(triple, &pos, &s, &e)) {
+            if (cstr_eq_slice(triple, s, e, "linux")) {
+                os = .Linux;
+                matched_os = true;
+                break;
+            } else if (cstr_eq_slice(triple, s, e, "windows")) {
+                os = .Windows;
+                matched_os = true;
+                break;
+            } else if (cstr_eq_slice(triple, s, e, "darwin") || cstr_eq_slice(triple, s, e, "macos")) {
+                os = .MacOS;
+                matched_os = true;
+                break;
+            } else if (cstr_eq_slice(triple, s, e, "unknown")
+                || cstr_eq_slice(triple, s, e, "pc")
+                || cstr_eq_slice(triple, s, e, "apple")
+            ) {
+                continue;
+            } else if (!matched_os) {
+                return .None;
+            }
+        }
+
+        return .Some(TargetInfo {
+            arch,
+            os,
+            format: format_for_os(os),
+        });
+    }
+}
+
+fn format_for_os(os: OS) ObjectFormat {
+    switch (os) {
+        case .Linux | .Unknown => return .Elf;
+        case .MacOS => return .MachO;
+        case .Windows => return .Coff;
     }
 }
 

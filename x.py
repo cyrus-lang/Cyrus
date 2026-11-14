@@ -954,6 +954,22 @@ def ensure_tcc(cfg: Config) -> Path:
     return tcc_build_dir
 
 
+def _find_c_compiler(cfg: Config) -> str:
+    cc = os.environ.get("CC")
+    if not cc:
+        linker_name = Path(cfg.linker).name
+        if any(k in linker_name for k in ("clang", "gcc", "cc")):
+            cc = cfg.linker
+    if not cc or not shutil.which(cc):
+        for candidate in ("clang", "gcc", "cc"):
+            if shutil.which(candidate):
+                cc = candidate
+                break
+    if not cc:
+        raise SystemExit("error: no C compiler found (set CC)")
+    return cc
+
+
 def ensure_fcontext(cfg: Config) -> List[Path]:
     """Assemble the bundled fcontext objects if any are missing or stale."""
     fcontext_asm = cfg.root / "lib" / "std" / "fcontext" / "asm"
@@ -982,18 +998,7 @@ def ensure_fcontext(cfg: Config) -> List[Path]:
         if not obj.is_file() or (src.is_file() and src.stat().st_mtime > obj.stat().st_mtime)
     ]
     if needs_build:
-        cc = os.environ.get("CC")
-        if not cc:
-            linker_name = Path(cfg.linker).name
-            if any(k in linker_name for k in ("clang", "gcc", "cc")):
-                cc = cfg.linker
-        if not cc or not shutil.which(cc):
-            for candidate in ("clang", "gcc", "cc"):
-                if shutil.which(candidate):
-                    cc = candidate
-                    break
-        if not cc:
-            raise SystemExit("error: no C compiler found to assemble fcontext objects (set CC)")
+        cc = _find_c_compiler(cfg)
         log(STYLE.cyan(f"assembling fcontext objects in {fcontext_asm} ..."))
         for obj, src in needs_build:
             if not src.is_file():
@@ -1003,8 +1008,52 @@ def ensure_fcontext(cfg: Config) -> List[Path]:
     return [obj for obj, _ in pairs]
 
 
+def ensure_codegen_c_rt(cfg: Config) -> Path:
+    """Build the stage1 C backend runtime library (libcyrus_rt.a) if missing or stale."""
+    rt_dir = cfg.stage1 / "src" / "codegen" / "c"
+    build_dir = rt_dir / "build"
+    lib_path = build_dir / "libcyrus_rt.a"
+    header = rt_dir / "runtime.h"
+    srcs = [rt_dir / "int128.c", rt_dir / "float16.c", rt_dir / "panic.c"]
+    objs = [build_dir / f"{src.stem}.o" for src in srcs]
+
+    header_mtime = header.stat().st_mtime if header.is_file() else 0.0
+    needs_archive = not lib_path.is_file()
+    stale_objs: List[Tuple[Path, Path]] = []
+
+    for src, obj in zip(srcs, objs):
+        if not src.is_file():
+            raise SystemExit(f"error: missing C runtime source: {src}")
+        if not obj.is_file():
+            stale_objs.append((src, obj))
+            needs_archive = True
+        else:
+            obj_mtime = obj.stat().st_mtime
+            if src.stat().st_mtime > obj_mtime or header_mtime > obj_mtime:
+                stale_objs.append((src, obj))
+                needs_archive = True
+            elif lib_path.is_file() and obj_mtime > lib_path.stat().st_mtime:
+                needs_archive = True
+
+    if stale_objs or needs_archive:
+        build_dir.mkdir(parents=True, exist_ok=True)
+        cc = _find_c_compiler(cfg)
+        ar = os.environ.get("AR") or shutil.which("ar") or shutil.which("llvm-ar")
+        if not ar:
+            raise SystemExit("error: no archiver found (ar / llvm-ar)")
+        log(STYLE.cyan(f"building codegen/c runtime library in {build_dir} ..."))
+        for src, obj in stale_objs:
+            run_cmd([cc, "-O2", "-Wall", "-Wextra", "-c", str(src), "-o", str(obj)], cwd=rt_dir, capture=False)
+        if lib_path.is_file():
+            lib_path.unlink()
+        run_cmd([ar, "rcs", str(lib_path), *[str(o) for o in objs]], cwd=rt_dir, capture=False)
+
+    return lib_path
+
+
 def ensure_stage1(cfg: Config) -> None:
     """Build the stage1 (self-hosted) compiler using stage0."""
+    ensure_codegen_c_rt(cfg)
     if cfg.stage1_binary.is_file():
         return
     log(STYLE.cyan(f"building stage1 with stage0 ({cfg.profile}) ..."))
@@ -1088,6 +1137,7 @@ def build_stage0(cfg: Config, *, extra_cargo_args: Sequence[str] = ()) -> None:
 def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) -> None:
     """Bootstrap stage1 by driving stage0's `build` command on Project.toml."""
     ensure_stage0(cfg)
+    ensure_codegen_c_rt(cfg)
     profile = "release" if release else "debug"
     tcc_dir = ensure_tcc(cfg)
 
@@ -1236,10 +1286,10 @@ def cmd_clean(cfg: Config, args: argparse.Namespace) -> int:
                 log(f"removing {target}")
                 shutil.rmtree(target)
         elif stage == "stage1":
-            build_dir = cfg.stage1 / "build"
-            if build_dir.exists():
-                log(f"removing {build_dir}")
-                shutil.rmtree(build_dir)
+            for build_dir in (cfg.stage1 / "build", cfg.stage1 / "src" / "codegen" / "c" / "build"):
+                if build_dir.exists():
+                    log(f"removing {build_dir}")
+                    shutil.rmtree(build_dir)
     return 0
 
 
