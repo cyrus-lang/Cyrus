@@ -138,8 +138,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         .help("Create new project");
 
     const run_cmd =
-        cli::Cmd.new(allocator, "app", command_run)
-        .help("Build and app")
+        cli::Cmd.new(allocator, "run", command_run)
+        .help("Build and run")
         ->optional_argument(.Str)
         ->add_option(extra_input_opt)
         ->add_option(library_path_opt)

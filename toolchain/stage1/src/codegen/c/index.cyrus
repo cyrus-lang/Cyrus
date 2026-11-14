@@ -11,9 +11,9 @@ import sema::monomorph{MonomorphRegistry};
 import sema::vtables{VTableRegistry};
 import codegen::c::emitter{Emitter};
 import cir::tables{DeclTables};
-import codegen::c::mangle;
 import abi::target{TargetInfo};
 import source{SourceContext};
+import codegen::c::mangle;
 import cir;
 
 pub struct CodegenC {
