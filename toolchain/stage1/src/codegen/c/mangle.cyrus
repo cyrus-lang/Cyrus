@@ -258,6 +258,13 @@ pub fn is_c_keyword(name: const uint8*) bool {
            | "bool"
            | "true"
            | "false"
+           | "nullptr"
+           | "thread_local"
+           | "alignas"
+           | "alignof"
+           | "static_assert"
+           | "typeof_unqual"
+           | "constexpr"
            | "NULL"
            | "main" => return true;
 
