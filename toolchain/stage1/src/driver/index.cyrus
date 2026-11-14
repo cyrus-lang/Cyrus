@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::libc::types{c_unsigned_long_long};
 import std::mem::arena{ArenaAllocator};
 import std::mem{Allocator, alloc_init};
 import std::io{Writer, StdoutWriter};
+import std::libc{printf};
 import std::errors{ErrorOr};
+import std::time{Timer};
 import std::path{Path};
 import std::os{File};
 
@@ -16,12 +19,13 @@ pub struct CompilerContext {
     pub allocator: Allocator,
     pub dctx: DiagContext,
     pub sctx: SourceContext,
+    pub timings: CompilerTimings*,
 
     pub fn new(allocator: Allocator) Self {
         const sctx = SourceContext.new(allocator);
         const dctx = DiagContext.new(allocator);
         
-        return Self { allocator, dctx, sctx };
+        return Self { allocator, dctx, sctx, timings: null };
     }
 
     [[inline]]
@@ -34,5 +38,45 @@ pub struct CompilerContext {
     pub fn free(self: Self*) {
         self->dctx.free();
         self->sctx.free();
+    }
+}
+
+pub struct CompilerConfig {
+    pub enable_timing: bool,
+}
+
+pub struct CompilerTimings {
+    pub lexer: Timer,
+    pub parser: Timer,
+    pub resolver: Timer,
+    pub analyzer: Timer,
+    pub codegen: Timer,
+    pub linker: Timer,
+    pub total: Timer,
+
+    pub fn new() Self {
+        return Self {
+            lexer: Timer.new(),
+            parser: Timer.new(),
+            resolver: Timer.new(),
+            analyzer: Timer.new(),
+            codegen: Timer.new(),
+            linker: Timer.new(),
+            total: Timer.new(),
+        };
+    }
+
+    pub fn print_summary(self: const Self*) {
+        printf("-------------------------------------------\n");
+        printf("Compiler Timing Analysis\n");
+        printf("-------------------------------------------\n");
+        printf("Lexer:      %llu ms\n", @cast(c_unsigned_long_long, self->lexer.elapsed_ms()));
+        printf("Parser:     %llu ms\n", @cast(c_unsigned_long_long, self->parser.elapsed_ms()));
+        printf("Resolver:   %llu ms\n", @cast(c_unsigned_long_long, self->resolver.elapsed_ms()));
+        printf("Analyzer:   %llu ms\n", @cast(c_unsigned_long_long, self->analyzer.elapsed_ms()));
+        printf("Codegen:    %llu ms\n", @cast(c_unsigned_long_long, self->codegen.elapsed_ms()));
+        printf("Linker:     %llu ms\n", @cast(c_unsigned_long_long, self->linker.elapsed_ms()));
+        printf("-------------------------------------------\n");
+        printf("Total:      %llu ms\n", @cast(c_unsigned_long_long, self->total.elapsed_ms()));
     }
 }

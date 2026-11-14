@@ -128,6 +128,11 @@ fn app(argc: c_int, argv: c_char**) int32 {
         .help("Colored output")
     );
 
+    const time_opt = opts.add(
+        *cli::Opt.new(allocator, "time")
+        .help("Print compiler pipeline timing analysis")
+    );
+
     const new_cmd =
         cli::Cmd.new(allocator, "new", command_new)
         .help("Create new project");
@@ -149,7 +154,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
         ->add_option(profile_opt)
-        ->add_option(jobs_opt);
+        ->add_option(jobs_opt)
+        ->add_option(time_opt);
 
     const build_cmd =
         cli::Cmd.new(allocator, "build", command_build)
@@ -168,7 +174,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
         ->add_option(profile_opt)
-        ->add_option(jobs_opt);
+        ->add_option(jobs_opt)
+        ->add_option(time_opt);
 
     const test_cmd =
         cli::Cmd.new(allocator, "test", command_build)
@@ -182,7 +189,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(target_opt)
         ->add_option(backend_opt)
         ->add_option(output_opt)
-        ->add_option(jobs_opt);
+        ->add_option(jobs_opt)
+        ->add_option(time_opt);
 
     const clean_cmd =
         cli::Cmd.new(allocator, "clean", command_build)
@@ -220,7 +228,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(profile_opt)
         ->add_option(target_opt)
         ->add_option(backend_opt)
-        ->add_option(output_opt);
+        ->add_option(output_opt)
+        ->add_option(time_opt);
 
     const dump_cmd =
         cli::Cmd.new(allocator, "dump", command_dump)

@@ -489,6 +489,7 @@ pub extern "C" {
     fn ctime_r(timer: const types::c_long*, buf: types::c_char*) types::c_char*;
     fn difftime(time1: types::c_long, time0: types::c_long) types::c_double;
     fn timespec_get(ts: CTimeSpec*, base: types::c_int) types::c_int;
+    fn clock_gettime(clk_id: types::c_int, tp: CTimeSpec*) types::c_int;
     fn asctime_r(tm: const CTm*, buf: types::c_char*) types::c_char*;
     fn localtime_r(timer: const types::c_long*, result: CTm*) CTm*;
     fn gmtime_r(timer: const types::c_long*, result: CTm*) CTm*;

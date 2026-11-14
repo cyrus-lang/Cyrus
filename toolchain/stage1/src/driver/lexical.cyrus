@@ -28,6 +28,30 @@ pub struct LexicalContext {
 
     /// Driver handler responsible for tokenizing source content.
     pub fn tokenize_source(self: const Self*, path: Path) ErrorOr<SourceTokens, ()> {
+        const timings = self->context->timings;
+
+        if (timings == null) {
+            return self->tokenize_source_inner(path);
+        }
+
+        const was_resolving = timings->resolver.is_running();
+        
+        if (was_resolving) {
+            timings->resolver.stop();
+        }
+
+        timings->lexer.start();
+        const res = self->tokenize_source_inner(path);
+        timings->lexer.stop();
+
+        if (was_resolving) {
+            timings->resolver.start();
+        }
+
+        return res;
+    }
+
+    fn tokenize_source_inner(self: const Self*, path: Path) ErrorOr<SourceTokens, ()> {
         const allocator = self->context->allocator;
 
         switch (File.open(&path, .Read)) case .Value(file) else {
@@ -72,6 +96,33 @@ pub struct LexicalContext {
 
     /// Driver handler responsible for parsing source tokens.
     pub fn parse_source(
+        self: const Self*, 
+        source_tokens: SourceTokens
+    ) ErrorOr<ASTProgram, ()> {
+        const timings = self->context->timings;
+
+        if (timings == null) {
+            return self->parse_source_inner(source_tokens);
+        }
+
+        const was_resolving = timings->resolver.is_running();
+
+        if (was_resolving) {
+            timings->resolver.stop();
+        }
+        
+        timings->parser.start();
+        const res = self->parse_source_inner(source_tokens);
+        timings->parser.stop();
+        
+        if (was_resolving) {
+            timings->resolver.start();
+        }
+        
+        return res;
+    }
+
+    fn parse_source_inner(
         self: const Self*, 
         source_tokens: SourceTokens
     ) ErrorOr<ASTProgram, ()> {
