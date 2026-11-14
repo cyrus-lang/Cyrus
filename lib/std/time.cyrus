@@ -3,6 +3,7 @@
 
 import std::libc::types{c_int};
 import std::libc{
+    clock_gettime,
     timespec_get, 
     CTimeSpec, 
     time, 
@@ -10,6 +11,24 @@ import std::libc{
 };
 
 const TIME_UTC: c_int = 1;
+const CLOCK_MONOTONIC: c_int = 1;
+
+fn monotonic_now_nanos() uint64 {
+    var ts: CTimeSpec = CTimeSpec {
+        tv_sec: 0,
+        tv_nsec: 0
+    };
+
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+        return (@cast(uint64, ts.tv_sec) * 1000000000) + @cast(uint64, ts.tv_nsec);
+    }
+
+    if (timespec_get(&ts, TIME_UTC) != 0) {
+        return (@cast(uint64, ts.tv_sec) * 1000000000) + @cast(uint64, ts.tv_nsec);
+    }
+
+    return @cast(uint64, time(null)) * 1000000000;
+}
 
 pub struct Duration {
     nanos: uint64,
@@ -105,6 +124,77 @@ pub struct Instant {
         return Duration.from_nanos(self->nanos - earlier->nanos);
     }
 }
+
+pub struct Timer {
+    start_nanos: uint64,
+    accumulated_nanos: uint64,
+    running: bool,
+
+    pub fn new() Self {
+        return Self {
+            start_nanos: 0,
+            accumulated_nanos: 0,
+            running: false,
+        };
+    }
+
+    pub fn start(self: Self*) {
+        if (!self->running) {
+            self->start_nanos = monotonic_now_nanos();
+            self->running = true;
+        }
+    }
+
+    pub fn stop(self: Self*) {
+        if (self->running) {
+            const now = monotonic_now_nanos();
+            if (now >= self->start_nanos) {
+                self->accumulated_nanos += now - self->start_nanos;
+            }
+            self->running = false;
+        }
+    }
+
+    pub fn reset(self: Self*) {
+        self->start_nanos = 0;
+        self->accumulated_nanos = 0;
+        self->running = false;
+    }
+
+    [[inline]]
+    pub fn is_running(self: const Self*) bool {
+        return self->running;
+    }
+
+    pub fn elapsed_nanoseconds(self: const Self*) uint64 {
+        if (self->running) {
+            const now = monotonic_now_nanos();
+
+            if (now >= self->start_nanos) {
+                return self->accumulated_nanos + (now - self->start_nanos);
+            }
+        }
+        
+        return self->accumulated_nanos;
+    }
+
+    [[inline]]
+    pub fn elapsed_micros(self: const Self*) uint64 {
+        return self->elapsed_nanoseconds() / 1000;
+    }
+
+    [[inline]]
+    pub fn elapsed_ms(self: const Self*) uint64 {
+        return self->elapsed_nanoseconds() / 1000000;
+    }
+
+    [[inline]]
+    pub fn elapsed(self: const Self*) Duration {
+        return Duration.from_nanos(self->elapsed_nanoseconds());
+    }
+}
+
+pub type Stopwatch = Timer;
 
 [[inline]]
 pub fn sleep_us(micros: uint32) {
