@@ -208,6 +208,9 @@ pub fn sanitize_into(out: String*, name: const uint8*) {
 pub fn is_c_keyword(name: const uint8*) bool {
     switch (name) {
         case "auto"
+           | "asm"
+           | "__asm"
+           | "__asm__"
            | "break"
            | "case"
            | "char"
@@ -236,6 +239,9 @@ pub fn is_c_keyword(name: const uint8*) bool {
            | "struct"
            | "switch"
            | "typedef"
+           | "typeof"
+           | "__typeof"
+           | "__typeof__"
            | "union"
            | "unsigned"
            | "void"

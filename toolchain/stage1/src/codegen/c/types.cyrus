@@ -36,6 +36,16 @@ pub enum TypeState {
     Done = 3,
 }
 
+fn type_decl_key(type_decl_id: cir::TypeDeclId) usize {
+    switch (type_decl_id) {
+        case .Interface(id) => return (id << 3) | 0;
+        case .Typedef(id)   => return (id << 3) | 1;
+        case .Struct(id)    => return (id << 3) | 2;
+        case .Union(id)     => return (id << 3) | 3;
+        case .Enum(id)      => return (id << 3) | 4;
+    }
+}
+
 /// Maps a `TypeDeclId` to its emission state.
 pub struct DeclEmitState {
     states: HashMap<usize, TypeState>,
@@ -47,14 +57,14 @@ pub struct DeclEmitState {
     }
 
     pub fn get(self: Self*, type_decl_id: cir::TypeDeclId) TypeState {
-        switch (self->states.get(@cast(usize, type_decl_id))) {
+        switch (self->states.get(type_decl_key(type_decl_id))) {
             case .Some(state) => return *state;
             else => return .NotStarted;
         }
     }
 
     pub fn set(self: Self*, type_decl_id: cir::TypeDeclId, state: TypeState) {
-        self->states.insert(@cast(usize, type_decl_id), state);
+        self->states.insert(type_decl_key(type_decl_id), state);
     }
 
     pub fn free(self: Self*) {
@@ -559,6 +569,27 @@ pub struct TypeEmitter {
                 self->decl_state.set(*type_decl_id, .Forward);
                 self->deferred.push(.Union(union_decl_id));
             }
+            case .Enum(enum_decl_id) => {
+                switch (self->tables->enums.get_const(enum_decl_id)) {
+                    case .Some(enum_decl) => {
+                        if (is_enum_scalar_optimizable(self->tables, enum_decl)) {
+                            return;
+                        }
+
+                        var c_name = self->enum_c_name(enum_decl_id);
+                        self->type_out.push_str("typedef struct ");
+                        self->type_out.push_str(c_name.as_str_const());
+                        self->type_out.push(' ');
+                        self->type_out.push_str(c_name.as_str_const());
+                        self->type_out.push_str(";\n");
+                        c_name.free();
+
+                        self->decl_state.set(*type_decl_id, .Forward);
+                        self->deferred.push(.Enum(enum_decl_id));
+                    }
+                    case .None => return;
+                }
+            }
             else => {}
         }
     }
@@ -616,7 +647,7 @@ pub struct TypeEmitter {
                     case .Named(named) => {
                         if (named.type_args.is_empty()) {
                             switch (named.type_decl_id) {
-                                case .Struct | .Union => {
+                                case .Struct | .Union | .Enum => {
                                     self->ensure_type_shell(&named.type_decl_id);
                                     return;
                                 }
@@ -655,6 +686,9 @@ pub struct TypeEmitter {
                 }
                 case .Union(union_decl_id) => {
                     self->ensure_union(union_decl_id);
+                }
+                case .Enum(enum_decl_id) => {
+                    self->ensure_enum(enum_decl_id);
                 }
                 else => {}
             }
@@ -883,6 +917,8 @@ pub struct TypeEmitter {
             return;
         }
 
+        const shell_needed = state != .Forward;
+
         self->decl_state.set(type_decl_id, .InProgress);
 
         const enum_decl = self->tables->enums.get_const(enum_decl_id).unwrap();
@@ -944,11 +980,13 @@ pub struct TypeEmitter {
             var tag_type = enum_tag_type(self->tables, self->registry, enum_decl);
             var tag_name = self->type_name(&tag_type);
 
-            self->type_out.push_str("typedef struct ");
-            self->type_out.push_str(c_name.as_str_const());
-            self->type_out.push(' ');
-            self->type_out.push_str(c_name.as_str_const());
-            self->type_out.push_str(";\n");
+            if (shell_needed) {
+                self->type_out.push_str("typedef struct ");
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push(' ');
+                self->type_out.push_str(c_name.as_str_const());
+                self->type_out.push_str(";\n");
+            }
 
             for (
                 var variant_index: usize = 0; 
@@ -962,7 +1000,7 @@ pub struct TypeEmitter {
 
                     case .Valued { value, .. } => {
                         switch (value->ty) {
-                            case .Some(ty) => self->ensure_named(&ty);
+                            case .Some(ty) => self->ensure_field_type(&ty);
                             else => {}
                         }
                     }
@@ -994,7 +1032,7 @@ pub struct TypeEmitter {
                     case .Valued { value, .. } => {
                         switch (value->ty) {
                             case .Some(ty) => {
-                                self->ensure_named(&ty);
+                                self->ensure_field_type(&ty);
                                 
                                 var variant = self->enum_variant_type_name(&c_name, tag);
                                 var value_decl = self->build_decl(&ty, "value");
@@ -1319,6 +1357,17 @@ pub struct TypeEmitter {
         self->type_out.push_str(body.as_str_const());
         self->type_out.push_str(";\n\n");
 
+        switch (*typedef_decl->ty->const_inner()) {
+            case .Named(named) => {
+                switch (named.type_decl_id) {
+                    case .Struct(id) => self->ensure_struct(id);
+                    case .Union(id) => self->ensure_union(id);
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
         body.free();
         c_name.free();
         self->decl_state.set(type_decl_id, .Done);
@@ -1343,7 +1392,9 @@ pub struct TypeEmitter {
                     return self->generic_inst_c_name(&named->type_decl_id, &named->type_args);
                 }
                 
-                self->ensure_enum(id);
+                if (self->decl_state.get(.Enum(id)) != .Forward) {
+                    self->ensure_enum(id);
+                }
 
                 return self->enum_c_name(id);
             }
@@ -1508,7 +1559,7 @@ pub struct TypeEmitter {
                                 type_args
                             );
 
-                            self->ensure_named(&subst);
+                            self->ensure_field_type(&subst);
                         }
 
                         self->type_out.push_str("struct ");
@@ -1605,7 +1656,7 @@ pub struct TypeEmitter {
                                 type_args
                             );
                             
-                            self->ensure_named(&subst);
+                            self->ensure_field_type(&subst);
                         }
 
                         self->type_out.push_str("union ");
@@ -1750,7 +1801,7 @@ pub struct TypeEmitter {
                                                     type_args
                                                 );
                                                 
-                                                self->ensure_named(&subst);
+                                                self->ensure_field_type(&subst);
                                                 
                                                 var variant = self->enum_variant_type_name(&base, tag);
                                                 var value_decl = self->build_decl(&subst, "value");
@@ -1787,7 +1838,7 @@ pub struct TypeEmitter {
                                                 type_args
                                             );
                                             
-                                            self->ensure_named(&subst);
+                                            self->ensure_field_type(&subst);
                                         }
                                         
                                         self->type_out.push_str("typedef struct ");
@@ -1804,7 +1855,7 @@ pub struct TypeEmitter {
                                                 type_args
                                             );
                                             
-                                            self->ensure_named(&subst);
+                                            self->ensure_field_type(&subst);
                                             
                                             var field_name = tuple_field_name(self->allocator, field_index);
                                             var field_decl = self->build_decl(&subst, field_name.as_str_const());
@@ -1838,7 +1889,7 @@ pub struct TypeEmitter {
                                                 type_args
                                             );
                                             
-                                            self->ensure_named(&subst);
+                                            self->ensure_field_type(&subst);
                                         }
                                         
                                         self->type_out.push_str("typedef struct ");
@@ -1855,7 +1906,7 @@ pub struct TypeEmitter {
                                                 type_args
                                             );
                                             
-                                            self->ensure_named(&subst);
+                                            self->ensure_field_type(&subst);
                                             
                                             var field_name = mangle::sanitized(self->allocator, field->name.str.as_str_const());
                                             var field_decl = self->build_decl(&subst, field_name.as_str_const());
