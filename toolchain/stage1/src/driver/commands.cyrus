@@ -367,6 +367,7 @@ fn write_file(
     content: const uint8*
 ) bool {
     const file_path = Path.new(allocator, path);
+    defer file_path.free();
 
     switch (os::File.open(&file_path, .Write)) case .Value(var file) else {
         return false;

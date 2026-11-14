@@ -1130,6 +1130,87 @@ def build_stage1(cfg: Config, *, release: bool, extra_args: Sequence[str] = ()) 
     log(STYLE.green(f"stage1 binary: {cfg.stage1_binary}"))
 
 
+def _selfhost_build_args(cfg: Config, output_path: Path, extra_args: Sequence[str] = ()) -> List[str]:
+    tcc_dir = ensure_tcc(cfg)
+    fcontext_objects = ensure_fcontext(cfg)
+    args = [
+        "build",
+        "src/main.cyrus",
+        f"--stdlib={cfg.stdlib_path}",
+        f"-L={tcc_dir}",
+        "-l=tcc",
+        "-o",
+        str(output_path),
+    ]
+    args += [f"-z={p}" for p in fcontext_objects]
+    args += list(extra_args)
+    return args
+
+
+def cmd_bootstrap(cfg: Config, args: argparse.Namespace) -> int:
+    """Self-host stage1 by compiling toolchain/stage1/src/main.cyrus with stage1."""
+    if args.rebuild:
+        build_stage1(cfg, release=cfg.release)
+    else:
+        ensure_stage1(cfg)
+
+    exe = ".exe" if os.name == "nt" else ""
+    if args.output:
+        out_path = Path(args.output)
+        if not out_path.is_absolute():
+            out_path = (Path.cwd() / out_path).resolve()
+    else:
+        out_path = cfg.stage1 / "build" / "output" / f"cyrus-stage2{exe}"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    extra = shlex.split(args.stage1_args or "")
+    build_args = _selfhost_build_args(cfg, out_path, extra)
+
+    if args.verify:
+        with tempfile.TemporaryDirectory(prefix="cyrus-bootstrap-") as tmp:
+            tmpdir = Path(tmp)
+            c_stage2 = tmpdir / "stage2.c"
+            c_stage3 = tmpdir / "stage3.c"
+            stage3_bin = tmpdir / f"cyrus-stage3{exe}"
+
+            env_s1 = os.environ.copy()
+            env_s1["CYRUS_EMIT_C"] = str(c_stage2)
+            log(STYLE.cyan(f"bootstrapping stage2 ({cfg.profile}, via stage1) ..."))
+            run_cmd([str(cfg.stage1_binary), *build_args], cwd=cfg.stage1, env=env_s1, capture=False)
+            log(STYLE.green(f"stage2 binary: {out_path}"))
+
+            stage3_args = _selfhost_build_args(cfg, stage3_bin, extra)
+            env_s2 = os.environ.copy()
+            env_s2["CYRUS_EMIT_C"] = str(c_stage3)
+            log(STYLE.cyan("verifying stage2 -> stage3 self-host ..."))
+            run_cmd([str(out_path), *stage3_args], cwd=cfg.stage1, env=env_s2, capture=False)
+
+            if args.emit_c:
+                emit_c_path = Path(args.emit_c)
+                if not emit_c_path.is_absolute():
+                    emit_c_path = (Path.cwd() / emit_c_path).resolve()
+                emit_c_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(c_stage2, emit_c_path)
+
+            if c_stage2.read_bytes() != c_stage3.read_bytes():
+                log(STYLE.red("error: stage2 and stage3 emitted different C sources!"))
+                return 1
+            log(STYLE.green("bootstrap verified: stage2 and stage3 generated identical C"))
+    else:
+        env_s1 = os.environ.copy()
+        if args.emit_c:
+            emit_c_path = Path(args.emit_c)
+            if not emit_c_path.is_absolute():
+                emit_c_path = (Path.cwd() / emit_c_path).resolve()
+            emit_c_path.parent.mkdir(parents=True, exist_ok=True)
+            env_s1["CYRUS_EMIT_C"] = str(emit_c_path)
+        log(STYLE.cyan(f"bootstrapping stage2 ({cfg.profile}, via stage1) ..."))
+        run_cmd([str(cfg.stage1_binary), *build_args], cwd=cfg.stage1, env=env_s1, capture=False)
+        log(STYLE.green(f"stage2 binary: {out_path}"))
+
+    return 0
+
+
 def cmd_build(cfg: Config, args: argparse.Namespace) -> int:
     stages: List[str]
     if args.build_stage == "both":
@@ -2155,6 +2236,7 @@ def build_parser() -> argparse.ArgumentParser:
 
             examples:
               ./x.py build --stage stage0 --profile release
+              ./x.py bootstrap --verify
               ./x.py test --stage all -j 8
               ./x.py test tests/stage1 --bless
               ./x.py run tmp/main.cyrus
@@ -2178,6 +2260,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cargo-args", default="", help="extra args passed to cargo (stage0)")
     p.add_argument("--stage1-args", default="", help="extra args passed to stage1 build")
     p.set_defaults(func=cmd_build, build_stage=None)
+
+    # ************* bootstrap *************
+    p = sub.add_parser("bootstrap", help="self-host stage1 by compiling it with stage1")
+    add_config_args(p)
+    p.add_argument("--output", "-o", default=None,
+                   help="output binary path (default: toolchain/stage1/build/output/cyrus-stage2)")
+    p.add_argument("--emit-c", default=None,
+                   help="optional path to write emitted C source (sets CYRUS_EMIT_C)")
+    p.add_argument("--rebuild", action="store_true",
+                   help="rebuild stage1 via stage0 before bootstrapping")
+    p.add_argument("--verify", action="store_true",
+                   help="also compile stage1 with stage2 and verify identical C output")
+    p.add_argument("--stage1-args", default="", help="extra args passed to stage1 build")
+    p.set_defaults(func=cmd_bootstrap)
 
     # ************* clean *************
     p = sub.add_parser("clean", help="remove build artifacts")
