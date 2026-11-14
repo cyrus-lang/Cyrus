@@ -17,6 +17,7 @@ import std::format{
     format_int128
 };
 
+import abi::helpers{extract_typedef_inner_type};
 import abi::typectx{is_enum_scalar_optimizable};
 import resolver::symbols{GlobalSymbolRegistry};
 import tokens{push_c_escaped, push_c_char};
@@ -366,42 +367,42 @@ pub struct Emitter {
     }
 
     fn emit_int128_decls(self: Self*, writer: Writer) {
-        writer.write("typedef struct { uint64_t lo; int64_t hi; } __cyrus_int128;\n");
-        writer.write("typedef struct { uint64_t lo; uint64_t hi; } __cyrus_uint128;\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_from_u64(uint64_t lo);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_of_i128(__cyrus_int128 a);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_from_i64(int64_t v);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_of_u128(__cyrus_uint128 a);\n");
-        writer.write("uint64_t __cyrus_u128_to_u64(__cyrus_uint128 a);\n");
-        writer.write("uint64_t __cyrus_i128_to_u64(__cyrus_int128 a);\n");
-        writer.write("int __cyrus_u128_iszero(__cyrus_uint128 a);\n");
-        writer.write("int __cyrus_i128_iszero(__cyrus_int128 a);\n");
-        writer.write("int __cyrus_u128_cmp(__cyrus_uint128 a, __cyrus_uint128 b);\n");
-        writer.write("int __cyrus_i128_cmp(__cyrus_int128 a, __cyrus_int128 b);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_add(__cyrus_uint128 a, __cyrus_uint128 b);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_sub(__cyrus_uint128 a, __cyrus_uint128 b);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_band(__cyrus_uint128 a, __cyrus_uint128 b);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_bor(__cyrus_uint128 a, __cyrus_uint128 b);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_bxor(__cyrus_uint128 a, __cyrus_uint128 b);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_bnot(__cyrus_uint128 a);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_neg(__cyrus_uint128 a);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_shl(__cyrus_uint128 a, uint64_t n_);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_shr(__cyrus_uint128 a, uint64_t n_);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_shr(__cyrus_int128 a, uint64_t n_);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_mul(__cyrus_uint128 a, __cyrus_uint128 b);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_div(__cyrus_uint128 a, __cyrus_uint128 b);\n");
-        writer.write("__cyrus_uint128 __cyrus_u128_mod(__cyrus_uint128 a, __cyrus_uint128 b);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_add(__cyrus_int128 a, __cyrus_int128 b);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_sub(__cyrus_int128 a, __cyrus_int128 b);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_mul(__cyrus_int128 a, __cyrus_int128 b);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_shl(__cyrus_int128 a, uint64_t n);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_band(__cyrus_int128 a, __cyrus_int128 b);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_bor(__cyrus_int128 a, __cyrus_int128 b);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_bxor(__cyrus_int128 a, __cyrus_int128 b);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_bnot(__cyrus_int128 a);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_neg(__cyrus_int128 a);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_div(__cyrus_int128 a, __cyrus_int128 b);\n");
-        writer.write("__cyrus_int128 __cyrus_i128_mod(__cyrus_int128 a, __cyrus_int128 b);\n");
+        writer.write("typedef struct{uint64_t lo;int64_t hi;}__cyrus_int128;");
+        writer.write("typedef struct{uint64_t lo;uint64_t hi;}__cyrus_uint128;");
+        writer.write("__cyrus_uint128 __cyrus_u128_from_u64(uint64_t lo);");
+        writer.write("__cyrus_uint128 __cyrus_u128_of_i128(__cyrus_int128 a);");
+        writer.write("__cyrus_int128 __cyrus_i128_from_i64(int64_t v);");
+        writer.write("__cyrus_int128 __cyrus_i128_of_u128(__cyrus_uint128 a);");
+        writer.write("uint64_t __cyrus_u128_to_u64(__cyrus_uint128 a);");
+        writer.write("uint64_t __cyrus_i128_to_u64(__cyrus_int128 a);");
+        writer.write("int __cyrus_u128_iszero(__cyrus_uint128 a);");
+        writer.write("int __cyrus_i128_iszero(__cyrus_int128 a);");
+        writer.write("int __cyrus_u128_cmp(__cyrus_uint128 a,__cyrus_uint128 b);");
+        writer.write("int __cyrus_i128_cmp(__cyrus_int128 a,__cyrus_int128 b);");
+        writer.write("__cyrus_uint128 __cyrus_u128_add(__cyrus_uint128 a,__cyrus_uint128 b);");
+        writer.write("__cyrus_uint128 __cyrus_u128_sub(__cyrus_uint128 a,__cyrus_uint128 b);");
+        writer.write("__cyrus_uint128 __cyrus_u128_band(__cyrus_uint128 a,__cyrus_uint128 b);");
+        writer.write("__cyrus_uint128 __cyrus_u128_bor(__cyrus_uint128 a,__cyrus_uint128 b);");
+        writer.write("__cyrus_uint128 __cyrus_u128_bxor(__cyrus_uint128 a,__cyrus_uint128 b);");
+        writer.write("__cyrus_uint128 __cyrus_u128_bnot(__cyrus_uint128 a);");
+        writer.write("__cyrus_uint128 __cyrus_u128_neg(__cyrus_uint128 a);");
+        writer.write("__cyrus_uint128 __cyrus_u128_shl(__cyrus_uint128 a,uint64_t n_);");
+        writer.write("__cyrus_uint128 __cyrus_u128_shr(__cyrus_uint128 a,uint64_t n_);");
+        writer.write("__cyrus_int128 __cyrus_i128_shr(__cyrus_int128 a,uint64_t n_);");
+        writer.write("__cyrus_uint128 __cyrus_u128_mul(__cyrus_uint128 a,__cyrus_uint128 b);");
+        writer.write("__cyrus_uint128 __cyrus_u128_div(__cyrus_uint128 a,__cyrus_uint128 b);");
+        writer.write("__cyrus_uint128 __cyrus_u128_mod(__cyrus_uint128 a,__cyrus_uint128 b);");
+        writer.write("__cyrus_int128 __cyrus_i128_add(__cyrus_int128 a,__cyrus_int128 b);");
+        writer.write("__cyrus_int128 __cyrus_i128_sub(__cyrus_int128 a,__cyrus_int128 b);");
+        writer.write("__cyrus_int128 __cyrus_i128_mul(__cyrus_int128 a,__cyrus_int128 b);");
+        writer.write("__cyrus_int128 __cyrus_i128_shl(__cyrus_int128 a,uint64_t n);");
+        writer.write("__cyrus_int128 __cyrus_i128_band(__cyrus_int128 a,__cyrus_int128 b);");
+        writer.write("__cyrus_int128 __cyrus_i128_bor(__cyrus_int128 a,__cyrus_int128 b);");
+        writer.write("__cyrus_int128 __cyrus_i128_bxor(__cyrus_int128 a,__cyrus_int128 b);");
+        writer.write("__cyrus_int128 __cyrus_i128_bnot(__cyrus_int128 a);");
+        writer.write("__cyrus_int128 __cyrus_i128_neg(__cyrus_int128 a);");
+        writer.write("__cyrus_int128 __cyrus_i128_div(__cyrus_int128 a,__cyrus_int128 b);");
+        writer.write("__cyrus_int128 __cyrus_i128_mod(__cyrus_int128 a,__cyrus_int128 b);");
     }
 
     fn assemble(self: Self*, parent: Writer) {
@@ -425,30 +426,28 @@ pub struct Emitter {
         }
 
         if (self->needs_panic_helper || self->needs_assert_helper) {
-            writer.write("void __cyrus_fail_(const char *kind, const char *prefix, const char *file, int line, int col, const char *mesg);\n");
+            writer.write("void __cyrus_fail_(const char*kind,const char*prefix,const char*file,int line,int col,const char*mesg);");
         }
 
         if (self->types.used_float16) {
-            writer.write("float __cyrus_f16_round(double d);\n");
+            writer.write("float __cyrus_f16_round(double d);");
         }
 
         if (self->types.used_int128) {
             self->emit_int128_decls(writer);
-            writer.write("\n");
         }
 
         self->types.drain_deferred();
 
         writer.write(self->types.type_out.as_str_const());
         writer.write(self->protos_out.as_str_const());
-        writer.write("\n");
         writer.write(self->global_out.as_str_const());
 
         if (self->ctor_out.len() > 0) {
-            writer.write("static void __cyrus_global_ctors(void) __attribute__((constructor));\n");
-            writer.write("static void __cyrus_global_ctors(void) { ");
+            writer.write("static void __cyrus_global_ctors(void) __attribute__((constructor));");
+            writer.write("static void __cyrus_global_ctors(void){");
             writer.write(self->ctor_out.as_str_const());
-            writer.write("} \n");
+            writer.write("}");
         }
 
         writer.write(self->pending_out.as_str_const());
@@ -495,7 +494,7 @@ pub struct Emitter {
                                 
                                 self->global_out.push_str("extern ");
                                 self->global_out.push_str(decl.as_str_const());
-                                self->global_out.push_str(";\n");
+                                self->global_out.push(';');
                                 
                                 decl.free();
                                 name.free();
@@ -518,7 +517,18 @@ pub struct Emitter {
                 self->types.ensure_named(&ty);
 
                 if (global_var->is_const) {
-                    self->global_out.push_str("const ");
+                    var emit_const = true;
+                    switch (ty) {
+                        case .Const => emit_const = false;
+                        else => {}
+                    }
+                    switch (*ty.const_inner()) {
+                        case .Pointer | .Array => emit_const = false;
+                        else => {}
+                    }
+                    if (emit_const) {
+                        self->global_out.push_str("const ");
+                    }
                 }
 
                 var decl = self->types.build_decl(&ty, name.as_str_const());
@@ -527,30 +537,29 @@ pub struct Emitter {
                     case .Some(rhs) => {
                         if (rhs.is_comptime_expr()) {
                             self->global_out.push_str(decl.as_str_const());
-                            self->global_out.push_str(" = ");
+                            self->global_out.push('=');
                             
                             var init = self->emit_global_init(&rhs, &ty);
                             self->global_out.push_str(init.as_str_const());
-                            self->global_out.push_str(";\n");
+                            self->global_out.push(';');
                             init.free();
                         } else {
                             // Zero-init
                             self->global_out.push_str(decl.as_str_const());
-                            self->global_out.push_str(" = {0};\n");
+                            self->global_out.push_str("={0};");
 
-                            self->ctor_out.push_str("    ");
                             self->ctor_out.push_str(name.as_str_const());
-                            self->ctor_out.push_str(" = ");
+                            self->ctor_out.push('=');
                             
                             var expr = self->emit_expr(&rhs);
                             self->ctor_out.push_str(expr.as_str_const());
-                            self->ctor_out.push_str(";\n");
+                            self->ctor_out.push(';');
                             expr.free();
                         }
                     }
                     case .None => {
                         self->global_out.push_str(decl.as_str_const());
-                        self->global_out.push_str(";\n");
+                        self->global_out.push(';');
                     }
                 }
 
@@ -569,14 +578,14 @@ pub struct Emitter {
             }
 
             case .StructInit(struct_init) => {
-                var out = String.from_str(self->allocator, "{ ");
+                var out = String.from_str(self->allocator, "{");
 
                 for (var i: usize = 0; i < struct_init.fields.len(); i += 1) {
                     const field = struct_init.fields.get_const(i).unwrap();
 
-                    out.push_str(".");
+                    out.push('.');
                     mangle::sanitize_into(&out, field->name.as_str_const());
-                    out.push_str(" = ");
+                    out.push('=');
                     
                     switch (field->value.ty) {
                         case .Some(ty) => {
@@ -591,28 +600,30 @@ pub struct Emitter {
                         }
                     }
                     
-                    out.push_str(", ");
+                    if (i + 1 < struct_init.fields.len()) {
+                        out.push(',');
+                    }
                 }
 
-                out.push_str("}");
+                out.push('}');
                 return out;
             }
 
             case .UnionInit(union_init) => {
-                var out = String.from_str(self->allocator, "{ .");
+                var out = String.from_str(self->allocator, "{.");
                 mangle::sanitize_into(&out, union_init.field->name.as_str_const());
-                out.push_str(" = ");
+                out.push('=');
                 
                 var expr = self->emit_expr(&union_init.field->value);
                 out.push_str(expr.as_str_const());
                 expr.free();
                 
-                out.push_str(" }");
+                out.push('}');
                 return out;
             }
 
             case .Array(array) => {
-                var out = String.from_str(self->allocator, "{ ");
+                var out = String.from_str(self->allocator, "{");
                 
                 for (var i: usize = 0; i < array.elements.len(); i += 1) {
                     const element = array.elements.get_const(i).unwrap();
@@ -630,15 +641,17 @@ pub struct Emitter {
                         }
                     }
 
-                    out.push_str(", ");
+                    if (i + 1 < array.elements.len()) {
+                        out.push(',');
+                    }
                 }
                 
-                out.push_str("}");
+                out.push('}');
                 return out;
             }
 
             case .Tuple(tuple) => {
-                var out = String.from_str(self->allocator, "{ ");
+                var out = String.from_str(self->allocator, "{");
 
                 for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
                     const element = tuple.elements.get_const(i).unwrap();
@@ -647,10 +660,12 @@ pub struct Emitter {
                     out.push_str(expr.as_str_const());
                     expr.free();
                     
-                    out.push_str(", ");
+                    if (i + 1 < tuple.elements.len()) {
+                        out.push(',');
+                    }
                 }
 
-                out.push_str("}");
+                out.push('}');
                 return out;
             }
 
@@ -745,7 +760,22 @@ pub struct Emitter {
         // Prevent collisions between 
         // codegen libc declarations
         // and language libc declarations
-        if (is_emitter_libc_name(mangled_name.as_str_const())) {
+        const name = mangled_name.as_str_const();
+
+        if (name == "strcmp") {
+            self->ensure_strcmp_proto();
+            mangled_name.free();
+            return;
+        }
+
+        if (name == "memcpy") {
+            self->ensure_memcpy_proto();
+            mangled_name.free();
+            return;
+        }
+
+        if (name == "memset") {
+            self->ensure_memset_proto();
             mangled_name.free();
             return;
         }
@@ -757,7 +787,7 @@ pub struct Emitter {
         );
 
         self->protos_out.push_str(sig.as_str_const());
-        self->protos_out.push_str(";\n");
+        self->protos_out.push(';');
         
         mangled_name.free();
         sig.free();
@@ -775,8 +805,7 @@ pub struct Emitter {
         );
 
         const is_void_main = name.as_str_const() == "main"
-            && func_def->ret_type.is_void()
-            && func_def->params.list.len() == 0;
+            && func_def->ret_type.is_void();
 
         const int32_type: cir::SemaType = .Plain(.Int32);
 
@@ -793,10 +822,10 @@ pub struct Emitter {
         );
 
         self->protos_out.push_str(sig.as_str_const());
-        self->protos_out.push_str(";\n");
+        self->protos_out.push(';');
 
         self->body_out.push_str(sig.as_str_const());
-        self->body_out.push_str(" { ");
+        self->body_out.push('{');
         sig.free();
 
         var saved_func_name = self->cur_func_name;
@@ -820,15 +849,15 @@ pub struct Emitter {
         self->cur_ret_type = saved_ret_type;
 
         if (self->in_void_main) {
-            self->body_out.push_str("    return 0;\n");
+            self->body_out.push_str("return 0;");
         }
         self->in_void_main = saved_in_void_main;
 
         if (!func_def->ret_type.is_void()) {
-            self->body_out.push_str(" __builtin_unreachable();\n");
+            self->body_out.push_str("__builtin_unreachable();");
         }
 
-        self->body_out.push_str("} \n");
+        self->body_out.push('}');
         name.free();
     }
 
@@ -854,10 +883,10 @@ pub struct Emitter {
         );
 
         self->protos_out.push_str(sig.as_str_const());
-        self->protos_out.push_str(";\n");
+        self->protos_out.push(';');
 
         self->body_out.push_str(sig.as_str_const());
-        self->body_out.push_str(" { ");
+        self->body_out.push('{');
         sig.free();
 
         var saved_func_name = self->cur_func_name;
@@ -886,10 +915,10 @@ pub struct Emitter {
         self->in_void_main = saved_in_void_main;
 
         if (!func->ret_type.is_void()) {
-            self->body_out.push_str(" __builtin_unreachable();\n");
+            self->body_out.push_str("__builtin_unreachable();");
         }
 
-        self->body_out.push_str("} \n");
+        self->body_out.push('}');
         name.free();
     }
 
@@ -950,10 +979,10 @@ pub struct Emitter {
         var sig = self->build_func_signature(&inst->ret_type, &inst->params, name.as_str_const());
 
         self->protos_out.push_str(sig.as_str_const());
-        self->protos_out.push_str(";\n");
+        self->protos_out.push(';');
 
         self->body_out.push_str(sig.as_str_const());
-        self->body_out.push_str(" { ");
+        self->body_out.push('{');
         sig.free();
 
         var saved_func_name = self->cur_func_name;
@@ -987,10 +1016,10 @@ pub struct Emitter {
         self->in_void_main = saved_in_void_main;
 
         if (!inst->ret_type.is_void()) {
-            self->body_out.push_str(" __builtin_unreachable();\n");
+            self->body_out.push_str("__builtin_unreachable();");
         }
 
-        self->body_out.push_str("} \n");
+        self->body_out.push('}');
         name.free();
     }
 
@@ -1045,14 +1074,14 @@ pub struct Emitter {
                 name.free();
 
                 if (i + 1 < params->list.len()) {
-                    param_list.push_str(", ");
+                    param_list.push(',');
                 }
             }
 
             switch (params->variadic) {
                 case .Some => {
                     if (params->list.len() > 0) {
-                        param_list.push_str(", ");
+                        param_list.push(',');
                     }
                     param_list.push_str("...");
                 }
@@ -1182,14 +1211,14 @@ pub struct Emitter {
             else => out->push_str("\"<unknown>\"");
         }
 
-        out->push_str(", ");
+        out->push(',');
 
         switch (self->builtin_line_column(builtin_func, false)) {
             case .Some(line) => push_usize(out, line);
             else => out->push('0');
         }
 
-        out->push_str(", ");
+        out->push(',');
 
         switch (self->builtin_line_column(builtin_func, true)) {
             case .Some(col) => push_usize(out, col);
@@ -1224,6 +1253,30 @@ pub struct Emitter {
         out.push(')');
         value.free();
         return out;
+    }
+
+    fn coerce_value(
+        self: Self*,
+        value: String,
+        src_expr: const cir::Expr*,
+        dest_ty: const cir::SemaType*
+    ) String {
+        var dest_128 = self->int128_kind_of(dest_ty);
+        var src_128 = self->expr_int128_kind(src_expr);
+
+        if (dest_128.is_some() && 
+            !(src_128.is_some() && src_128.unwrap() == dest_128.unwrap()))
+        {
+            var coerce = self->coerce_to_int128(
+                src_expr, 
+                value.as_str_const(), 
+                dest_128.unwrap()
+            );
+            value.free();
+            return coerce;
+        }
+
+        return self->coerce_float16(value, dest_ty);
     }
 
     fn func_call_param_type(
@@ -1363,16 +1416,16 @@ pub struct Emitter {
                     self->body_out.push_str(name.as_str_const());
                     self->body_out.push('[');
                     push_usize(&self->body_out, capacity);
-                    self->body_out.push_str("];\n");
+                    self->body_out.push_str("];");
                     
                     self->ensure_memcpy_proto();
-                    self->body_out.push_str(" memcpy(");
+                    self->body_out.push_str("memcpy(");
                     self->body_out.push_str(name.as_str_const());
-                    self->body_out.push_str(", ");
+                    self->body_out.push(',');
                     self->body_out.push_str(name.as_str_const());
-                    self->body_out.push_str("__p, sizeof(");
+                    self->body_out.push_str("__p,sizeof(");
                     self->body_out.push_str(name.as_str_const());
-                    self->body_out.push_str("));\n");
+                    self->body_out.push_str("));");
 
                     type_name.free();
                     name.free();
@@ -1513,21 +1566,21 @@ pub struct Emitter {
             case .Expr(expr) => {
                 var expr = self->emit_expr(&expr);
                 self->body_out.push_str(expr.as_str_const());
-                self->body_out.push_str(";\n");
+                self->body_out.push(';');
                 expr.free();
             }
 
             case .BlockStmt(block) => {
-                self->body_out.push_str(" { ");
+                self->body_out.push('{');
                 self->emit_block_stmts(&block, true);
-                self->body_out.push_str(" } ");
+                self->body_out.push('}');
             }
 
             case .Label(label) => {
                 const name = mangle::sanitized(self->allocator, label.name.as_str_const());
 
                 self->body_out.push_str(name.as_str_const());
-                self->body_out.push_str(":\n");
+                self->body_out.push(':');
 
                 name.free();
             }
@@ -1559,9 +1612,9 @@ pub struct Emitter {
                 if (target_emitted) {
                     var label = mangle::sanitized(self->allocator, goto_.name.as_str_const());
 
-                    self->body_out.push_str(" goto ");
+                    self->body_out.push_str("goto ");
                     self->body_out.push_str(label.as_str_const());
-                    self->body_out.push_str(";\n");
+                    self->body_out.push(';');
                     
                     label.free();
                 }
@@ -1572,7 +1625,7 @@ pub struct Emitter {
                     case .BuiltinFunc(builtin_func) => {
                         var str = self->emit_builtin_func(&builtin_func);
                         self->body_out.push_str(str.as_str_const());
-                        self->body_out.push_str(";\n");
+                        self->body_out.push(';');
                         str.free();
                     }
                     case .BuiltinBlock(block) => {
@@ -1587,12 +1640,12 @@ pub struct Emitter {
 
             case .Break => {
                 self->emit_defers_to_loop_mark();
-                self->body_out.push_str(" break;\n");
+                self->body_out.push_str("break;");
             }
 
             case .Continue => {
                 self->emit_defers_to_loop_mark();
-                self->body_out.push_str(" continue;\n");
+                self->body_out.push_str("continue;");
             }
 
             case .Variable(var_) => {
@@ -1650,11 +1703,10 @@ pub struct Emitter {
 
                         var decl = self->types.build_decl(&ty, temp.as_str_const());
 
-                        self->body_out.push_str("const ");
                         self->body_out.push_str(decl.as_str_const());
-                        self->body_out.push_str(" = ");
+                        self->body_out.push('=');
                         self->body_out.push_str(rhs_value.as_str_const());
-                        self->body_out.push_str(";\n");
+                        self->body_out.push(';');
 
                         self->emit_tuple_export_pattern(
                             &export_tuple->pattern,
@@ -1697,14 +1749,10 @@ pub struct Emitter {
 
                                 var binding_decl = self->types.build_decl(&ty, name.as_str_const());
 
-                                if (is_const) {
-                                    self->body_out.push_str("const ");
-                                }
-
                                 self->body_out.push_str(binding_decl.as_str_const());
-                                self->body_out.push_str(" = ");
+                                self->body_out.push('=');
                                 self->body_out.push_str(accessor);
-                                self->body_out.push_str(";\n");
+                                self->body_out.push(';');
 
                                 binding_decl.free();
                             }
@@ -1766,32 +1814,29 @@ pub struct Emitter {
                     
                     switch (rhs.ty) {
                         case .Some(ty) => {
-                            self->types.ensure_named(&ty);
+                            const decl_ty = *ty.const_inner();
+                            self->types.ensure_named(&decl_ty);
                             
-                            var decl = self->types.build_decl(&ty, name.as_str_const());
-                            
-                            if (var_->is_const) {
-                                self->body_out.push_str("const ");
-                            }
+                            var decl = self->types.build_decl(&decl_ty, name.as_str_const());
                             
                             self->body_out.push_str(decl.as_str_const());
                             
                             switch (rhs.kind) {
                                 case .Array(array) => {
-                                    self->body_out.push_str(" = ");
+                                    self->body_out.push('=');
                                     var braces = self->emit_array_braces(&array);
                                     self->body_out.push_str(braces.as_str_const());
                                     braces.free();
                                 }
                                 else => {
-                                    self->body_out.push_str(" = ");
+                                    self->body_out.push('=');
                                     var expr = self->emit_expr(&rhs);
                                     self->body_out.push_str(expr.as_str_const());
                                     expr.free();
                                 }
                             }
 
-                            self->body_out.push_str(";\n");
+                            self->body_out.push(';');
                             decl.free();
                         }
                         case .None => {}
@@ -1806,13 +1851,10 @@ pub struct Emitter {
 
         switch (var_->ty) {
             case .Some(ty) => {
-                self->types.ensure_named(&ty);
+                const decl_ty = *ty.const_inner();
+                self->types.ensure_named(&decl_ty);
                 
-                var decl = self->types.build_decl(&ty, name.as_str_const());
-
-                if (var_->is_const) {
-                    self->body_out.push_str("const ");
-                }
+                var decl = self->types.build_decl(&decl_ty, name.as_str_const());
 
                 self->body_out.push_str(decl.as_str_const());
 
@@ -1857,21 +1899,21 @@ pub struct Emitter {
 
                         if (copy_array) {
                             self->ensure_memcpy_proto();
-                            self->body_out.push_str(";\n memcpy(");
+                            self->body_out.push_str(";memcpy(");
                             self->body_out.push_str(name.as_str_const());
-                            self->body_out.push_str(", ");
+                            self->body_out.push(',');
 
                             var expr = self->emit_expr(&rhs);
                             self->body_out.push_str(expr.as_str_const());
                             expr.free();
 
-                            self->body_out.push_str(", sizeof(");
+                            self->body_out.push_str(",sizeof(");
                             var size_name = self->types.type_name(&ty);
                             self->body_out.push_str(size_name.as_str_const());
                             size_name.free();
                             self->body_out.push_str("))");
                         } else {
-                            self->body_out.push_str(" = ");
+                            self->body_out.push('=');
 
                             switch (rhs.kind) {
                                 case .Array(array) => {
@@ -1912,12 +1954,12 @@ pub struct Emitter {
                     }
                     case .None => {
                         if (!var_->is_undef) {
-                            self->body_out.push_str(" = {0}");
+                            self->body_out.push_str("={0}");
                         }
                     }
                 }
 
-                self->body_out.push_str(";\n");
+                self->body_out.push(';');
                 decl.free();
                 name.free();
             }
@@ -1931,11 +1973,6 @@ pub struct Emitter {
                 switch (rhs.kind) {
                     case .Lambda(lambda) => {
                         var out = String.from_str(self->allocator, "(*");
-
-                        if (var_->is_const) {
-                            out.push_str("const ");
-                        }
-
                         out.push_str(name.as_str_const());
                         out.push(')');
 
@@ -1948,9 +1985,9 @@ pub struct Emitter {
                         var expr = self->emit_lambda(&lambda);
 
                         self->body_out.push_str(decl.as_str_const());
-                        self->body_out.push_str(" = ");
+                        self->body_out.push('=');
                         self->body_out.push_str(expr.as_str_const());
-                        self->body_out.push_str(";\n");
+                        self->body_out.push(';');
 
                         expr.free();
                         decl.free();
@@ -1965,7 +2002,7 @@ pub struct Emitter {
     }
 
     fn emit_array_braces(self: Self*, array: const cir::ArrayExpr*) String {
-        var out = String.from_str(self->allocator, "{ ");
+        var out = String.from_str(self->allocator, "{");
 
         for (var i: usize = 0; i < array->elements.len(); i += 1) {
             const element = array->elements.get_const(i).unwrap();
@@ -1983,7 +2020,9 @@ pub struct Emitter {
                 }
             }
 
-            out.push_str(", ");
+            if (i + 1 < array->elements.len()) {
+                out.push(',');
+            }
         }
 
         out.push('}');
@@ -2007,21 +2046,21 @@ pub struct Emitter {
                 case .Some(arg) => {
                     var expr = self->emit_expr(&arg);
                     if (has_defers) {
-                        self->body_out.push_str(" { int32_t __cyrus_ret_val = ");
+                        self->body_out.push_str("{int32_t __cyrus_ret_val=");
                         self->body_out.push_str(expr.as_str_const());
-                        self->body_out.push_str(";\n");
+                        self->body_out.push(';');
                         self->emit_all_defers();
-                        self->body_out.push_str(" return __cyrus_ret_val;\n } ");
+                        self->body_out.push_str("return __cyrus_ret_val;}");
                     } else {
-                        self->body_out.push_str(" return ");
+                        self->body_out.push_str("return ");
                         self->body_out.push_str(expr.as_str_const());
-                        self->body_out.push_str(";\n");
+                        self->body_out.push(';');
                     }
                     expr.free();
                 }
                 case .None => {
                     self->emit_all_defers();
-                    self->body_out.push_str(" return 0;\n");
+                    self->body_out.push_str("return 0;");
                 }
             }
             
@@ -2043,19 +2082,19 @@ pub struct Emitter {
                                 var expr = self->emit_expr(&arg);
 
                                 if (has_defers) {
-                                    self->body_out.push_str(" { ");
+                                    self->body_out.push('{');
                                     self->body_out.push_str(struct_name.as_str_const());
-                                    self->body_out.push_str(" __cyrus_ret_val; memcpy(__cyrus_ret_val.data, ");
+                                    self->body_out.push_str(" __cyrus_ret_val;memcpy(__cyrus_ret_val.data,");
                                     self->body_out.push_str(expr.as_str_const());
-                                    self->body_out.push_str(", sizeof(__cyrus_ret_val.data));\n");
+                                    self->body_out.push_str(",sizeof(__cyrus_ret_val.data));");
                                     self->emit_all_defers();
-                                    self->body_out.push_str(" return __cyrus_ret_val;\n } ");
+                                    self->body_out.push_str("return __cyrus_ret_val;}");
                                 } else {
-                                    self->body_out.push_str(" return ({ ");
+                                    self->body_out.push_str("return({");
                                     self->body_out.push_str(struct_name.as_str_const());
-                                    self->body_out.push_str(" __cyrus_ret; memcpy(__cyrus_ret.data, ");
+                                    self->body_out.push_str(" __cyrus_ret;memcpy(__cyrus_ret.data,");
                                     self->body_out.push_str(expr.as_str_const());
-                                    self->body_out.push_str(", sizeof(__cyrus_ret.data)); __cyrus_ret; });\n");
+                                    self->body_out.push_str(",sizeof(__cyrus_ret.data));__cyrus_ret;});");
                                 }
 
                                 expr.free();
@@ -2087,24 +2126,23 @@ pub struct Emitter {
                     switch (ret_ty_opt) {
                         case .Some(ret_ty) => {
                             if (ret_ty.is_void()) {
-                                self->body_out.push(' ');
                                 self->body_out.push_str(expr.as_str_const());
-                                self->body_out.push_str(";\n");
+                                self->body_out.push(';');
                                 self->emit_all_defers();
-                                self->body_out.push_str(" return;\n");
+                                self->body_out.push_str("return;");
                                 emitted_ret = true;
                             } else {
                                 const inner_ret = *ret_ty.const_inner();
                                 self->types.ensure_named(&inner_ret);
                                 var decl = self->types.build_decl(&inner_ret, "__cyrus_ret_val");
-                                self->body_out.push_str(" { ");
+                                self->body_out.push('{');
                                 self->body_out.push_str(decl.as_str_const());
-                                self->body_out.push_str(" = ");
+                                self->body_out.push('=');
                                 self->body_out.push_str(expr.as_str_const());
-                                self->body_out.push_str(";\n");
+                                self->body_out.push(';');
                                 decl.free();
                                 self->emit_all_defers();
-                                self->body_out.push_str(" return __cyrus_ret_val;\n } ");
+                                self->body_out.push_str("return __cyrus_ret_val;}");
                                 emitted_ret = true;
                             }
                         }
@@ -2113,20 +2151,20 @@ pub struct Emitter {
 
                     if (!emitted_ret) {
                         self->emit_all_defers();
-                        self->body_out.push_str(" return ");
+                        self->body_out.push_str("return ");
                         self->body_out.push_str(expr.as_str_const());
-                        self->body_out.push_str(";\n");
+                        self->body_out.push(';');
                     }
                 } else {
-                    self->body_out.push_str(" return ");
+                    self->body_out.push_str("return ");
                     self->body_out.push_str(expr.as_str_const());
-                    self->body_out.push_str(";\n");
+                    self->body_out.push(';');
                 }
                 expr.free();
             }
             case .None => {
                 self->emit_all_defers();
-                self->body_out.push_str(" return;\n");
+                self->body_out.push_str("return;");
             }
         }
     }
@@ -2134,11 +2172,11 @@ pub struct Emitter {
     fn emit_if(self: Self*, if_: const cir::IfStmt*) {
         var cond = self->emit_expr(&if_->cond);
         
-        self->body_out.push_str("    if (");
+        self->body_out.push_str("if(");
         self->body_out.push_str(cond.as_str_const());
-        self->body_out.push_str(") { ");
+        self->body_out.push_str("){");
         self->emit_block_stmts(if_->then_block, true);
-        self->body_out.push_str(" } ");
+        self->body_out.push('}');
 
         cond.free();
 
@@ -2147,21 +2185,21 @@ pub struct Emitter {
             
             var cond = self->emit_expr(&branch->cond);
             
-            self->body_out.push_str(" else if (");
+            self->body_out.push_str("else if(");
             self->body_out.push_str(cond.as_str_const());
-            self->body_out.push_str(") { ");
+            self->body_out.push_str("){");
             
             self->emit_block_stmts(branch->then_block, true);
-            self->body_out.push_str(" } ");
+            self->body_out.push('}');
 
             cond.free();
         }
 
         switch (if_->else_block) {
             case .Some(else_block) => {
-                self->body_out.push_str(" else { ");
+                self->body_out.push_str("else{");
                 self->emit_block_stmts(else_block, true);
-                self->body_out.push_str(" } ");
+                self->body_out.push('}');
             }
             else => {}
         }
@@ -2169,26 +2207,27 @@ pub struct Emitter {
 
     fn emit_while(self: Self*, while_: const cir::WhileStmt*) {
         var cond = self->emit_expr(&while_->cond);
-        self->body_out.push_str(" while (");
+        self->body_out.push_str("while(");
         self->body_out.push_str(cond.as_str_const());
-        self->body_out.push_str(") { ");
+        self->body_out.push_str("){");
         cond.free();
 
         self->loop_marks.push(self->defer_scopes.len());
         self->emit_block_stmts(while_->body, true);
         self->loop_marks.pop();
 
-        self->body_out.push_str(" } ");
+        self->body_out.push('}');
     }
 
     fn emit_for(self: Self*, for_: const cir::ForStmt*) {
-        self->body_out.push_str(" for (");
+        self->body_out.push_str("for(");
 
         switch (for_->initializer) {
             case .Some(var_) => {
                 const ty = resolve_var_type(&var_).unwrap();
+                const decl_ty = *ty.const_inner();
 
-                self->types.ensure_named(&ty);
+                self->types.ensure_named(&decl_ty);
 
                 var base_name = mangle::sanitized(self->allocator, var_.name.as_str_const());
                 var loop_name = self->declare_fn_scope_name(base_name.as_str_const());
@@ -2197,28 +2236,24 @@ pub struct Emitter {
                     self->register_fn_rename(var_.var_decl_id, loop_name.as_str_const());
                 }
 
-                var decl = self->types.build_decl(&ty, loop_name.as_str_const());
+                var decl = self->types.build_decl(&decl_ty, loop_name.as_str_const());
 
                 base_name.free();
                 loop_name.free();
-                
-                if (var_.is_const) {
-                    self->body_out.push_str("const ");
-                }
                 
                 self->body_out.push_str(decl.as_str_const());
                 decl.free();
 
                 switch (var_.rhs) {
                     case .Some(rhs) => {
-                        self->body_out.push_str(" = ");
+                        self->body_out.push('=');
                         var expr = self->emit_expr(&rhs);
                         self->body_out.push_str(expr.as_str_const());
                         expr.free();
                     }
                     else => {
                         if (!var_.is_undef) {
-                            self->body_out.push_str(" = {0}");
+                            self->body_out.push_str("={0}");
                         }
                     }
                 }
@@ -2226,7 +2261,7 @@ pub struct Emitter {
             else => {}
         }
 
-        self->body_out.push_str("; ");
+        self->body_out.push(';');
 
         switch (for_->cond) {
             case .Some(cond) => {
@@ -2237,7 +2272,7 @@ pub struct Emitter {
             else => {}
         }
 
-        self->body_out.push_str("; ");
+        self->body_out.push(';');
 
         switch (for_->increment) {
             case .Some(var_) => {
@@ -2248,13 +2283,13 @@ pub struct Emitter {
             else => {}
         }
 
-        self->body_out.push_str(") { ");
+        self->body_out.push_str("){");
 
         self->loop_marks.push(self->defer_scopes.len());
         self->emit_block_stmts(for_->body, true);
         self->loop_marks.pop();
 
-        self->body_out.push_str(" } ");
+        self->body_out.push('}');
     }
 
     fn emit_switch(self: Self*, switch_: const cir::SwitchStmt*) {
@@ -2327,9 +2362,9 @@ pub struct Emitter {
         }
 
         var operand = self->emit_expr(&switch_->operand);
-        self->body_out.push_str(" switch (");
+        self->body_out.push_str("switch(");
         self->body_out.push_str(operand.as_str_const());
-        self->body_out.push_str(") { ");
+        self->body_out.push_str("){");
         operand.free();
 
         for (var if_: usize = 0; if_ < switch_->cases.len(); if_ += 1) {
@@ -2345,13 +2380,13 @@ pub struct Emitter {
                 switch (pattern->kind) {
                     case .Wildcard => {
                         if (!has_default_label) {
-                            self->body_out.push_str(" default:");
+                            self->body_out.push_str("default:");
                             has_default_label = true;
                         }
                     }
 
                     case .EnumUnit(ident) => {
-                        self->body_out.push_str(" case ");
+                        self->body_out.push_str("case ");
                         self->body_out.push_str(name.as_str_const());
                         self->body_out.push('_');
                         self->body_out.push_str(ident.str.as_str_const());
@@ -2359,7 +2394,7 @@ pub struct Emitter {
                     }
 
                     case .EnumTupleVariant { ident, items } => {
-                        self->body_out.push_str(" case ");
+                        self->body_out.push_str("case ");
                         self->body_out.push_str(name.as_str_const());
                         self->body_out.push('_');
                         self->body_out.push_str(ident.str.as_str_const());
@@ -2374,15 +2409,14 @@ pub struct Emitter {
                                         case .Some(ty) => {
                                             var type_name = self->types.type_name(&ty);
 
-                                            tuple_decls.push(' ');
                                             tuple_decls.push_str(type_name.as_str_const());
                                             tuple_decls.push(' ');
                                             mangle::sanitize_into(&tuple_decls, item_binding.str.as_str_const());
-                                            tuple_decls.push_str(" = ");
+                                            tuple_decls.push('=');
                                             tuple_decls.push_str(name.as_str_const());
                                             tuple_decls.push('_');
                                             tuple_decls.push_str(ident.str.as_str_const());
-                                            tuple_decls.push_str(";\n");
+                                            tuple_decls.push(';');
                                             type_name.free();
                                         }
                                         else => {}
@@ -2395,7 +2429,7 @@ pub struct Emitter {
 
                     case .Binding { name: binding_ident, .. } => {
                         if (!has_default_label) {
-                            self->body_out.push_str(" default:");
+                            self->body_out.push_str("default:");
                             has_default_label = true;
                         }
 
@@ -2405,7 +2439,7 @@ pub struct Emitter {
                     case .Expr(expr) => {
                         switch (expr.literal_const_int_value()) {
                             case .Some(literal) => {
-                                self->body_out.push_str(" case ");
+                                self->body_out.push_str("case ");
 
                                 switch (literal) {
                                     case .Signed(x) => push_int128(&self->body_out, x);
@@ -2416,7 +2450,7 @@ pub struct Emitter {
                             }
                             case .None => {
                                 if (!has_default_label) {
-                                    self->body_out.push_str(" default:");
+                                    self->body_out.push_str("default:");
                                     has_default_label = true;
                                 }
                             }
@@ -2425,31 +2459,30 @@ pub struct Emitter {
 
                     else => {
                         if (!has_default_label) {
-                            self->body_out.push_str(" default:");
+                            self->body_out.push_str("default:");
                             has_default_label = true;
                         }
                     }
                 }
             }
 
-            self->body_out.push_str(" { ");
+            self->body_out.push('{');
 
             if (binding_name != null) {
                 switch (switch_->operand.ty) {
                     case .Some(ty) => {
                         var type_name = self->types.type_name(&ty);
 
-                        self->body_out.push(' ');
                         self->body_out.push_str(type_name.as_str_const());
                         self->body_out.push(' ');
                         mangle::sanitize_into(&self->body_out, binding_name);
-                        self->body_out.push_str(" = ");
+                        self->body_out.push('=');
                         
                         var expr = self->emit_expr(&switch_->operand);
                         self->body_out.push_str(expr.as_str_const());
                         expr.free();
 
-                        self->body_out.push_str(";\n");
+                        self->body_out.push(';');
                         type_name.free();
                     }
                     else => {}
@@ -2460,21 +2493,21 @@ pub struct Emitter {
             tuple_decls.free();
 
             self->emit_block_stmts(case_->body, true);
-            self->body_out.push_str(" } break;\n");
+            self->body_out.push_str("}break;");
         }
 
         switch (switch_->else_case) {
             case .Some(else_case) => {
-                self->body_out.push_str(" default: { ");
+                self->body_out.push_str("default:{");
                 self->emit_block_stmts(&else_case, true);
-                self->body_out.push_str(" } break;\n");
+                self->body_out.push_str("}break;");
             }
             else => {
-                self->body_out.push_str(" default: break;\n");
+                self->body_out.push_str("default:break;");
             }
         }
 
-        self->body_out.push_str(" } ");
+        self->body_out.push('}');
         name.free();
     }
 
@@ -2508,9 +2541,8 @@ pub struct Emitter {
 
         var decl = self->types.build_decl(ty, c_name.as_str_const());
 
-        self->body_out.push(' ');
         self->body_out.push_str(decl.as_str_const());
-        self->body_out.push_str(" = {0};\n");
+        self->body_out.push_str("={0};");
         
         decl.free();
 
@@ -2607,10 +2639,10 @@ pub struct Emitter {
                                             if (k < fields.len()) {
                                                 const field = fields.get_const(k).unwrap();
                                                 
-                                                var field_type: cir::SemaType = field->ty;
+                                                var field_typepe: cir::SemaType = field->ty;
 
                                                 if (inst_args != null) {
-                                                    field_type = cir::substitute_sema_type_with_type_args(
+                                                    field_typepe = cir::substitute_sema_type_with_type_args(
                                                         dynamic self->arena,
                                                         &field->ty,
                                                         &enum_decl->generic_params,
@@ -2618,14 +2650,14 @@ pub struct Emitter {
                                                     );
                                                 }
 
-                                                self->hoist_switch_binding(var_decl_id, &name, &field_type);
+                                                self->hoist_switch_binding(var_decl_id, &name, &field_typepe);
                                             }
                                         }
                                         else => {
                                             if (k < fields.len()) {
                                                 const field = fields.get_const(k).unwrap();
 
-                                                var nested_type = self->substitute_variant_field_type(
+                                                var nested_type = self->substitute_variant_field_typepe(
                                                     enum_decl,
                                                     &field->ty,
                                                     inst_args
@@ -2658,7 +2690,7 @@ pub struct Emitter {
                                         else => {
                                             switch (value->ty) {
                                                 case .Some(value_ty) => {
-                                                    var nested_type = self->substitute_variant_field_type(
+                                                    var nested_type = self->substitute_variant_field_typepe(
                                                         enum_decl,
                                                         &value_ty,
                                                         inst_args
@@ -2697,10 +2729,10 @@ pub struct Emitter {
                                                 const field = fields.get_const(f).unwrap();
 
                                                 if (field->name.str.as_str_const() == item->name.str.as_str_const()) {
-                                                    var field_type: cir::SemaType = field->ty;
+                                                    var field_typepe: cir::SemaType = field->ty;
 
                                                     if (inst_args != null) {
-                                                        field_type = cir::substitute_sema_type_with_type_args(
+                                                        field_typepe = cir::substitute_sema_type_with_type_args(
                                                             dynamic self->arena,
                                                             &field->ty,
                                                             &enum_decl->generic_params,
@@ -2708,7 +2740,7 @@ pub struct Emitter {
                                                         );
                                                     }
 
-                                                    self->hoist_switch_binding(var_decl_id, &name, &field_type);
+                                                    self->hoist_switch_binding(var_decl_id, &name, &field_typepe);
                                                     break;
                                                 }
                                             }
@@ -2718,7 +2750,7 @@ pub struct Emitter {
                                                 const field = fields.get_const(f).unwrap();
 
                                                 if (field->name.str.as_str_const() == item->name.str.as_str_const()) {
-                                                    var nested_type = self->substitute_variant_field_type(
+                                                    var nested_type = self->substitute_variant_field_typepe(
                                                         enum_decl,
                                                         &field->ty,
                                                         inst_args
@@ -2746,7 +2778,7 @@ pub struct Emitter {
         }
     }
 
-    fn substitute_variant_field_type(
+    fn substitute_variant_field_typepe(
         self: Self*,
         enum_decl: const cir::EnumDecl*,
         ty: const cir::SemaType*,
@@ -2847,7 +2879,7 @@ pub struct Emitter {
                                     const item = items.get_const(k).unwrap();
                                     const field = fields.get_const(k).unwrap();
 
-                                    var nested_type = self->substitute_variant_field_type(
+                                    var nested_type = self->substitute_variant_field_typepe(
                                         enum_decl,
                                         &field->ty,
                                         inst_args
@@ -2872,7 +2904,7 @@ pub struct Emitter {
                                         case .Some(value_ty) => {
                                             const item = items.get_const(0).unwrap();
 
-                                            var nested_type = self->substitute_variant_field_type(
+                                            var nested_type = self->substitute_variant_field_typepe(
                                                 enum_decl,
                                                 &value_ty,
                                                 inst_args
@@ -2923,7 +2955,7 @@ pub struct Emitter {
                                         const field = fields.get_const(f).unwrap();
 
                                         if (field->name.str.as_str_const() == item->name.str.as_str_const()) {
-                                            var nested_type = self->substitute_variant_field_type(
+                                            var nested_type = self->substitute_variant_field_typepe(
                                                 enum_decl,
                                                 &field->ty,
                                                 inst_args
@@ -3018,11 +3050,10 @@ pub struct Emitter {
     ) {
         switch (self->switch_binding_names.get(var_decl_id)) {
             case .Some(c_name) => {
-                self->body_out.push(' ');
                 self->body_out.push_str(c_name->as_str_const());
-                self->body_out.push_str(" = ");
+                self->body_out.push('=');
                 self->body_out.push_str(base);
-                self->body_out.push_str(";\n");
+                self->body_out.push(';');
             }
             else => {}
         }
@@ -3107,7 +3138,7 @@ pub struct Emitter {
                                     const item = items.get_const(k).unwrap();
                                     const field = fields.get_const(k).unwrap();
 
-                                    var nested_type = self->substitute_variant_field_type(
+                                    var nested_type = self->substitute_variant_field_typepe(
                                         enum_decl,
                                         &field->ty,
                                         inst_args
@@ -3131,7 +3162,7 @@ pub struct Emitter {
                                         case .Some(value_ty) => {
                                             const item = items.get_const(0).unwrap();
 
-                                            var nested_type = self->substitute_variant_field_type(
+                                            var nested_type = self->substitute_variant_field_typepe(
                                                 enum_decl,
                                                 &value_ty,
                                                 inst_args
@@ -3170,7 +3201,7 @@ pub struct Emitter {
                                         const field = fields.get_const(f).unwrap();
 
                                         if (field->name.str.as_str_const() == item->name.str.as_str_const()) {
-                                            var nested_type = self->substitute_variant_field_type(
+                                            var nested_type = self->substitute_variant_field_typepe(
                                                 enum_decl,
                                                 &field->ty,
                                                 inst_args
@@ -3289,11 +3320,11 @@ pub struct Emitter {
 
         var operand = self->emit_expr(&switch_->operand);
 
-        self->body_out.push_str(" { ");
+        self->body_out.push('{');
         self->body_out.push_str(operand_name.as_str_const());
-        self->body_out.push_str(" __sw_op = ");
+        self->body_out.push_str(" __sw_op=");
         self->body_out.push_str(operand.as_str_const());
-        self->body_out.push_str(";\n");
+        self->body_out.push(';');
         operand.free();
 
         var first = true;
@@ -3314,12 +3345,12 @@ pub struct Emitter {
 
             if (has_wildcard) {
                 if (!first) {
-                    self->body_out.push_str(" else");
+                    self->body_out.push_str("else");
                 }
                 first = false;
-                self->body_out.push_str(" { ");
+                self->body_out.push('{');
                 self->emit_block_stmts(case_->body, true);
-                self->body_out.push_str(" } ");
+                self->body_out.push('}');
                 continue;
             }
 
@@ -3336,13 +3367,13 @@ pub struct Emitter {
                 const pattern = case_->patterns.get_const(j).unwrap();
 
                 if (j > 0) {
-                    combined_cond.push_str(" || ");
+                    combined_cond.push_str("||");
                 }
 
                 switch (pattern->kind) {
                     case .EnumUnit(ident) => {
                         const tag = enum_decl->find_variant_tag(tags, ident.str.as_str_const());
-                        combined_cond.push_str("(__sw_op.tag == ");
+                        combined_cond.push_str("(__sw_op.tag==");
                         push_uint32(&combined_cond, tag);
                         combined_cond.push(')');
                     }
@@ -3375,14 +3406,14 @@ pub struct Emitter {
             self->arena.restore(cond_mark);
 
             if (first) {
-                self->body_out.push_str(" if (");
+                self->body_out.push_str("if(");
                 first = false;
             } else {
-                self->body_out.push_str(" else if (");
+                self->body_out.push_str("else if(");
             }
 
             self->body_out.push_str(combined_cond.as_str_const());
-            self->body_out.push_str(") { ");
+            self->body_out.push_str("){");
             combined_cond.free();
 
             if (has_any_binding) {
@@ -3404,9 +3435,8 @@ pub struct Emitter {
                         case .Binding { var_decl_id, .. } => {
                             switch (self->switch_binding_names.get(var_decl_id)) {
                                 case .Some(c_name) => {
-                                    self->body_out.push(' ');
                                     self->body_out.push_str(c_name->as_str_const());
-                                    self->body_out.push_str(" = __sw_op;\n");
+                                    self->body_out.push_str("=__sw_op;");
                                 }
                                 else => {}
                             }
@@ -3433,14 +3463,14 @@ pub struct Emitter {
                                 );
 
                                 if (is_first_binding_branch) {
-                                    self->body_out.push_str(" if (");
+                                    self->body_out.push_str("if(");
                                     is_first_binding_branch = false;
                                 } else {
-                                    self->body_out.push_str(" else if (");
+                                    self->body_out.push_str("else if(");
                                 }
 
                                 self->body_out.push_str(pattern_cond.as_str_const());
-                                self->body_out.push_str(") { ");
+                                self->body_out.push_str("){");
                                 pattern_cond.free();
                                 self->emit_enum_pattern_bindings(
                                     pattern,
@@ -3449,26 +3479,25 @@ pub struct Emitter {
                                     inst_args,
                                     "__sw_op"
                                 );
-                                self->body_out.push_str(" } ");
+                                self->body_out.push('}');
                             }
                             case .Binding { var_decl_id, .. } => {
                                 if (is_first_binding_branch) {
-                                    self->body_out.push_str(" if (1) { ");
+                                    self->body_out.push_str("if(1){");
                                     is_first_binding_branch = false;
                                 } else {
-                                    self->body_out.push_str(" else if (1) { ");
+                                    self->body_out.push_str("else if(1){");
                                 }
 
                                 switch (self->switch_binding_names.get(var_decl_id)) {
                                     case .Some(c_name) => {
-                                        self->body_out.push(' ');
                                         self->body_out.push_str(c_name->as_str_const());
-                                        self->body_out.push_str(" = __sw_op;\n");
+                                        self->body_out.push_str("=__sw_op;");
                                     }
                                     else => {}
                                 }
 
-                                self->body_out.push_str(" } ");
+                                self->body_out.push('}');
                             }
                             else => {}
                         }
@@ -3479,22 +3508,22 @@ pub struct Emitter {
             }
 
             self->emit_block_stmts(case_->body, true);
-            self->body_out.push_str(" } ");
+            self->body_out.push('}');
         }
 
         switch (switch_->else_case) {
             case .Some(else_case) => {
                 if (!first) {
-                    self->body_out.push_str(" else");
+                    self->body_out.push_str("else");
                 }
-                self->body_out.push_str(" { ");
+                self->body_out.push('{');
                 self->emit_block_stmts(&else_case, true);
-                self->body_out.push_str(" } ");
+                self->body_out.push('}');
             }
             else => {}
         }
 
-        self->body_out.push_str(" } ");
+        self->body_out.push('}');
         operand_name.free();
 
         if (has_inst_args) {
@@ -3504,9 +3533,9 @@ pub struct Emitter {
 
     fn emit_switch_integer(self: Self*, switch_: const cir::SwitchStmt*) {
         var operand = self->emit_expr(&switch_->operand);
-        self->body_out.push_str(" switch (");
+        self->body_out.push_str("switch(");
         self->body_out.push_str(operand.as_str_const());
-        self->body_out.push_str(") { ");
+        self->body_out.push_str("){");
         operand.free();
 
         for (var i: usize = 0; i < switch_->cases.len(); i += 1) {
@@ -3521,14 +3550,14 @@ pub struct Emitter {
                 switch (pattern->kind) {
                     case .Wildcard => {
                         if (!has_default_label) {
-                            self->body_out.push_str(" default:");
+                            self->body_out.push_str("default:");
                             has_default_label = true;
                         }
                     }
 
                     case .Binding { name, .. } => {
                         if (!has_default_label) {
-                            self->body_out.push_str(" default:");
+                            self->body_out.push_str("default:");
                             has_default_label = true;
                         }
                         binding_name = name.str.as_str_const();
@@ -3537,7 +3566,7 @@ pub struct Emitter {
                     case .Expr(expr) => {
                         switch (expr.literal_const_int_value()) {
                             case .Some(literal) => {
-                                self->body_out.push_str(" case ");
+                                self->body_out.push_str("case ");
 
                                 switch (literal) {
                                     case .Signed(x) => {
@@ -3552,7 +3581,7 @@ pub struct Emitter {
                             }
                             case .None => {
                                 if (!has_default_label) {
-                                    self->body_out.push_str(" default:");
+                                    self->body_out.push_str("default:");
                                     has_default_label = true;
                                 }
                             }
@@ -3565,14 +3594,14 @@ pub struct Emitter {
                     
                     else => {
                         if (!has_default_label) {
-                            self->body_out.push_str(" default:");
+                            self->body_out.push_str("default:");
                             has_default_label = true;
                         }
                     }
                 }
             }
 
-            self->body_out.push_str(" { ");
+            self->body_out.push('{');
 
             if (binding_name != null) {
                 switch (switch_->operand.ty) {
@@ -3582,13 +3611,13 @@ pub struct Emitter {
                         self->body_out.push_str(type_name.as_str_const());
                         self->body_out.push(' ');
                         mangle::sanitize_into(&self->body_out, binding_name);
-                        self->body_out.push_str(" = ");
+                        self->body_out.push('=');
                         
                         var expr = self->emit_expr(&switch_->operand);
                         self->body_out.push_str(expr.as_str_const());
                         expr.free();
                         
-                        self->body_out.push_str(";\n");
+                        self->body_out.push(';');
                         type_name.free();
                     }
                     case .None => {}
@@ -3596,21 +3625,21 @@ pub struct Emitter {
             }
 
             self->emit_block_stmts(case_->body, true);
-            self->body_out.push_str(" } break;\n");
+            self->body_out.push_str("}break;");
         }
 
         switch (switch_->else_case) {
             case .Some(else_case) => {
-                self->body_out.push_str(" default: { ");
+                self->body_out.push_str("default:{");
                 self->emit_block_stmts(&else_case, true);
-                self->body_out.push_str(" } break;\n");
+                self->body_out.push_str("}break;");
             }
             else => {
-                self->body_out.push_str(" default: break;\n");
+                self->body_out.push_str("default:break;");
             }
         }
 
-        self->body_out.push_str(" } ");
+        self->body_out.push('}');
     }
 
     fn emit_switch_if_chain(self: Self*, switch_: const cir::SwitchStmt*) {
@@ -3632,7 +3661,7 @@ pub struct Emitter {
             else => {}
         }
 
-        self->body_out.push_str(" {  ");
+        self->body_out.push('{');
 
         switch (switch_->operand.ty) {
             case .Some(ty) => {
@@ -3645,7 +3674,7 @@ pub struct Emitter {
         }
 
         self->body_out.push_str(operand_type_name.as_str_const());
-        self->body_out.push_str(" __sw_op = ");
+        self->body_out.push_str(" __sw_op=");
 
         if (operand_is_pointer) {
             self->body_out.push('(');
@@ -3654,7 +3683,7 @@ pub struct Emitter {
         }
 
         self->body_out.push_str(operand.as_str_const());
-        self->body_out.push_str(";\n");
+        self->body_out.push(';');
         operand.free();
 
         var first = true;
@@ -3681,21 +3710,21 @@ pub struct Emitter {
 
             if (has_wildcard || binding_name != null) {
                 if (!first) {
-                    self->body_out.push_str(" else");
+                    self->body_out.push_str("else");
                 }
                 
                 first = false;
-                self->body_out.push_str(" { ");
+                self->body_out.push('{');
                 
                 if (binding_name != null) {
                     self->body_out.push_str(operand_type_name.as_str_const());
                     self->body_out.push(' ');
                     mangle::sanitize_into(&self->body_out, binding_name);
-                    self->body_out.push_str(" = __sw_op;\n");
+                    self->body_out.push_str("=__sw_op;");
                 }
 
                 self->emit_block_stmts(case_->body, true);
-                self->body_out.push_str(" } ");
+                self->body_out.push('}');
                 continue;
             }
 
@@ -3709,7 +3738,7 @@ pub struct Emitter {
                 const pattern = case_->patterns.get_const(j).unwrap();
 
                 if (j > 0) {
-                    combined_cond.push_str(" || ");
+                    combined_cond.push_str("||");
                 }
 
                 switch (pattern->kind) {
@@ -3717,9 +3746,9 @@ pub struct Emitter {
                         var lo = self->emit_expr(&range.lower);
                         var hi = self->emit_expr(&range.upper);
 
-                        combined_cond.push_str("(__sw_op >= ");
+                        combined_cond.push_str("(__sw_op>=");
                         combined_cond.push_str(lo.as_str_const());
-                        combined_cond.push_str(" && __sw_op ");
+                        combined_cond.push_str("&&__sw_op");
 
                         if (range.inclusive_upper) {
                             combined_cond.push_str("<=");
@@ -3727,7 +3756,6 @@ pub struct Emitter {
                             combined_cond.push('<');
                         }
 
-                        combined_cond.push(' ');
                         combined_cond.push_str(hi.as_str_const());
                         combined_cond.push(')');
 
@@ -3739,11 +3767,11 @@ pub struct Emitter {
 
                         if (operand_is_byte_string) {
                             self->ensure_strcmp_proto();
-                            combined_cond.push_str("(strcmp((const char *)__sw_op, (const char *)(");
+                            combined_cond.push_str("(strcmp((const char*)__sw_op,(const char*)(");
                             combined_cond.push_str(value.as_str_const());
-                            combined_cond.push_str(")) == 0)");
+                            combined_cond.push_str("))==0)");
                         } else {
-                            combined_cond.push_str("(__sw_op == ");
+                            combined_cond.push_str("(__sw_op==");
                             combined_cond.push_str(value.as_str_const());
                             combined_cond.push(')');
                         }
@@ -3751,7 +3779,7 @@ pub struct Emitter {
                         value.free();
                     }
                     case .EnumUnit(ident) => {
-                        combined_cond.push_str("(__sw_op == ");
+                        combined_cond.push_str("(__sw_op==");
                         combined_cond.push_str(ident.str.as_str_const());
                         combined_cond.push(')');
                     }
@@ -3762,45 +3790,45 @@ pub struct Emitter {
             }
 
             if (first) {
-                self->body_out.push_str(" if (");
+                self->body_out.push_str("if(");
                 first = false;
             } else {
-                self->body_out.push_str(" else if (");
+                self->body_out.push_str("else if(");
             }
 
             self->body_out.push_str(combined_cond.as_str_const());
-            self->body_out.push_str(") { ");
+            self->body_out.push_str("){");
             combined_cond.free();
 
             self->emit_block_stmts(case_->body, true);
-            self->body_out.push_str(" } ");
+            self->body_out.push('}');
         }
 
         switch (switch_->else_case) {
             case .Some(else_case) => {
                 if (!first) {
-                    self->body_out.push_str(" else");
+                    self->body_out.push_str("else");
                 }
-                self->body_out.push_str(" { ");
+                self->body_out.push('{');
                 self->emit_block_stmts(&else_case, true);
-                self->body_out.push_str(" } ");
+                self->body_out.push('}');
             }
             else => {}
         }
 
-        self->body_out.push_str(" } ");
+        self->body_out.push('}');
         operand_type_name.free();
     }
 
     fn emit_inline_asm_stmt(self: Self*, inline_asm: const cir::InlineAsm) {
         var text = self->emit_inline_asm(inline_asm);
         self->body_out.push_str(text.as_str_const());
-        self->body_out.push_str(";\n");
+        self->body_out.push(';');
         text.free();
     }
 
     fn emit_inline_asm(self: Self*, inline_asm: const cir::InlineAsm) String {
-        var out = String.from_str(self->allocator, " __asm__ ");
+        var out = String.from_str(self->allocator, "__asm__ ");
 
         if (inline_asm.is_volatile) {
             out.push_str("__volatile__(");
@@ -3986,12 +4014,7 @@ pub struct Emitter {
             }
 
             case .AddrOf(addr) => {
-                var out = String.from_str(self->allocator, "(&");
-                var expr = self->emit_expr(addr.operand);
-                out.push_str(expr.as_str_const());
-                expr.free();
-                out.push(')');
-                return out;
+                return self->emit_addr_of_expr(addr.operand);
             }
 
             case .Deref(deref) => {
@@ -4044,15 +4067,15 @@ pub struct Emitter {
                 var out = String.from_str(self->allocator, "((");
 
                 out.push_str(type_name.as_str_const());
-                out.push_str("){ .");
+                out.push_str("){.");
                 mangle::sanitize_into(&out, union_init.field->name.as_str_const());
-                out.push_str(" = ");
+                out.push('=');
                 
                 var expr = self->emit_init_value(&union_init.field->value);
                 out.push_str(expr.as_str_const());
                 expr.free();
 
-                out.push_str(" })");
+                out.push_str("})");
                 type_name.free();
                 
                 return out;
@@ -4067,14 +4090,14 @@ pub struct Emitter {
                         type_name = self->types.type_name(&ty);
                     }
                     case .None => {
-                        type_name = String.from_str(self->allocator, "void *");
+                        type_name = String.from_str(self->allocator, "void*");
                     }
                 }
 
                 var out = String.from_str(self->allocator, "((");
                 
                 out.push_str(type_name.as_str_const());
-                out.push_str("){ ");
+                out.push_str("){");
                 
                 for (var i: usize = 0; i < array.elements.len(); i += 1) {
                     const element_type = array.elements.get_const(i).unwrap();
@@ -4092,10 +4115,12 @@ pub struct Emitter {
                         }
                     }
                     
-                    out.push_str(", ");
+                    if (i + 1 < array.elements.len()) {
+                        out.push(',');
+                    }
                 }
 
-                out.push_str(" })");
+                out.push_str("})");
                 type_name.free();
                 
                 return out;
@@ -4116,7 +4141,7 @@ pub struct Emitter {
 
                 var out = String.from_str(self->allocator, "((");
                 out.push_str(type_name.as_str_const());
-                out.push_str("){ ");
+                out.push_str("){");
 
                 for (var i: usize = 0; i < tupple.elements.len(); i += 1) {
                     const element = tupple.elements.get_const(i).unwrap();
@@ -4125,10 +4150,12 @@ pub struct Emitter {
                     out.push_str(expr.as_str_const());
                     expr.free();
                     
-                    out.push_str(", ");
+                    if (i + 1 < tupple.elements.len()) {
+                        out.push(',');
+                    }
                 }
 
-                out.push_str(" })");
+                out.push_str("})");
                 type_name.free();
                 
                 return out;
@@ -4331,7 +4358,6 @@ pub struct Emitter {
 
         out.push('(');
         out.push_str(lhs.as_str_const());
-        out.push(' ');
 
         switch (infix->op) {
             case .Add => out.push('+');
@@ -4368,9 +4394,9 @@ pub struct Emitter {
 
                 out2.push_str("((");
                 out2.push_str(lhs2.as_str_const());
-                out2.push_str(") ? (");
+                out2.push_str(")?(");
                 out2.push_str(lhs2.as_str_const());
-                out2.push_str(") : (");
+                out2.push_str("):(");
                 out2.push_str(rhs2.as_str_const());
                 out2.push_str("))");
                 
@@ -4382,7 +4408,6 @@ pub struct Emitter {
             }
         }
 
-        out.push(' ');
         out.push_str(rhs.as_str_const());
         out.push(')');
         
@@ -4722,7 +4747,7 @@ pub struct Emitter {
         out.push_str(fn_name);
         out.push('(');
         out.push_str(a);
-        out.push_str(", ");
+        out.push(',');
         out.push_str(b);
         out.push_str("))");
         return out;
@@ -4754,9 +4779,9 @@ pub struct Emitter {
                 out.push_str(name);
                 out.push('(');
                 out.push_str(a.as_str_const());
-                out.push_str(", ");
+                out.push(',');
                 out.push_str(b.as_str_const());
-                out.push_str(") ");
+                out.push(')');
 
                 switch (infix->op) {
                     case .GreaterEqual => out.push_str(">= 0");
@@ -4865,9 +4890,13 @@ pub struct Emitter {
     }
 
     fn is_byte_pointer(self: Self*, ty: const cir::SemaType*) bool {
-        switch (*ty->const_inner()) {
+        const resolved = extract_typedef_inner_type(self->tables, ty);
+
+        switch (*resolved) {
             case .Pointer(inner) => {
-                switch (*inner->const_inner()) {
+                const elem = extract_typedef_inner_type(self->tables, inner);
+
+                switch (*elem) {
                     case .Plain(plain) => {
                         switch (plain) {
                             case .UInt8 => return true;
@@ -4888,15 +4917,15 @@ pub struct Emitter {
         var lhs = self->emit_expr(infix->lhs);
         var rhs = self->emit_expr(infix->rhs);
 
-        var out = String.from_str(self->allocator, "(strcmp((const char *)(");
+        var out = String.from_str(self->allocator, "(strcmp((const char*)(");
         out.push_str(lhs.as_str_const());
-        out.push_str("), (const char *)(");
+        out.push_str("),(const char*)(");
         out.push_str(rhs.as_str_const());
-        out.push_str(")) ");
+        out.push_str("))");
 
         switch (infix->op) {
-            case .Equal => out.push_str("== 0");
-            else => out.push_str("!= 0");
+            case .Equal => out.push_str("==0");
+            else => out.push_str("!=0");
         }
 
         out.push(')');
@@ -4928,7 +4957,7 @@ pub struct Emitter {
                 out = String.new(self->allocator);
                 out.push('(');
                 out.push_str(lhs.as_str_const());
-                out.push_str(" = ");
+                out.push('=');
                 
                 var rhs = self->emit_expr(assign->rhs);
 
@@ -5133,7 +5162,7 @@ pub struct Emitter {
             case .BitwiseAndNotAssign => {
                 operator_name = "band";
 
-                var coerced_rhs = self->coerce_to_int128(
+                var coerce_rhs = self->coerce_to_int128(
                     assign->rhs,
                     rhs_text.as_str_const(), 
                     unsigned_domain
@@ -5142,11 +5171,11 @@ pub struct Emitter {
                 var not_fn = self->wrap_str(
                     prefix_name,
                     "_bnot(",
-                    coerced_rhs.as_str_const()
+                    coerce_rhs.as_str_const()
                 );
 
                 not_fn.push(')');
-                coerced_rhs.free();
+                coerce_rhs.free();
                 not_rhs_operand = .Some(not_fn);
             }
             
@@ -5174,7 +5203,7 @@ pub struct Emitter {
         var out = String.new(self->allocator);
         out.push('(');
         out.push_str(lhs_value);
-        out.push_str(" = ");
+        out.push('=');
 
         if (is_default) {
             switch (rhs_operand) {
@@ -5210,7 +5239,7 @@ pub struct Emitter {
             out.push_str(fn_.as_str_const());
             out.push('(');
             out.push_str(lhs_value);
-            out.push_str(", ");
+            out.push(',');
             out.push_str(rhs_arg);
             out.push(')');
 
@@ -5509,7 +5538,7 @@ pub struct Emitter {
 
             switch (self->func_call_param_type(func_call, i)) {
                 case .Some(param_ty) => {
-                    expr = self->coerce_float16(expr, &param_ty);
+                    expr = self->coerce_value(expr, arg, &param_ty);
                 }
                 else => {}
             }
@@ -5518,12 +5547,56 @@ pub struct Emitter {
             expr.free();
             
             if (i + 1 < func_call->args.len()) {
-                out.push_str(", ");
+                out.push(',');
             }
         }
 
         out.push(')');
         callee.free();
+        return out;
+    }
+
+    fn emit_addr_of_expr(self: Self*, operand: const cir::Expr*) String {
+        var expr = self->emit_expr(operand);
+        var out = String.new(self->allocator);
+
+        if (is_c_lvalue(operand) || is_compound_literal_expr(operand)) {
+            out.push_str("(&");
+            out.push_str(expr.as_str_const());
+            out.push(')');
+            expr.free();
+            return out;
+        }
+
+        switch (operand->ty) {
+            case .Some(ty) => {
+                const unconst_ty = *ty.const_inner();
+                switch (unconst_ty) {
+                    case .Array => {
+                        out.push_str("(&");
+                        out.push_str(expr.as_str_const());
+                        out.push(')');
+                    }
+                    else => {
+                        self->types.ensure_named(&unconst_ty);
+                        var arr_decl = self->types.build_decl(&unconst_ty, "[]");
+                        out.push_str("((");
+                        out.push_str(arr_decl.as_str_const());
+                        out.push_str("){");
+                        out.push_str(expr.as_str_const());
+                        out.push_str("})");
+                        arr_decl.free();
+                    }
+                }
+            }
+            case .None => {
+                out.push_str("(&");
+                out.push_str(expr.as_str_const());
+                out.push(')');
+            }
+        }
+
+        expr.free();
         return out;
     }
 
@@ -5568,17 +5641,16 @@ pub struct Emitter {
                         return true;
                     }
                     else => {
-                        var expr = self->emit_expr(operand);
-
                         if (method->is_self_by_value()) {
+                            var expr = self->emit_expr(operand);
                             out->push_str(expr.as_str_const());
+                            expr.free();
                         } else {
-                            out->push_str("(&");
-                            out->push_str(expr.as_str_const());
-                            out->push(')');
+                            var addr = self->emit_addr_of_expr(operand);
+                            out->push_str(addr.as_str_const());
+                            addr.free();
                         }
 
-                        expr.free();
                         return true;
                     }
                 }
@@ -5635,7 +5707,7 @@ pub struct Emitter {
                             const arg = method_call->args.get_const(i).unwrap();
                             
                             if (has_self_argument || i != 0) {
-                                out.push_str(", ");
+                                out.push(',');
                             }
                             
                             var expr = self->emit_expr(arg);
@@ -5761,23 +5833,74 @@ pub struct Emitter {
 
                         var out = String.from_str(self->allocator, "((");
                         out.push_str(ret_name.as_str_const());
-                        out.push_str(" (*)(void *");
+                        out.push_str("(*)(void*");
 
-                        for (var i: usize = 0; i < method_call->args.len(); i += 1) {
-                            const arg = method_call->args.get_const(i).unwrap();
-                            
-                            switch (arg->ty) {
-                                case .Some(ty) => {
-                                    var type_name = self->types.type_name(&ty);
-                                    out.push_str(", ");
-                                    out.push_str(type_name.as_str_const());
-                                    type_name.free();
+                        var emitted_interface_params = false;
+
+                        switch (self->tables->interfaces.get_const(interface_decl_id)) {
+                            case .Some(interface_) => {
+                                switch (interface_->methods.entries.get_const(index)) {
+                                    case .Some(entry) => {
+                                        switch (self->tables->methods.get_const(entry->id)) {
+                                            case .Some(iface_method) => {
+                                                emitted_interface_params = true;
+
+                                                const mark = self->arena.mark();
+
+                                                const params = &iface_method->func_decl.params;
+
+                                                for (var p: usize = 0; p < params->list.len(); p += 1) {
+                                                    const param = params->list.get_const(p).unwrap();
+                                                    switch (*param) {
+                                                        case .SelfModifier => continue;
+                                                        else => {}
+                                                    }
+
+                                                    var p_ty = param->ty();
+                                                    if (interface_->is_generic() && !method_call->type_args.is_empty()) {
+                                                        p_ty = cir::substitute_sema_type_with_type_args(
+                                                            dynamic self->arena,
+                                                            &p_ty,
+                                                            &interface_->generic_params,
+                                                            &method_call->type_args
+                                                        );
+                                                    }
+
+                                                    self->types.ensure_named(&p_ty);
+                                                    var type_name = self->types.type_name(&p_ty);
+                                                    out.push(',');
+                                                    out.push_str(type_name.as_str_const());
+                                                    type_name.free();
+                                                }
+
+                                                self->arena.restore(mark);
+                                            }
+                                            else => {}
+                                        }
+                                    }
+                                    else => {}
                                 }
-                                else => out.push_str(", void *");
+                            }
+                            else => {}
+                        }
+
+                        if (!emitted_interface_params) {
+                            for (var i: usize = 0; i < method_call->args.len(); i += 1) {
+                                const arg = method_call->args.get_const(i).unwrap();
+                                
+                                switch (arg->ty) {
+                                    case .Some(ty) => {
+                                        var type_name = self->types.type_name(&ty);
+                                        out.push(',');
+                                        out.push_str(type_name.as_str_const());
+                                        type_name.free();
+                                    }
+                                    else => out.push_str(",void*");
+                                }
                             }
                         }
 
-                        out.push_str("))((void **)(");
+                        out.push_str("))((void**)(");
                         out.push_str(fat_pointer.as_str_const());
                         out.push_str(").vtable)[");
                         push_usize(&out, index);
@@ -5788,7 +5911,7 @@ pub struct Emitter {
                         for (var i: usize = 0; i < method_call->args.len(); i += 1) {
                             const arg = method_call->args.get_const(i).unwrap();
                             
-                            out.push_str(", ");
+                            out.push(',');
                             
                             var expr = self->emit_expr(arg);
                             out.push_str(expr.as_str_const());
@@ -5876,7 +5999,7 @@ pub struct Emitter {
             expr.free();
             
             if (i + 1 < method_call->args.len()) {
-                fallback.push_str(", ");
+                fallback.push(',');
             }
         }
 
@@ -5888,23 +6011,73 @@ pub struct Emitter {
         var type_name = self->type_name_of(&struct_init->operand);
         var out = String.from_str(self->allocator, "((");
         out.push_str(type_name.as_str_const());
-        out.push_str("){ ");
-        
+        out.push_str("){");
+
+        var struct_decl: const cir::StructDecl* = null;
+        var struct_args: const cir::TypeArgs* = null;
+
+        switch (*struct_init->operand.const_inner()) {
+            case .Named(named) => {
+                switch (named.type_decl_id) {
+                    case .Struct(id) => {
+                        switch (self->tables->structs.get_const(id)) {
+                            case .Some(decl) => {
+                                struct_decl = decl;
+                                if (!named.type_args.is_empty()) {
+                                    struct_args = &named.type_args;
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        const mark = self->arena.mark();
+
         for (var i: usize = 0; i < struct_init->fields.len(); i += 1) {
             const field = struct_init->fields.get_const(i).unwrap();
 
             out.push('.');
             mangle::sanitize_into(&out, field->name.as_str_const());
-            out.push_str(" = ");
+            out.push('=');
             
             var expr = self->emit_init_value(&field->value);
+
+            if (struct_decl != null) {
+                switch (struct_decl->lookup_field(field->name.as_str_const())) {
+                    case .Some(decl_field) => {
+                        var field_type = decl_field->ty;
+
+                        if (struct_args != null) {
+                            field_type = cir::substitute_sema_type_with_type_args(
+                                dynamic self->arena,
+                                &field_type,
+                                &struct_decl->generic_params,
+                                struct_args
+                            );
+                        }
+
+                        expr = self->coerce_value(expr, &field->value, &field_type);
+                    }
+                    else => {}
+                }
+            }
+
             out.push_str(expr.as_str_const());
             expr.free();
 
-            out.push_str(", ");
+            if (i + 1 < struct_init->fields.len()) {
+                out.push(',');
+            }
         }
 
-        out.push_str(" })");
+        self->arena.restore(mark);
+
+        out.push_str("})");
         type_name.free();
         return out;
     }
@@ -5912,6 +6085,7 @@ pub struct Emitter {
     fn emit_enum_init(self: Self*, enum_init: const cir::EnumInit*) String {
         var enum_decl_id: cir::EnumDeclId;
         var found = false;
+        var enum_args: const cir::TypeArgs* = null;
 
         switch (*enum_init->operand.const_inner()) {
             case .Named(named) => {
@@ -5919,6 +6093,10 @@ pub struct Emitter {
                     case .Enum(id) => {
                         enum_decl_id = id;
                         found = true;
+
+                        if (!named.type_args.is_empty()) {
+                            enum_args = &named.type_args;
+                        }
                     }
                     else => {}
                 }
@@ -5991,52 +6169,68 @@ pub struct Emitter {
 
         var out = String.from_str(self->allocator, "((");
         out.push_str(name.as_str_const());
-        out.push_str("){ .tag = ");
+        out.push_str("){.tag=");
         push_uint32(&out, tag);
 
         switch (*variant) {
             case .Unit => {}
 
             case .Valued { value, .. } => {
-                out.push_str(", .u = { .v");
+                out.push_str(",.u={.v");
                 push_uint32(&out, tag);
-                out.push_str(" = { ");
+                out.push_str("={");
 
                 var expr = self->emit_expr(value);
                 out.push_str(expr.as_str_const());
                 expr.free();
 
-                out.push_str(" } }");
+                out.push_str("}}");
             }
 
             case .Tuple { fields, .. } => {
-                out.push_str(", .u = { .v");
+                out.push_str(",.u={.v");
                 push_uint32(&out, tag);
-                out.push_str(" = { ");
+                out.push_str("={");
+
+                const mark = self->arena.mark();
 
                 switch (enum_init->arg) {
                     case .Tuple(exprs) => {
                         for (var j: usize = 0; j < fields.len(); j += 1) {
                             if (j < exprs.len()) {
                                 const element = exprs.get_const(j).unwrap();
+                                const field = fields.get_const(j).unwrap();
+
+                                var field_type = self->substitute_variant_field_typepe(
+                                    enum_decl,
+                                    &field->ty,
+                                    enum_args
+                                );
 
                                 var expr = self->emit_expr(element);
+                                expr = self->coerce_value(expr, element, &field_type);
                                 out.push_str(expr.as_str_const());
                                 expr.free();
                             }
-                            out.push_str(", ");
+
+                            if (j + 1 < fields.len()) {
+                                out.push(',');
+                            }
                         }
                     }
                     else => {}
                 }
 
-                out.push_str(" } }");
+                self->arena.restore(mark);
+                out.push_str("}}");
             }
 
             case .Struct { fields, .. } => {
-                out.push_str(", .u = { .v");
+                out.push_str(",.u={.v");
                 push_uint32(&out, tag);
-                out.push_str(" = { ");
+                out.push_str("={");
+
+                const mark = self->arena.mark();
 
                 switch (enum_init->arg) {
                     case .Struct(field_inits) => {
@@ -6049,13 +6243,20 @@ pub struct Emitter {
                                 if (field_init->name.str.as_str_const() == field->name.str.as_str_const()) {
                                     out.push('.');
                                     mangle::sanitize_into(&out, field->name.str.as_str_const());
-                                    out.push_str(" = ");
+                                    out.push('=');
+
+                                    var field_type = self->substitute_variant_field_typepe(
+                                        enum_decl,
+                                        &field->ty,
+                                        enum_args
+                                    );
 
                                     var expr = self->emit_expr(field_init->value);
+                                    expr = self->coerce_value(expr, field_init->value, &field_type);
                                     out.push_str(expr.as_str_const());
                                     expr.free();
 
-                                    out.push_str(", ");
+                                    out.push(',');
                                     break;
                                 }
                             }
@@ -6064,11 +6265,12 @@ pub struct Emitter {
                     else => {}
                 }
 
-                out.push_str(" } }");
+                self->arena.restore(mark);
+                out.push_str("}}");
             }
         }
 
-        out.push_str(" })");
+        out.push_str("})");
         name.free();
         return out;
     }
@@ -6088,13 +6290,13 @@ pub struct Emitter {
 
         self->protos_out.push_str("static ");
         self->protos_out.push_str(sig.as_str_const());
-        self->protos_out.push_str(";\n");
+        self->protos_out.push(';');
 
         
         var definition = String.new(self->allocator);
         definition.push_str("static ");
         definition.push_str(sig.as_str_const());
-        definition.push_str(" { ");
+        definition.push('{');
         
         const parent = self->body_out;
         self->body_out = String.new(self->allocator);
@@ -6154,7 +6356,7 @@ pub struct Emitter {
         self->loop_marks = saved_loop_marks;
 
         definition.push_str(self->body_out.as_str_const());
-        definition.push_str("} \n");
+        definition.push('}');
 
         self->lambda_defs.push_str(definition.as_str_const());
         definition.free();
@@ -6175,16 +6377,16 @@ pub struct Emitter {
         // by-value concrete object
         var out = String.from_str(
             self->allocator, 
-            "((__fat_ptr){ .data = (void *)&("
+            "((__fat_ptr){.data=(void*)"
         );
 
-        var expr = self->emit_expr(dynamic_->operand);
+        var expr = self->emit_addr_of_expr(dynamic_->operand);
         out.push_str(expr.as_str_const());
         expr.free();
         
-        out.push_str("), .vtable = (void *)");
+        out.push_str(",.vtable=(void*)");
         out.push_str(vtable_name.as_str_const());
-        out.push_str(" })");
+        out.push_str("})");
 
         vtable_name.free();
         return out;
@@ -6236,9 +6438,9 @@ pub struct Emitter {
 
         const info = self->vtables->tables.get_const(vtable_id).unwrap();
 
-        self->pending_out.push_str("static void *__cyrus_vtable_");
+        self->pending_out.push_str("static void*__cyrus_vtable_");
         push_usize(&self->pending_out, vtable_id);
-        self->pending_out.push_str("[] = { ");
+        self->pending_out.push_str("[]={");
 
         for (var i: usize = 0; i < info->method_decls.entries.len(); i += 1) {
             const entry = info->method_decls.entries.get_const(i).unwrap();
@@ -6258,7 +6460,7 @@ pub struct Emitter {
                                         case .Method(method_decl_id) => {
                                             switch (self->tables->methods.get_const(method_decl_id)) {
                                                 case .Some(method) => {
-                                                    var c_name = mangle::mangle_monomorphized_method(
+                                                    var name = mangle::mangle_monomorphized_method(
                                                         self->allocator,
                                                         &self->types.maps,
                                                         self->tables,
@@ -6266,10 +6468,10 @@ pub struct Emitter {
                                                         method,
                                                         &inst->type_args
                                                     );
-                                                    self->pending_out.push_str(" (void *)&");
-                                                    self->pending_out.push_str(c_name.as_str_const());
-                                                    self->pending_out.push_str(",\n");
-                                                    c_name.free();
+                                                    self->pending_out.push_str("(void*)&");
+                                                    self->pending_out.push_str(name.as_str_const());
+                                                    self->pending_out.push(',');
+                                                    name.free();
                                                     done = true;
                                                 }
                                                 else => {}
@@ -6293,23 +6495,23 @@ pub struct Emitter {
 
             switch (self->tables->methods.get_const(entry->id)) {
                 case .Some(method) => {
-                    var c_name = mangle::mangle_method(
+                    var name = mangle::mangle_method(
                         self->allocator,
                         &self->types.maps,
                         entry->id,
                         method
                     );
 
-                    self->pending_out.push_str(" (void *)&");
-                    self->pending_out.push_str(c_name.as_str_const());
-                    self->pending_out.push_str(",\n");
-                    c_name.free();
+                    self->pending_out.push_str("(void*)&");
+                    self->pending_out.push_str(name.as_str_const());
+                    self->pending_out.push(',');
+                    name.free();
                 }
-                else => self->pending_out.push_str(" 0,\n");
+                else => self->pending_out.push_str("0,");
             }
         }
 
-        self->pending_out.push_str("};\n\n");
+        self->pending_out.push_str("};");
 
         return out;
     }
@@ -6431,7 +6633,7 @@ pub struct Emitter {
                                                 var out = String.from_str(self->allocator, "offsetof(");
                                                 
                                                 out.push_str(type_name.as_str_const());
-                                                out.push_str(", ");
+                                                out.push(',');
                                                 
                                                 switch (field_arg->literal_const_string_value()) {
                                                     case .Some(name) => out.push_str(name);
@@ -6559,9 +6761,9 @@ pub struct Emitter {
                             else => out.push_str("1");
                         }
 
-                        out.push_str(") ? (void)0 : __cyrus_fail_(\"panicked\", \"assertion failed: \", ");
+                        out.push_str(")?(void)0:__cyrus_fail_(\"panicked\",\"assertion failed: \",");
                         self->push_builtin_location(&out, builtin_func);
-                        out.push_str(", ");
+                        out.push(',');
 
                         switch (builtin_func->args.get_const(1)) {
                             case .Some(mesg) => {
@@ -6584,9 +6786,9 @@ pub struct Emitter {
                     case .Panic => {
                         self->note_panic_use();
 
-                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"panicked\", \"\", ");
+                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"panicked\",\"\",");
                         self->push_builtin_location(&out, builtin_func);
-                        out.push_str(", ");
+                        out.push(',');
                         
                         switch (builtin_func->args.get_const(0)) {
                             case .Some(mesg) => {
@@ -6609,9 +6811,9 @@ pub struct Emitter {
                     case .Unreachable => {
                         self->note_panic_use();
 
-                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"entered unreachable code\", \"\", ");
+                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"entered unreachable code\",\"\",");
                         self->push_builtin_location(&out, builtin_func);
-                        out.push_str(", ");
+                        out.push(',');
 
                         switch (builtin_func->args.get_const(0)) {
                             case .Some(mesg) => {
@@ -6634,9 +6836,9 @@ pub struct Emitter {
                     case .Todo => {
                         self->note_panic_use();
 
-                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"hit TODO\", \"\", ");
+                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"hit TODO\",\"\",");
                         self->push_builtin_location(&out, builtin_func);
-                        out.push_str(", ");
+                        out.push(',');
 
                         switch (builtin_func->args.get_const(0)) {
                             case .Some(mesg) => {
@@ -6659,9 +6861,9 @@ pub struct Emitter {
                     case .Unimplemented => {
                         self->note_panic_use();
 
-                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"hit UNIMPLEMENTED code\", \"\", ");
+                        var out = String.from_str(self->allocator, "__cyrus_fail_(\"hit UNIMPLEMENTED code\",\"\",");
                         self->push_builtin_location(&out, builtin_func);
-                        out.push_str(", ");
+                        out.push(',');
 
                         switch (builtin_func->args.get_const(0)) {
                             case .Some(mesg) => {
@@ -6694,7 +6896,7 @@ pub struct Emitter {
                             expr.free();
                             
                             if (i + 1 < builtin_func->args.len()) {
-                                out.push_str(", ");
+                                out.push(',');
                             }
                         }
 
@@ -6715,7 +6917,7 @@ pub struct Emitter {
                             expr.free();
                             
                             if (i + 1 < builtin_func->args.len()) {
-                                out.push_str(", ");
+                                out.push(',');
                             }
                         }
                         
@@ -6854,18 +7056,27 @@ pub struct Emitter {
                 var out = String.new(self->allocator);
                 
                 const c_int_max: uint128 = 2147483647;
+                const int64_min_mag: uint128 = 9223372036854775808;
                 var magnitude: uint128 = 0;
+                var is_negative = false;
 
                 switch (value) {
                     case .Signed(x) => {
                         if (x < 0) {
+                            is_negative = true;
                             magnitude = @cast(uint128, -(x + 1)) + 1;
-                            out.push('-');
+
+                            if (magnitude == int64_min_mag) {
+                                out.push_str("(-9223372036854775807LL-1)");
+                            } else {
+                                out.push_str("(-");
+                                push_uint128(&out, magnitude);
+                                out.push(')');
+                            }
                         } else {
                             magnitude = @cast(uint128, x);
+                            push_uint128(&out, magnitude);
                         }
-
-                        push_uint128(&out, magnitude);
                     }
                     case .Unsigned(x) => {
                         magnitude = x;
@@ -6873,32 +7084,35 @@ pub struct Emitter {
                     }
                 }
 
-                if (magnitude > c_int_max) {
-                    switch (literal->ty) {
-                        case .Some(ty) => {
-                            switch (*ty.const_inner()) {
-                                case .Plain(plain) => {
-                                    switch (signed_int_c_name(&plain)) {
+                switch (literal->ty) {
+                    case .Some(ty) => {
+                        switch (*ty.const_inner()) {
+                            case .Plain(plain) => {
+                                const need_type_cast = magnitude > c_int_max || is_64bit_int_plain(&plain);
+                                
+                                if (need_type_cast) {
+                                    switch (int_literal_c_type_name(&plain)) {
                                         case .Some(ctype) => {
+                                            if (!is_negative && magnitude > c_int_max) {
+                                                out.push_str("ULL");
+                                            }
                                             var casted = String.new(self->allocator);
-
                                             casted.push_str("((");
                                             casted.push_str(ctype);
-                                            casted.push_str(")");
+                                            casted.push(')');
                                             casted.push_str(out.as_str_const());
                                             casted.push(')');
-
                                             out.free();
                                             out = casted;
                                         }
                                         else => {}
                                     }
                                 }
-                                else => {}
                             }
+                            else => {}
                         }
-                        else => {}
                     }
+                    else => {}
                 }
 
                 return out;
@@ -6917,13 +7131,55 @@ pub struct Emitter {
                     str.push_str(".0");
                 }
 
+                if (str.len() > 0 && str.as_str_const()[0] == '-') {
+                    var wrapped = String.from_str(self->allocator, "(");
+                    wrapped.push_str(str.as_str_const());
+                    wrapped.push(')');
+                    str.free();
+                    return wrapped;
+                }
+
                 return str;
             }
 
             case .String { value, .. } => {
-                var out = String.from_str(self->allocator, "\"");
+                var is_array = false;
+                var is_mut_ptr = false;
+
+                switch (literal->ty) {
+                    case .Some(ty) => {
+                        switch (*ty.const_inner()) {
+                            case .Array => is_array = true;
+                            case .Pointer(inner) => {
+                                switch (*inner) {
+                                    case .Const => {}
+                                    else => is_mut_ptr = true;
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
+                var out = String.new(self->allocator);
+                
+                if (!is_array) {
+                    if (is_mut_ptr) {
+                        out.push_str("((uint8_t*)");
+                    } else {
+                        out.push_str("((const uint8_t*)");
+                    }
+                }
+                
+                out.push('"');
                 push_c_escaped(&out, value.as_str_const());
                 out.push('"');
+                
+                if (!is_array) {
+                    out.push(')');
+                }
+                
                 return out;
             }
 
@@ -7099,7 +7355,7 @@ pub struct Emitter {
 
         self->needs_memcmp_proto = true;
         self->needs_stddef_header = true;
-        self->libc_protos.push_str("int memcmp(const void *s1, const void *s2, size_t n);\n");
+        self->libc_protos.push_str("int memcmp(const void*s1,const void*s2,size_t n);");
     }
 
     fn ensure_memcpy_proto(self: Self*) {
@@ -7109,7 +7365,7 @@ pub struct Emitter {
 
         self->needs_memcpy_proto = true;
         self->needs_stddef_header = true;
-        self->libc_protos.push_str("void *memcpy(void *dest, const void *src, size_t n);\n");
+        self->libc_protos.push_str("void*memcpy(void*dest,const void*src,size_t n);");
     }
 
     fn ensure_memset_proto(self: Self*) {
@@ -7119,7 +7375,7 @@ pub struct Emitter {
 
         self->needs_memset_proto = true;
         self->needs_stddef_header = true;
-        self->libc_protos.push_str("void *memset(void *s, int c, size_t n);\n");
+        self->libc_protos.push_str("void*memset(void*s,int c,size_t n);");
     }
 
     fn ensure_strcmp_proto(self: Self*) {
@@ -7128,7 +7384,7 @@ pub struct Emitter {
         }
 
         self->needs_strcmp_proto = true;
-        self->libc_protos.push_str("int strcmp(const char *s1, const char *s2);\n");
+        self->libc_protos.push_str("int strcmp(const char*s1,const char*s2);");
     }
 
     // GNU LIBC exposes `errno` as a thread-local object. 
@@ -7144,7 +7400,7 @@ pub struct Emitter {
         }
 
         self->needs_errno_location_proto = true;
-        self->libc_protos.push_str("int *__errno_location(void);\n");
+        self->libc_protos.push_str("int*__errno_location(void);");
     }
 
     fn note_panic_use(self: Self*) {
@@ -7216,12 +7472,62 @@ pub struct Emitter {
 
 /* ************* Helpers ************* */
 
-/// Libc symbols that the emitter already declare 
-/// with their canonical signatures.
-fn is_emitter_libc_name(name: const uint8*) bool {
-    return name == "strcmp"
-        || name == "memcpy"
-        || name == "memset";
+fn is_c_lvalue(expr: const cir::Expr*) bool {
+    switch (expr->kind) {
+        case .Symbol 
+        | .Deref 
+        | .ArrayIndex => return true;
+
+        case .FieldAccess(field_access) => {
+            if (field_access.is_thin_arrow) {
+                return true;
+            }
+            
+            return is_c_lvalue(field_access.operand);
+        }
+
+        case .TupleAccess(tuple_access) => {
+            return is_c_lvalue(tuple_access.operand);
+        }
+        
+        else => return false;
+    }
+}
+
+fn is_compound_literal_expr(expr: const cir::Expr*) bool {
+    switch (expr->kind) {
+        case .StructInit
+           | .EnumInit
+           | .UnionInit
+           | .UnnamedStructValue
+           | .UnnamedUnionValue
+           | .UnnamedEnumValue => return true;
+
+        else => return false;
+    }
+}
+
+fn is_64bit_int_plain(plain: const cir::PlainType*) bool {
+    switch (*plain) {
+        case .Int64 | .UInt64 | .ISize | .USize | .IntPtr | .UIntPtr => return true;
+        else => return false;
+    }
+}
+
+fn int_literal_c_type_name(plain: const cir::PlainType*) Option<const uint8*> {
+    switch (*plain) {
+        case .Int8 => return .Some("int8_t");
+        case .UInt8 => return .Some("uint8_t");
+        case .Int16 => return .Some("int16_t");
+        case .UInt16 => return .Some("uint16_t");
+        case .Int32 => return .Some("int32_t");
+        case .UInt32 => return .Some("uint32_t");
+        case .Int64 => return .Some("int64_t");
+        case .UInt64 => return .Some("uint64_t");
+        case .ISize | .IntPtr => return .Some("intptr_t");
+        case .USize | .UIntPtr => return .Some("uintptr_t");
+        else => return .None;
+    }
 }
 
 fn push_asm_escaped(out: String*, raw: const uint8*) {
