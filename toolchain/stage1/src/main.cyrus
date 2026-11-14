@@ -119,6 +119,7 @@ fn app(argc: c_int, argv: c_char**) int32 {
     const target_opt = opts.add(
         *cli::Opt.new(allocator, "target")
         .short('t')
+        ->arg(.Str)
         ->help("Target triple")
     );
 
@@ -162,6 +163,7 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(quiet_opt)
         ->add_option(release_opt)
         ->add_option(debug_opt)
+        ->add_option(target_opt)
         ->add_option(backend_opt)
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
@@ -216,6 +218,7 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->optional_argument(.Str)
         ->add_option(stdlib_opt)
         ->add_option(profile_opt)
+        ->add_option(target_opt)
         ->add_option(backend_opt)
         ->add_option(output_opt);
 

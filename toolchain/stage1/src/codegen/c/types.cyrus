@@ -100,15 +100,9 @@ pub struct TypeEmitter {
         allocator: Allocator,
         tables: DeclTables*,
         registry: GlobalSymbolRegistry*,
-        maps: mangle::ModuleMaps
+        maps: mangle::ModuleMaps,
+        target: TargetInfo
     ) Self {
-        // FIXME
-        const target = TargetInfo {
-            arch: .X86_64,
-            os: .Linux,
-            format: .Elf,
-        };
-
         const arena = ArenaAllocator.new(allocator, 65536);
 
         return Self {
@@ -2008,7 +2002,11 @@ pub struct TypeEmitter {
     fn tuple_type_name(self: Self*, tuple: const cir::TupleType*) String {
         var sig = String.new(self->allocator);
 
-        for (var element_index: usize = 0; element_index < tuple->elements.len(); element_index += 1) {
+        for (
+            var element_index: usize = 0; 
+            element_index < tuple->elements.len(); 
+            element_index += 1
+        ) {
             const element = tuple->elements.get_const(element_index).unwrap();
 
             var name = self->type_name(&element->ty);
@@ -2064,11 +2062,6 @@ pub struct TypeEmitter {
     }
 
     /// Returns the C struct type used to return an array by value.
-    ///
-    /// C has no array-returning functions, so an array return type `T[N]`
-    /// is represented by a generated `struct { T data[N]; }`. The same
-    /// name is returned for structurally identical array types so that
-    /// declarations, definitions and call sites always agree.
     pub fn array_return_struct_name(self: Self*, array_ty: const cir::SemaType*) String {
         var sig = self->type_name(array_ty);
 
@@ -2084,12 +2077,13 @@ pub struct TypeEmitter {
 
         var struct_name = String.new(self->allocator);
         struct_name.push_str("__array_ret_");
-        push_usize_into(&struct_name, self->allocator, self->array_return_counter);
+        push_usize_into(
+            &struct_name, 
+            self->allocator, 
+            self->array_return_counter
+        );
         self->array_return_counter += 1;
 
-        // Strip a top-level `const` from the wrapped element type: the
-        // wrapper is an implementation detail and mutating its `data`
-        // field (via memcpy) must stay legal.
         var field_ty = array_ty->const_inner();
         var field_decl = self->build_decl(field_ty, "data");
 
@@ -2104,9 +2098,12 @@ pub struct TypeEmitter {
         field_decl.free();
         self->array_return_sigs.push(sig);
 
-        var owned_name = String.from_str(self->allocator, struct_name.as_str_const());
-        self->array_return_names.push(owned_name);
+        var owned_name = String.from_str(
+            self->allocator, 
+            struct_name.as_str_const()
+        );
 
+        self->array_return_names.push(owned_name);
         return struct_name;
     }
 }
@@ -2180,13 +2177,6 @@ fn push_uint32_into(out: String*, allocator: Allocator, value: uint32) {
     buffer.free();
 }
 
-/// Size of an enum's payload region.
-///
-/// `compute_enum_layout_inner` records two logical fields for an enum: the
-/// tag at `original_index` 0 and the payload at `original_index` 1. The
-/// union guarding the emitted enum struct has to span the payload only --
-/// sizing it with the whole tag+payload layout inflates the union and, with
-/// it, the struct (`@sizeof` then reports tag + 2 * payload).
 fn enum_payload_size(layout: const ABITypeLayout*) uint32 {
     for (var i: usize = 0; i < layout->field_offsets.len(); i += 1) {
         const entry = layout->field_offsets.get_const(i).unwrap();

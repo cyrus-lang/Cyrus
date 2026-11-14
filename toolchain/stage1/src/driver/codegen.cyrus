@@ -11,6 +11,7 @@ import std::os{File};
 import sema::context{AnalyzerContext};
 import .::index{CompilerContext};
 import resolver::index{Resolver};
+import abi::target{TargetInfo};
 import codegen::c{CodegenC};
 import .::tcc;
 
@@ -30,9 +31,10 @@ pub enum Backend {
 pub struct CodegenContext {
     pub allocator: Allocator,
     pub backend: Backend,
+    pub target: TargetInfo,
 
-    pub fn new(allocator: Allocator, backend: Backend) Self {
-        return Self { allocator, backend };
+    pub fn new(allocator: Allocator, backend: Backend, target: TargetInfo) Self {
+        return Self { allocator, backend, target };
     }
 
     pub fn emit(
@@ -51,7 +53,8 @@ pub struct CodegenContext {
                     &resolver->program_trees,
                     &analyzer->vtable_registry,
                     &analyzer->monomorph_registry,
-                    &context->sctx
+                    &context->sctx,
+                    self->target
                 );
                 codegen.emit(writer);
                 codegen.free();

@@ -9,7 +9,7 @@ import std::errors{ErrorOr};
 import std::option{Option};
 import std::mem{Allocator};
 import std::string{String};
-import std::libc{printf};
+import std::libc{printf, getenv};
 import std::os::process;
 import std::os::dir;
 import std::cli;
@@ -24,8 +24,11 @@ import resolver::index{Resolver};
 import .::index{CompilerContext};
 import sema{trigger_analyzer};
 import diags{compile_error};
+import abi::target{TargetInfo};
 import tokens{dump_tokens};
 import version;
+
+extern "C" fn readlink(pathname: const uint8*, buf: uint8*, bufsiz: usize) isize;
 
 static var command_exit_code: int32 = 0;
 
@@ -168,7 +171,13 @@ pub fn command_dump_bir(action: cli::ActionContext) {
         return;
     }
 
-    var codegen = CodegenContext.new(allocator, backend);
+    switch (target_from_action(action)) case .Some(var target) else {
+        compile_error("unsupported target triple");
+        command_exit_code = 1;
+        return;
+    }
+
+    var codegen = CodegenContext.new(allocator, backend, target);
 
     switch (output_option(action)) {
         case .Some(var output_path) => {
@@ -447,6 +456,119 @@ fn backend_from_action(action: cli::ActionContext) Option<Backend> {
     return Backend.from_str(name.as_str_const());
 }
 
+fn target_from_action(action: cli::ActionContext) Option<TargetInfo> {
+    switch (action.opts->find("target")) {
+        case .Some(opt) => {
+            switch (opt->values.get(0)) {
+                case .Some(value) => {
+                    switch (*value) {
+                        case .Str(str) => {
+                            return TargetInfo.from_triple(str.as_str_const());
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return .Some(TargetInfo.host());
+}
+
+fn append_list_item(dest: String*, item: const uint8*) {
+    if (!dest->is_empty()) {
+        dest->push('\n');
+    }
+    dest->push_str(item);
+}
+
+fn rt_lib_exists_in(allocator: Allocator, dir: const uint8*) bool {
+    var probe = std::path::join_path(allocator, dir, "libcyrus_rt.a");
+    defer probe.free();
+    return os::is_file(probe.as_str_const());
+}
+
+fn find_codegen_c_rt_dir(allocator: Allocator, opts: const cli::Opts*) Option<String> {
+    const env_dir = getenv("CYRUS_CODEGEN_C_LIB_DIR");
+    if (env_dir != null && env_dir[0] != '\0') {
+        if (rt_lib_exists_in(allocator, env_dir)) {
+            return .Some(String.from_str(allocator, env_dir));
+        }
+    }
+
+    switch (opts->find("stdlib")) {
+        case .Some(opt) => {
+            switch (opt->values.get(0)) {
+                case .Some(value) => {
+                    switch (*value) {
+                        case .Str(str) => {
+                            var candidate = std::path::join_path(
+                                allocator,
+                                str.as_str_const(),
+                                "../../toolchain/stage1/src/codegen/c/build"
+                            );
+                            if (rt_lib_exists_in(allocator, candidate.as_str_const())) {
+                                return .Some(candidate);
+                            }
+                            candidate.free();
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    const env_stdlib = getenv("CYRUS_STDLIB_PATH");
+    if (env_stdlib != null && env_stdlib[0] != '\0') {
+        var candidate = std::path::join_path(
+            allocator,
+            env_stdlib,
+            "../../toolchain/stage1/src/codegen/c/build"
+        );
+        if (rt_lib_exists_in(allocator, candidate.as_str_const())) {
+            return .Some(candidate);
+        }
+        candidate.free();
+    }
+
+    var exe_buf: uint8[4096];
+    const n = readlink("/proc/self/exe", &exe_buf[0], 4095);
+    if (n > 0) {
+        exe_buf[@cast(usize, n)] = '\0';
+        var exe_dir = dir_of_file(allocator, &exe_buf[0]);
+        defer exe_dir.free();
+
+        if (rt_lib_exists_in(allocator, exe_dir.as_str_const())) {
+            return .Some(String.from_str(allocator, exe_dir.as_str_const()));
+        }
+
+        var repo_candidate = std::path::join_path(
+            allocator,
+            exe_dir.as_str_const(),
+            "../../src/codegen/c/build"
+        );
+        if (rt_lib_exists_in(allocator, repo_candidate.as_str_const())) {
+            return .Some(repo_candidate);
+        }
+        repo_candidate.free();
+    }
+
+    if (rt_lib_exists_in(allocator, "toolchain/stage1/src/codegen/c/build")) {
+        return .Some(String.from_str(allocator, "toolchain/stage1/src/codegen/c/build"));
+    }
+
+    if (rt_lib_exists_in(allocator, "src/codegen/c/build")) {
+        return .Some(String.from_str(allocator, "src/codegen/c/build"));
+    }
+
+    return .None;
+}
+
 // Joins every value of a repeatable option (`-z`, `-L`, `-l`) into
 // `dest` as a newline separated list, matching `tcc::compile`s inputs.
 fn collect_opt_values(opts: cli::Opts*, name: const uint8*, dest: String*) void {
@@ -503,7 +625,12 @@ fn compile_file(
         return 1;
     }
 
-    var codegen = CodegenContext.new(allocator, backend);
+    switch (target_from_action(action)) case .Some(var target) else {
+        compile_error("unsupported target triple");
+        return 1;
+    }
+
+    var codegen = CodegenContext.new(allocator, backend, target);
 
     var out = String.new(allocator);
     defer out.free();
@@ -529,6 +656,23 @@ fn compile_file(
     collect_opt_values(action.opts, "z", &extra_files);
     collect_opt_values(action.opts, "L", &lib_paths);
     collect_opt_values(action.opts, "l", &libraries);
+
+    switch (backend) {
+        case .C => {
+            switch (find_codegen_c_rt_dir(allocator, action.opts)) {
+                case .Some(var rt_dir) => {
+                    defer rt_dir.free();
+                    append_list_item(&lib_paths, rt_dir.as_str_const());
+                    append_list_item(&libraries, "cyrus_rt");
+                }
+                case .None => {
+                    compile_error("could not locate C runtime library `libcyrus_rt.a`");
+                    return 1;
+                }
+            }
+        }
+        else => {}
+    }
 
     if (!codegen.build(
         out.as_str_const(),

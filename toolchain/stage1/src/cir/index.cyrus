@@ -3504,6 +3504,20 @@ pub struct MethodDecl {
     pub fn is_instance_method(self: const Self*) bool {
         return self->func_decl.params.is_instance_method();
     }
+
+    pub fn is_self_by_value(self: const Self*) bool {
+        switch (self->func_decl.params.get_self_modifier()) {
+            case .Some(self_mod) => {
+                switch (self_mod.ty) {
+                    case .Pointer => return false;
+                    else => return true;
+                }
+            }
+            else => {}
+        }
+
+        return false;
+    }
 }
 
 pub struct TypedefDecl {
