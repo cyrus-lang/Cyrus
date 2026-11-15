@@ -254,7 +254,7 @@ pub struct ModuleGraph {
                 switch (self->index_of(key.as_str_const())) {
                     case .Some(existing) => {
                         if (self->active_contains(existing)) {
-                            self->report_cycle(import_->span);
+                            self->report_cycle(last_sub_module_span(&import_->segments));
                             self->nodes.get(from).unwrap()->has_errors = true;
                             key.free();
                             resolved.free();
