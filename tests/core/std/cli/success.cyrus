@@ -1,4 +1,4 @@
-// @stdout: aabc
+// @stdout: aabcabc
 
 import std::mem::libc{LibcAllocator};
 import std::mem{Allocator};
@@ -16,6 +16,9 @@ pub fn main() {
 
     const inst3 = _app::inst(allocator, 4, {_app::PROGRAM_NAME, "build", "--str-val", "hello"});
     defer allocator.free(inst3);
+
+    const inst4 = _app::inst(allocator, 8, {_app::PROGRAM_NAME, "build", "pos1", "-i", "42", "pos2", "-v", "--str-val=hello"});
+    defer allocator.free(inst4);
 
     printf("\n");
 }
