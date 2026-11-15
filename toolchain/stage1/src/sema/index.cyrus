@@ -11,6 +11,7 @@ import .::check{
     BodyWorkItem,
 };
 import .::context{AnalyzerContext};
+import cir;
 
 pub struct BodyScheduler {
     pub context: AnalyzerContext*,
@@ -27,11 +28,39 @@ pub fn trigger_analyzer(context: AnalyzerContext*) {
     run_monomorphization_phase(context);
 }
 
+fn tree_dependency_has_errors(context: const AnalyzerContext*, tree: const cir::ProgramTree*) bool {
+    for (var i: usize = 0; i < tree->deps.len(); i += 1) {
+        const dep_id = *tree->deps.get_const(i).unwrap();
+
+        for (var j: usize = 0; j < context->trees.len(); j += 1) {
+            const candidate = context->trees.get_const(j).unwrap();
+
+            if (candidate->file_id == dep_id && candidate->has_errors) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 /// Phase 1: top-level traversal for every reachable module.
 fn run_header_phase(context: AnalyzerContext*, work: Vec<BodyWorkItem>*) {
     for (var i: usize = 0; i < context->trees.len(); i += 1) {
         var tree = context->trees.get(i).unwrap();
+
+        if (tree->has_errors || tree_dependency_has_errors(context, tree)) {
+            tree->has_errors = true;
+            continue;
+        }
+
+        const start_diags = context->dctx->diag_count();
+
         analyze_toplevel_headers(context, tree, i, work);
+
+        if (context->dctx->has_errors_since(start_diags)) {
+            tree->has_errors = true;
+        }
     }
 }
 
@@ -65,6 +94,10 @@ fn body_worker(fiber: Fiber*) {
     while (scheduler->next < scheduler->work->len()) {
         const item = scheduler->work->get_const(scheduler->next).unwrap();
         scheduler->next += 1;
+
+        if (scheduler->context->trees.get_const(item->tree).unwrap()->has_errors) {
+            continue;
+        }
 
         analyze_toplevel_body_item(scheduler->context, item->tree, item->stmt);
         scheduler->context->scratch_arena.reset();

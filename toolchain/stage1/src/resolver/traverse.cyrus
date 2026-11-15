@@ -363,6 +363,18 @@ fn resolve_module_decl(
 /// 2. Symbols defined in the current module scope chain
 ///
 /// If no symbol can be found, an error diagnostic is emitted.
+fn is_poisoned_symbol(ctx: TraverseContext*, symbol_id: cir::SymbolId) bool {
+    switch (ctx->registry->entries.get_const(symbol_id)) {
+        case .Some(entry) => {
+            switch (entry->kind) {
+                case .Poisoned => return true;
+                else => return false;
+            }
+        }
+        case .None => return false;
+    }
+}
+
 fn resolve_ident(
     ctx: TraverseContext*,
     ident: const ast::ASTIdent*
@@ -428,6 +440,9 @@ fn resolve_module_import(
 
     switch (ctx->lookup_symbol(first_name)) {
         case .Some(symbol_id) => {
+            if (is_poisoned_symbol(ctx, symbol_id)) {
+                return .Some(symbol_id);
+            }
             current_symbol = symbol_id;
         }
         case .None => {
@@ -704,7 +719,7 @@ fn resolve_var(
         case .Some(type_spec) => {
             switch (resolve_type(ctx, program, &type_spec, variable->span)) {
                 case .Some(resolved) => ty = .Some(resolved);
-                else => {}
+                else => ty = .Some(.Err(variable->span));
             }
         }
         else => {}
@@ -714,10 +729,7 @@ fn resolve_var(
 
     switch (variable->rhs) {
         case .Some(rhs_id) => {
-            switch (resolve_expr_node(ctx, program, rhs_id)) {
-                case .Some(resolved) => rhs = .Some(resolved);
-                else => {}
-            }
+            rhs = .Some(resolve_expr_or_poisoned(ctx, program, rhs_id, variable->span));
         }
         else => {}
     }
@@ -749,10 +761,7 @@ fn resolve_export_tuple_stmt(
 
     switch (export_tuple->rhs) {
         case .Some(rhs_id) => {
-            switch (resolve_expr_node(ctx, program, rhs_id)) {
-                case .Some(resolved) => rhs = .Some(resolved);
-                else => {}
-            }
+            rhs = .Some(resolve_expr_or_poisoned(ctx, program, rhs_id, export_tuple->span));
         }
         else => {}
     }
@@ -840,59 +849,67 @@ fn resolve_export_pattern(
     });
 }
 
+fn resolve_expr_or_poisoned(
+    ctx: TraverseContext*,
+    program: const ast::ASTProgram*,
+    node_id: ast::NodeId,
+    fallback_span: Span
+) cir::Expr {
+    switch (resolve_expr_node(ctx, program, node_id)) {
+        case .Some(expr) => return expr;
+        case .None => return cir::Expr.new(.Poisoned, fallback_span);
+    }
+}
+
 fn resolve_if_stmt(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     if_stmt: const ast::ASTIf*
 ) Option<cir::IfStmt> {
-    switch (resolve_expr_node(ctx, program, if_stmt->condition)) {
-        case .Some(cond) => {
-            switch (resolve_block_node(ctx, program, if_stmt->then_block)) {
-                case .Some(then_block) => {
-                    var else_block: Option<cir::BlockStmt*> = .None;
+    const cond = resolve_expr_or_poisoned(ctx, program, if_stmt->condition, if_stmt->span);
+    
+    switch (resolve_block_node(ctx, program, if_stmt->then_block)) {
+        case .Some(then_block) => {
+            var else_block: Option<cir::BlockStmt*> = .None;
 
-                    switch (if_stmt->else_block) {
-                        case .Some(else_id) => {
-                            switch (resolve_block_node(ctx, program, else_id)) {
-                                case .Some(block) => {
-                                    else_block = .Some(alloc_init(ctx->allocator, block));
-                                }
-                                case .None => return .None;
-                            }
+            switch (if_stmt->else_block) {
+                case .Some(else_id) => {
+                    switch (resolve_block_node(ctx, program, else_id)) {
+                        case .Some(block) => {
+                            else_block = .Some(alloc_init(ctx->allocator, block));
                         }
-                        else => {}
+                        case .None => return .None;
                     }
-
-                    var branches: Vec<cir::IfStmt> = Vec.new(ctx->allocator);
-
-                    for (var i: usize = 0; i < if_stmt->branches.len(); i += 1) {
-                        const branch_id = if_stmt->branches.get_owned(i).unwrap();
-
-                        switch (*operand_node(program, branch_id)) {
-                            case .If(branch) => {
-                                switch (resolve_if_stmt(ctx, program, &branch)) {
-                                    case .Some(typed_branch) => branches.push(typed_branch);
-                                    else => {}
-                                }
-                            }
-                            else => {}
-                        }
-                    }
-
-                    return .Some(cir::IfStmt {
-                        cond,
-                        then_block: alloc_init(ctx->allocator, then_block),
-                        branches,
-                        else_block,
-                        span: if_stmt->span,
-                    });
                 }
                 else => {}
             }
+
+            var branches: Vec<cir::IfStmt> = Vec.new(ctx->allocator);
+
+            for (var i: usize = 0; i < if_stmt->branches.len(); i += 1) {
+                const branch_id = if_stmt->branches.get_owned(i).unwrap();
+
+                switch (*operand_node(program, branch_id)) {
+                    case .If(branch) => {
+                        switch (resolve_if_stmt(ctx, program, &branch)) {
+                            case .Some(typed_branch) => branches.push(typed_branch);
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+
+            return .Some(cir::IfStmt {
+                cond,
+                then_block: alloc_init(ctx->allocator, then_block),
+                branches,
+                else_block,
+                span: if_stmt->span,
+            });
         }
         else => {}
     }
-
     return .None;
 }
 
@@ -911,16 +928,10 @@ fn resolve_for_stmt(
                 case .Var(variable) => {
                     switch (resolve_var(ctx, program, &variable)) {
                         case .Some(resolved) => initializer = .Some(resolved);
-                        case .None => {
-                            ctx->exit_local_scope();
-                            return .None;
-                        }
+                        case .None => {}
                     }
                 }
-                else => {
-                    ctx->exit_local_scope();
-                    return .None;
-                }
+                else => {}
             }
         }
         else => {}
@@ -930,15 +941,7 @@ fn resolve_for_stmt(
 
     switch (for_stmt->condition) {
         case .Some(cond_id) => {
-            switch (resolve_expr_node(ctx, program, cond_id)) {
-                case .Some(resolved) => {
-                    cond = .Some(resolved);
-                }
-                case .None => {
-                    ctx->exit_local_scope();
-                    return .None;
-                }
-            }
+            cond = .Some(resolve_expr_or_poisoned(ctx, program, cond_id, for_stmt->span));
         }
         else => {}
     }
@@ -947,15 +950,7 @@ fn resolve_for_stmt(
 
     switch (for_stmt->increment) {
         case .Some(incr_id) => {
-            switch (resolve_expr_node(ctx, program, incr_id)) {
-                case .Some(resolved) => {
-                    increment = .Some(resolved);
-                }
-                case .None => {
-                    ctx->exit_local_scope();
-                    return .None;
-                }
-            }
+            increment = .Some(resolve_expr_or_poisoned(ctx, program, incr_id, for_stmt->span));
         }
         else => {}
     }
@@ -986,27 +981,26 @@ fn resolve_while_stmt(
 ) Option<cir::WhileStmt> {
     ctx->enter_local_scope(LocalScope.new(ctx->allocator));
 
-    switch (resolve_expr_node(ctx, program, while_stmt->condition)) {
+    const cond = resolve_expr_or_poisoned(
+        ctx, 
+        program, 
+        while_stmt->condition, 
+        while_stmt->span
+    );
+
+    switch (resolve_block_node(ctx, program, while_stmt->body)) {
+        case .Some(body) => {
+            ctx->exit_local_scope();
+
+            return .Some(cir::WhileStmt {
+                cond,
+                body: alloc_init(ctx->allocator, body),
+                span: while_stmt->span,
+            });
+        }
         case .None => {
             ctx->exit_local_scope();
             return .None;
-        }
-        case .Some(cond) => {
-            switch (resolve_block_node(ctx, program, while_stmt->body)) {
-                case .Some(body) => {
-                    ctx->exit_local_scope();
-
-                    return .Some(cir::WhileStmt {
-                        cond,
-                        body: alloc_init(ctx->allocator, body),
-                        span: while_stmt->span,
-                    });
-                }
-                case .None => {
-                    ctx->exit_local_scope();
-                    return .None;
-                }
-            }
         }
     }
 }
@@ -1571,19 +1565,26 @@ fn resolve_func_signature(
 
             var typed_params: Vec<cir::FuncParamKind> = Vec.new(ctx->allocator);
             var variadic: Option<cir::FuncVariadicParam> = .None;
-            var ret: Option<cir::SemaType> = .None;
-            var ok = true;
+            var ret: cir::SemaType = .Err(span);
 
             var i: usize = 0;
 
-            while (ok && i < params->list.len()) {
+            while (i < params->list.len()) {
                 const param = params->list.get_const(i).unwrap();
 
                 switch (*param) {
                     case .FuncParam(func_param) => {
                         switch (resolve_func_param(ctx, program, &func_param)) {
                             case .Some(typed_param) => typed_params.push(.FuncParam(typed_param));
-                            case .None => ok = false;
+                            case .None => {
+                                typed_params.push(.FuncParam(cir::FuncParam {
+                                    var_decl_id: .None,
+                                    ident: func_param.ident,
+                                    ty: .Err(func_param.span),
+                                    constness: func_param.constness,
+                                    span: func_param.span,
+                                }));
+                            }
                         }
                     }
                     case .SelfModifier(self_modifier) => {
@@ -1594,48 +1595,31 @@ fn resolve_func_signature(
                 i += 1;
             }
 
-            if (ok) {
-                switch (params->variadic) {
-                    case .Some(variadic_param) => {
-                        switch (resolve_func_variadic_param(ctx, program, &variadic_param)) {
-                            case .Some(resolved) => variadic = .Some(resolved);
-                            case .None => ok = false;
-                        }
+            switch (params->variadic) {
+                case .Some(variadic_param) => {
+                    switch (resolve_func_variadic_param(ctx, program, &variadic_param)) {
+                        case .Some(resolved) => variadic = .Some(resolved);
+                        case .None => {}
                     }
-                    else => {}
                 }
+                else => {}
             }
 
-            if (ok) {
-                switch (resolve_return_type(ctx, program, ret_type, span)) {
-                    case .Some(resolved_ret) => ret = .Some(resolved_ret);
-                    case .None => ok = false;
-                }
+            switch (resolve_return_type(ctx, program, ret_type, span)) {
+                case .Some(resolved_ret) => ret = resolved_ret;
+                case .None => {}
             }
 
             ctx->pop_generic_scope();
 
-            if (!ok) {
-                typed_params.free();
-                return .None;
-            }
-
-            switch (ret) {
-                case .Some(resolved_ret) => {
-                    return .Some(FuncSig {
-                        generic_params: resolved_generic_params,
-                        params: cir::FuncParams {
-                            list: typed_params,
-                            variadic,
-                        },
-                        ret_type: resolved_ret,
-                    });
-                }
-                case .None => {
-                    typed_params.free();
-                    return .None;
-                }
-            }
+            return .Some(FuncSig {
+                generic_params: resolved_generic_params,
+                params: cir::FuncParams {
+                    list: typed_params,
+                    variadic,
+                },
+                ret_type: ret,
+            });
         }
         case .None => return .None;
     }
@@ -1962,7 +1946,7 @@ fn resolve_global_var_stmt(
         case .Some(ty) => {
             switch (resolve_type(ctx, program, &ty, global_var->span)) {
                 case .Some(resolved) => var_ty = .Some(resolved);
-                else => {}
+                else => var_ty = .Some(.Err(global_var->span));
             }
         }
         else => {}
@@ -1972,10 +1956,7 @@ fn resolve_global_var_stmt(
 
     switch (global_var->expr) {
         case .Some(expr_node_id) => {
-            switch (resolve_expr_node(ctx, program, expr_node_id)) {
-                case .Some(resolved) => rhs = .Some(resolved);
-                else => {}
-            }
+            rhs = .Some(resolve_expr_or_poisoned(ctx, program, expr_node_id, global_var->span));
         }
         else => {}
     }
@@ -2061,7 +2042,20 @@ fn resolve_typedef(
                         span: typedef->span,
                     }));
                 }
-                else => {}
+                else => {
+                    const err_ty: cir::SemaType = .Err(typedef->span);
+                    var entry = ctx->decl_tables->typedefs.get(typedef_decl_id).unwrap();
+                    entry->ty = alloc_init(ctx->allocator, err_ty);
+
+                    out = .Some(.Typedef(cir::TypedefStmt {
+                        typedef_decl_id,
+                        name: String.from_str(ctx->allocator, name),
+                        ty: err_ty,
+                        generic_params,
+                        vis: typedef->vis,
+                        span: typedef->span,
+                    }));
+                }
             }
 
             ctx->pop_generic_scope();
@@ -2278,11 +2272,16 @@ fn resolve_struct_stmt(
                             span: field->span,
                         });
                     }
-                    else => {}
+                    else => {
+                        typed_fields.push(cir::StructField {
+                            name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
+                            vis: field->vis,
+                            ty: .Err(field->span),
+                            span: field->span,
+                        });
+                    }
                 }
             }
-
-            diags::report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &struct_decl->methods);
 
             const methods = resolve_methods(ctx, program, &struct_decl->methods, name);
 
@@ -2370,8 +2369,6 @@ fn resolve_enum_stmt(
                     return .None;
                 }
                 case .Some(variants) => {
-                    diags::report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &enum_decl->methods);
-
                     const methods = resolve_methods(ctx, program, &enum_decl->methods, name);
 
                     var entry = ctx->decl_tables->enums.get(enum_decl_id).unwrap();
@@ -2454,11 +2451,15 @@ fn resolve_union_stmt(
                             span: field->span,
                         });
                     }
-                    else => {}
+                    else => {
+                        typed_fields.push(cir::UnionField {
+                            name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
+                            ty: .Err(field->span),
+                            span: field->span,
+                        });
+                    }
                 }
             }
-
-            diags::report_if_duplicate_method_names(ctx->dctx, ctx->diag_allocator, program, name, &union_decl->methods);
 
             const methods = resolve_methods(ctx, program, &union_decl->methods, name);
 
@@ -2511,11 +2512,10 @@ fn resolve_interface_stmt(
             enter_generic_scope(ctx, &generic_params);
 
             var interface_methods = cir::MethodDecls.new(ctx->allocator);
-            var methods_ok = true;
 
             var i: usize = 0;
 
-            while (methods_ok && i < interface_stmt->methods.len()) {
+            while (i < interface_stmt->methods.len()) {
                 const node_id = interface_stmt->methods.get_owned(i).unwrap();
 
                 switch (*operand_node(program, node_id)) {
@@ -2551,7 +2551,7 @@ fn resolve_interface_stmt(
 
                                 interface_methods.insert(String.from_str(ctx->allocator, method.ident.str.as_str_const()), method_decl_id);
                             }
-                            case .None => methods_ok = false;
+                            case .None => {}
                         }
                     }
                     else => {}
@@ -2561,10 +2561,6 @@ fn resolve_interface_stmt(
             }
 
             ctx->pop_generic_scope();
-
-            if (!methods_ok) {
-                return .None;
-            }
 
             const interface_decl_id = ctx->decl_tables->insert_interface(cir::InterfaceDecl {
                 name: String.from_str(ctx->allocator, name),
@@ -2721,6 +2717,9 @@ fn resolve_ident_expr(
 
     switch (resolve_ident(ctx, ident)) {
         case .Some(symbol_id) => {
+            if (is_poisoned_symbol(ctx, symbol_id)) {
+                return .Some(cir::Expr.new(.Poisoned, ident->span));
+            }
             return .Some(cir::Expr.new(.Symbol(.Unresolved {
                 symbol_id,
                 span: ident->span,
@@ -2902,6 +2901,9 @@ fn resolve_type_expr(
         case .Ident(ident) => {
             switch (resolve_ident(ctx, &ident)) {
                 case .Some(symbol_id) => {
+                    if (is_poisoned_symbol(ctx, symbol_id)) {
+                        return .Some(cir::Expr.new(.Poisoned, span));
+                    }
                     return .Some(cir::Expr.new(.Symbol(.Unresolved {
                         symbol_id,
                         span,
@@ -2913,6 +2915,9 @@ fn resolve_type_expr(
         case .ModuleImport(module_import) => {
             switch (resolve_module_import(ctx, program, &module_import)) {
                 case .Some(symbol_id) => {
+                    if (is_poisoned_symbol(ctx, symbol_id)) {
+                        return .Some(cir::Expr.new(.Poisoned, span));
+                    }
                     return .Some(cir::Expr.new(.Symbol(.Unresolved {
                         symbol_id,
                         span,
@@ -2949,17 +2954,12 @@ fn resolve_unnamed_union_value(
 
     for (var i: usize = 0; i < unnamed_union_value->fields.len(); i += 1) {
         const field = unnamed_union_value->fields.get_const(i).unwrap();
-
-        switch (resolve_expr_node(ctx, program, field->value)) {
-            case .Some(value) => {
-                fields.push(cir::UnnamedUnionValueField {
-                    name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
-                    value: alloc_init(ctx->allocator, value),
-                    span: field->span,
-                });
-            }
-            else => {}
-        }
+        const value = resolve_expr_or_poisoned(ctx, program, field->value, field->span);
+        fields.push(cir::UnnamedUnionValueField {
+            name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
+            value: alloc_init(ctx->allocator, value),
+            span: field->span,
+        });
     }
 
     return .Some(cir::Expr.new(.UnnamedUnionValue(cir::UnnamedUnionValue {
@@ -2982,11 +2982,7 @@ fn resolve_unnamed_enum_value(
 
             for (var i: usize = 0; i < exprs.len(); i += 1) {
                 const expr_id = exprs.get_owned(i).unwrap();
-
-                switch (resolve_expr_node(ctx, program, expr_id)) {
-                    case .Some(typed_expr) => typed_exprs.push(typed_expr);
-                    else => {}
-                }
+                typed_exprs.push(resolve_expr_or_poisoned(ctx, program, expr_id, unnamed_enum_value->span));
             }
 
             kind = .Tuple(typed_exprs);
@@ -2996,17 +2992,12 @@ fn resolve_unnamed_enum_value(
 
             for (var i: usize = 0; i < field_inits.len(); i += 1) {
                 const field_init = field_inits.get_const(i).unwrap();
-
-                switch (resolve_expr_node(ctx, program, field_init->value)) {
-                    case .Some(typed_expr) => {
-                        typed_field_inits.push(cir::EnumStructVariantFieldInit {
-                            name: field_init->name,
-                            value: alloc_init(ctx->allocator, typed_expr),
-                            span: field_init->span,
-                        });
-                    }
-                    else => {}
-                }
+                const typed_expr = resolve_expr_or_poisoned(ctx, program, field_init->value, field_init->span);
+                typed_field_inits.push(cir::EnumStructVariantFieldInit {
+                    name: field_init->name,
+                    value: alloc_init(ctx->allocator, typed_expr),
+                    span: field_init->span,
+                });
             }
 
             kind = .Struct(typed_field_inits);
@@ -3067,11 +3058,7 @@ fn resolve_tuple_expr(
 
     for (var i: usize = 0; i < tuple_value->elements.len(); i += 1) {
         const expr_id = tuple_value->elements.get_owned(i).unwrap();
-
-        switch (resolve_expr_node(ctx, program, expr_id)) {
-            case .Some(typed_expr) => elements.push(typed_expr);
-            else => {}
-        }
+        elements.push(resolve_expr_or_poisoned(ctx, program, expr_id, tuple_value->span));
     }
 
     return .Some(cir::Expr.new(.Tuple(cir::TupleExpr {
@@ -3163,11 +3150,7 @@ fn resolve_method_call(
 
             for (var i: usize = 0; i < method_call->args.len(); i += 1) {
                 const arg_id = method_call->args.get_owned(i).unwrap();
-
-                switch (resolve_expr_node(ctx, program, arg_id)) {
-                    case .Some(typed_arg) => args.push(typed_arg);
-                    else => {}
-                }
+                args.push(resolve_expr_or_poisoned(ctx, program, arg_id, method_call->span));
             }
 
             switch (resolve_type_args(ctx, program, &method_call->type_args)) {
@@ -3230,17 +3213,12 @@ fn resolve_struct_init(
 
             for (var i: usize = 0; i < struct_init->field_inits.len(); i += 1) {
                 const field_init = struct_init->field_inits.get_const(i).unwrap();
-
-                switch (resolve_expr_node(ctx, program, field_init->value)) {
-                    case .Some(value) => {
-                        fields.push(cir::FieldInit {
-                            name: String.from_str(ctx->allocator, field_init->ident.str.as_str_const()),
-                            value,
-                            span: field_init->span,
-                        });
-                    }
-                    else => {}
-                }
+                const value = resolve_expr_or_poisoned(ctx, program, field_init->value, field_init->span);
+                fields.push(cir::FieldInit {
+                    name: String.from_str(ctx->allocator, field_init->ident.str.as_str_const()),
+                    value,
+                    span: field_init->span,
+                });
             }
 
             return .Some(cir::Expr.new(.StructInit(cir::StructInitExpr {
@@ -3264,17 +3242,12 @@ fn resolve_enum_struct_variant_init(
 
             for (var i: usize = 0; i < variant_init->field_inits.len(); i += 1) {
                 const field_init = variant_init->field_inits.get_const(i).unwrap();
-
-                switch (resolve_expr_node(ctx, program, field_init->value)) {
-                    case .Some(typed_expr) => {
-                        field_inits.push(cir::EnumStructVariantFieldInit {
-                            name: field_init->name,
-                            value: alloc_init(ctx->allocator, typed_expr),
-                            span: field_init->span,
-                        });
-                    }
-                    else => {}
-                }
+                const typed_expr = resolve_expr_or_poisoned(ctx, program, field_init->value, field_init->span);
+                field_inits.push(cir::EnumStructVariantFieldInit {
+                    name: field_init->name,
+                    value: alloc_init(ctx->allocator, typed_expr),
+                    span: field_init->span,
+                });
             }
 
             return .Some(cir::Expr.new(.EnumStructVariantInit(cir::EnumStructVariantInit {
@@ -3300,17 +3273,12 @@ fn resolve_unnamed_struct_value(
 
     for (var i: usize = 0; i < unnamed_struct_value->fields.len(); i += 1) {
         const field = unnamed_struct_value->fields.get_const(i).unwrap();
-
-        switch (resolve_expr_node(ctx, program, field->value)) {
-            case .Some(value) => {
-                fields.push(cir::UnnamedStructValueField {
-                    name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
-                    value: alloc_init(ctx->allocator, value),
-                    span: field->span,
-                });
-            }
-            else => {}
-        }
+        const value = resolve_expr_or_poisoned(ctx, program, field->value, field->span);
+        fields.push(cir::UnnamedStructValueField {
+            name: String.from_str(ctx->allocator, field->name.str.as_str_const()),
+            value: alloc_init(ctx->allocator, value),
+            span: field->span,
+        });
     }
 
     return .Some(cir::Expr.new(.UnnamedStructValue(cir::UnnamedStructValue {
@@ -3333,11 +3301,7 @@ fn resolve_func_call(
 
             for (var i: usize = 0; i < func_call->args.len(); i += 1) {
                 const arg_id = func_call->args.get_owned(i).unwrap();
-
-                switch (resolve_expr_node(ctx, program, arg_id)) {
-                    case .Some(typed_arg) => args.push(typed_arg);
-                    else => {}
-                }
+                args.push(resolve_expr_or_poisoned(ctx, program, arg_id, func_call->span));
             }
 
             switch (resolve_type_args(ctx, program, &func_call->type_args)) {
@@ -3368,11 +3332,7 @@ fn resolve_untyped_array_expr(
 
     for (var i: usize = 0; i < untyped_array->elements.len(); i += 1) {
         const expr_id = untyped_array->elements.get_owned(i).unwrap();
-
-        switch (resolve_expr_node(ctx, program, expr_id)) {
-            case .Some(typed_expr) => elements.push(typed_expr);
-            else => {}
-        }
+        elements.push(resolve_expr_or_poisoned(ctx, program, expr_id, untyped_array->span));
     }
 
     return .Some(cir::Expr.new(.Array(cir::ArrayExpr {
@@ -3399,11 +3359,7 @@ fn resolve_array_expr(
 
             for (var i: usize = 0; i < array->elements.len(); i += 1) {
                 const expr_id = array->elements.get_owned(i).unwrap();
-
-                switch (resolve_expr_node(ctx, program, expr_id)) {
-                    case .Some(typed_expr) => elements.push(typed_expr);
-                    else => {}
-                }
+                elements.push(resolve_expr_or_poisoned(ctx, program, expr_id, array->span));
             }
 
             return .Some(cir::Expr.new(.Array(cir::ArrayExpr {
@@ -3421,24 +3377,15 @@ fn resolve_infix_expr(
     program: const ast::ASTProgram*,
     infix: const ast::ASTInfixExpr*
 ) Option<cir::Expr> {
-    switch (resolve_expr_node(ctx, program, infix->lhs)) {
-        case .Some(lhs) => {
-            switch (resolve_expr_node(ctx, program, infix->rhs)) {
-                case .Some(rhs) => {
-                    return .Some(cir::Expr.new(.Infix(cir::InfixExpr {
-                        op: infix->operator,
-                        lhs: alloc_init(ctx->allocator, lhs),
-                        rhs: alloc_init(ctx->allocator, rhs),
-                        span: infix->span,
-                    }), infix->span));
-                }
-                else => {}
-            }
-        }
-        else => {}
-    }
+    const lhs = resolve_expr_or_poisoned(ctx, program, infix->lhs, infix->span);
+    const rhs = resolve_expr_or_poisoned(ctx, program, infix->rhs, infix->span);
 
-    return .None;
+    return .Some(cir::Expr.new(.Infix(cir::InfixExpr {
+        op: infix->operator,
+        lhs: alloc_init(ctx->allocator, lhs),
+        rhs: alloc_init(ctx->allocator, rhs),
+        span: infix->span,
+    }), infix->span));
 }
 
 fn resolve_prefix_expr(
@@ -3463,24 +3410,15 @@ fn resolve_assign_expr(
     program: const ast::ASTProgram*,
     assign: const ast::ASTAssignExpr*
 ) Option<cir::Expr> {
-    switch (resolve_expr_node(ctx, program, assign->lhs)) {
-        case .Some(lhs) => {
-            switch (resolve_expr_node(ctx, program, assign->rhs)) {
-                case .Some(rhs) => {
-                    return .Some(cir::Expr.new(.Assign(cir::AssignExpr {
-                        lhs: alloc_init(ctx->allocator, lhs),
-                        rhs: alloc_init(ctx->allocator, rhs),
-                        kind: assign->kind,
-                        span: assign->span,
-                    }), assign->span));
-                }
-                else => {}
-            }
-        }
-        else => {}
-    }
+    const lhs = resolve_expr_or_poisoned(ctx, program, assign->lhs, assign->span);
+    const rhs = resolve_expr_or_poisoned(ctx, program, assign->rhs, assign->span);
 
-    return .None;
+    return .Some(cir::Expr.new(.Assign(cir::AssignExpr {
+        lhs: alloc_init(ctx->allocator, lhs),
+        rhs: alloc_init(ctx->allocator, rhs),
+        kind: assign->kind,
+        span: assign->span,
+    }), assign->span));
 }
 
 fn resolve_array_index_expr(
@@ -3488,23 +3426,14 @@ fn resolve_array_index_expr(
     program: const ast::ASTProgram*,
     array_index: const ast::ASTArrayIndexExpr*
 ) Option<cir::Expr> {
-    switch (resolve_expr_node(ctx, program, array_index->operand)) {
-        case .Some(operand) => {
-            switch (resolve_expr_node(ctx, program, array_index->index)) {
-                case .Some(index) => {
-                    return .Some(cir::Expr.new(.ArrayIndex(cir::ArrayIndexExpr {
-                        operand: alloc_init(ctx->allocator, operand),
-                        index: alloc_init(ctx->allocator, index),
-                        span: array_index->span,
-                    }), array_index->span));
-                }
-                else => {}
-            }
-        }
-        else => {}
-    }
+    const operand = resolve_expr_or_poisoned(ctx, program, array_index->operand, array_index->span);
+    const index = resolve_expr_or_poisoned(ctx, program, array_index->index, array_index->span);
 
-    return .None;
+    return .Some(cir::Expr.new(.ArrayIndex(cir::ArrayIndexExpr {
+        operand: alloc_init(ctx->allocator, operand),
+        index: alloc_init(ctx->allocator, index),
+        span: array_index->span,
+    }), array_index->span));
 }
 
 fn resolve_addr_of_expr(
@@ -3720,7 +3649,12 @@ fn resolve_ident_type(
     }
 
     switch (ctx->lookup_symbol(name)) {
-        case .Some(symbol_id) => return .Some(.Unresolved(.Decl(symbol_id)));
+        case .Some(symbol_id) => {
+            if (is_poisoned_symbol(ctx, symbol_id)) {
+                return .Some(.Err(ident->span));
+            }
+            return .Some(.Unresolved(.Decl(symbol_id)));
+        }
         else => {}
     }
 
@@ -3746,12 +3680,12 @@ fn resolve_module_import_type(
 ) Option<cir::SemaType> {
     switch (resolve_module_import(ctx, program, module_import)) {
         case .Some(symbol_id) => {
+            if (is_poisoned_symbol(ctx, symbol_id)) {
+                return .Some(.Err(module_import->span));
+            }
             return .Some(.Unresolved(.Decl(symbol_id)));
         }
         case .None => {
-            var name = format::format_module_segments(ctx->allocator, &module_import->segments);
-            diags::report_type_not_found(ctx->dctx, ctx->diag_allocator, module_import->span, name.as_str_const());
-            name.free();
             return .None;
         }
     }
@@ -3848,6 +3782,7 @@ fn resolve_generic_inst_type(
                         ctx->diag_allocator, 
                         inst->span
                     );
+                    return .None;
                 }
                 else => {}
             }
@@ -4240,31 +4175,28 @@ fn resolve_enum_variants(
                 typed_variants.push(.Unit(ident));
             }
             case .Valued { ident, value } => {
-                switch (resolve_expr_node(ctx, program, value)) {
-                    case .Some(expr) => {
-                        typed_variants.push(.Valued {
-                            ident,
-                            value: alloc_init(ctx->allocator, expr),
-                        });
-                    }
-                    else => {}
-                }
+                const expr = resolve_expr_or_poisoned(ctx, program, value, ident.span);
+                typed_variants.push(.Valued {
+                    ident,
+                    value: alloc_init(ctx->allocator, expr),
+                });
             }
             case .Tuple { ident, fields } => {
                 var typed_fields: Vec<cir::EnumVariantTupleField> = Vec.new(ctx->allocator);
 
                 for (var j: usize = 0; j < fields.len(); j += 1) {
                     const tuple_field = fields.get_const(j).unwrap();
+                    var field_ty: cir::SemaType = .Err(tuple_field->span);
 
                     switch (resolve_type_node(ctx, program, tuple_field->ty, ident.span)) {
-                        case .Some(ty) => {
-                            typed_fields.push(cir::EnumVariantTupleField {
-                                ty,
-                                span: tuple_field->span,
-                            });
-                        }
+                        case .Some(ty) => field_ty = ty;
                         else => {}
                     }
+
+                    typed_fields.push(cir::EnumVariantTupleField {
+                        ty: field_ty,
+                        span: tuple_field->span,
+                    });
                 }
 
                 typed_variants.push(.Tuple { ident, fields: typed_fields });
@@ -4274,17 +4206,18 @@ fn resolve_enum_variants(
 
                 for (var j: usize = 0; j < fields.len(); j += 1) {
                     const struct_field = fields.get_const(j).unwrap();
+                    var field_ty: cir::SemaType = .Err(struct_field->span);
 
                     switch (resolve_type_node(ctx, program, struct_field->ty, ident.span)) {
-                        case .Some(ty) => {
-                            typed_fields.push(cir::EnumVariantStructField {
-                                name: struct_field->name,
-                                ty,
-                                span: struct_field->span,
-                            });
-                        }
+                        case .Some(ty) => field_ty = ty;
                         else => {}
                     }
+
+                    typed_fields.push(cir::EnumVariantStructField {
+                        name: struct_field->name,
+                        ty: field_ty,
+                        span: struct_field->span,
+                    });
                 }
 
                 typed_variants.push(.Struct { ident, fields: typed_fields });
