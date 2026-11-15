@@ -1,6 +1,6 @@
 [project]
 name = "cyrus"
-version = "0.0.0"
+version = "0.0.5"
 type = "executable"
 
 [dependencies]
@@ -11,5 +11,5 @@ library_path = []
 cpu = "generic"
 optimize = "o2"
 sources = ["./src"]
-version = "0.0.4"
+version = "0.0.5"
 build_dir = "./build"
