@@ -57,7 +57,9 @@ fn analyze_expr(
                         );
 
                         name.free();
-                        return .None;
+                        const err_ty: cir::SemaType = .Err(symbol_expr.span());
+                        expr->ty = .Some(err_ty);
+                        return .Some(err_ty);
                     }
                 }
                 else => {}
@@ -69,7 +71,9 @@ fn analyze_expr(
                 context->allocator, 
                 span
             );
-            return .None;
+            const err_ty: cir::SemaType = .Err(span);
+            expr->ty = .Some(err_ty);
+            return .Some(err_ty);
         }
         else => {}
     }
@@ -156,7 +160,9 @@ fn analyze_expr_non_terminal(
         
         case .Builtin(.BuiltinBlock(builtin_block)) => {
             diags::report_invalid_statement(context->dctx, context->allocator, builtin_block.span);
-            return .None;
+            const err_ty: cir::SemaType = .Err(builtin_block.span);
+            expr->ty = .Some(err_ty);
+            return .Some(err_ty);
         }
         
         case .Literal(var literal) => {
@@ -4184,6 +4190,9 @@ fn analyze_dynamic(
 
     switch (expected_type) {
         case .Some(expect) => {
+            if (expect.contains_error()) {
+                return .Some(.Err(dynamic_expr->span));
+            }
             interface_decl_id_opt = expect.as_named_interface();
 
             switch (expect.as_named_type()) {
@@ -4193,7 +4202,7 @@ fn analyze_dynamic(
                         &expected_named.type_args
                     );
                 }
-                case .None => @unreachable();
+                case .None => {}
             }
         }
         case .None => {}
@@ -5016,7 +5025,9 @@ fn analyze_global_var(
 ) {
     switch (global_var->rhs) {
         case .Some(var expr) => {
-            if (analyze_expr(context, &expr, global_var->ty).is_none()) {
+            const rhs_ty_opt = analyze_expr(context, &expr, global_var->ty);
+            const rhs_has_err = rhs_ty_opt.is_none() || (expr.ty.is_some() && expr.ty.unwrap().contains_error());
+            if (rhs_has_err) {
                 global_var->rhs = .Some(expr);
 
                 if (global_var->ty.is_none()) {
@@ -5456,6 +5467,7 @@ fn analyze_func_decl(
         func_decl->span
     );
 
+    var ret_ok = false;
     switch (normalize_sema_type(
         context, 
         func_decl->ret_type, 
@@ -5464,13 +5476,14 @@ fn analyze_func_decl(
     )) {
         case .Some(ty) => {
             func_decl->ret_type = ty;
+            ret_ok = true;
         }
         case .None => {
-            return;
+            func_decl->ret_type = .Err(func_decl->span);
         }
     }
 
-    if (is_not_generic_func) {
+    if (ret_ok && is_not_generic_func) {
         check_type_formation(context, func_decl->ret_type, func_decl->span);
     }
 
@@ -6636,12 +6649,43 @@ fn analyze_switch_dispatch(
     return .Reachable;
 }
 
+fn poison_switch_case_pattern(
+    context: AnalyzerContext*,
+    pattern: const cir::SwitchCasePattern*
+) {
+    switch (pattern->kind) {
+        case .Binding { var_decl_id, .. } => {
+            switch (context->decl_tables->vars.get(var_decl_id)) {
+                case .Some(var entry) => {
+                    entry->ty = .Some(cir::SemaType.Err(pattern->span));
+                }
+                case .None => {}
+            }
+        }
+        case .EnumTupleVariant { items, .. } => {
+            for (var i: usize = 0; i < items.len(); i += 1) {
+                poison_switch_case_pattern(context, items.get_const(i).unwrap());
+            }
+        }
+        case .EnumStructVariant { items, .. } => {
+            for (var i: usize = 0; i < items.len(); i += 1) {
+                const field = items.get_const(i).unwrap();
+                poison_switch_case_pattern(context, &field->pattern);
+            }
+        }
+        else => {}
+    }
+}
+
 fn analyze_switch_on_poisoned_operand(
     context: AnalyzerContext*,
     switch_: cir::SwitchStmt*
 ) flow::FlowState {
     for (var i: usize = 0; i < switch_->cases.len(); i += 1) {
         const case_ = switch_->cases.get(i).unwrap();
+        for (var p: usize = 0; p < case_->patterns.len(); p += 1) {
+            poison_switch_case_pattern(context, case_->patterns.get_const(p).unwrap());
+        }
         analyze_block_stmt(context, case_->body);
     }
     
@@ -7487,6 +7531,29 @@ fn analyze_nested_enum_pattern(
 
 }
 
+fn poison_tuple_export_pattern(
+    context: AnalyzerContext*,
+    pattern: const cir::TupleExportPattern*,
+    span: Span
+) {
+    switch (pattern->kind) {
+        case .Ident(var_decl_id) => {
+            switch (context->decl_tables->vars.get(var_decl_id)) {
+                case .Some(var entry) => {
+                    entry->ty = .Some(cir::SemaType.Err(span));
+                }
+                case .None => {}
+            }
+        }
+        case .Tuple(patterns) => {
+            for (var i: usize = 0; i < patterns.len(); i += 1) {
+                const sub = patterns.get_const(i).unwrap();
+                poison_tuple_export_pattern(context, sub, span);
+            }
+        }
+    }
+}
+
 fn analyze_export_tuple_values(
     context: AnalyzerContext*,
     export_tuple: cir::TupleExportStmt*
@@ -7497,6 +7564,7 @@ fn analyze_export_tuple_values(
             context->allocator, 
             export_tuple->span
         );
+        poison_tuple_export_pattern(context, &export_tuple->pattern, export_tuple->span);
         return;
     }
 
@@ -7506,14 +7574,23 @@ fn analyze_export_tuple_values(
     );
 
     if (analyze_expr(context, &rhs, expected_type).is_none()) {
+        poison_tuple_export_pattern(context, &export_tuple->pattern, export_tuple->span);
         return;
     }
     
     export_tuple->rhs = .Some(rhs);
 
     switch (rhs.ty) {
-        case .None => return;
+        case .None => {
+            poison_tuple_export_pattern(context, &export_tuple->pattern, export_tuple->span);
+            return;
+        }
         case .Some(ty_val) => {
+            if (ty_val.contains_error()) {
+                poison_tuple_export_pattern(context, &export_tuple->pattern, export_tuple->span);
+                return;
+            }
+
             var tuple_type_opt = ty_val.as_tuple_type();
 
             switch (tuple_type_opt) case .Some(tuple_type) else {
@@ -7522,6 +7599,7 @@ fn analyze_export_tuple_values(
                     context->allocator,
                     export_tuple->span
                 );
+                poison_tuple_export_pattern(context, &export_tuple->pattern, export_tuple->span);
                 return;
             }
 
@@ -7535,6 +7613,7 @@ fn analyze_export_tuple_values(
                             tuple_type.elements.len(),
                             patterns.len()
                         );
+                        poison_tuple_export_pattern(context, &export_tuple->pattern, export_tuple->span);
                         return;
                     }
 
@@ -8411,6 +8490,24 @@ fn normalize_type_args(
     }
 }
 
+fn write_back_param_var_decl(
+    context: AnalyzerContext*,
+    var_decl_id: Option<cir::VarDeclId>,
+    ty: cir::SemaType
+) {
+    switch (var_decl_id) {
+        case .Some(id) => {
+            switch (context->decl_tables->vars.get(id)) {
+                case .Some(var var_decl) => {
+                    var_decl->ty = .Some(ty);
+                }
+                case .None => {}
+            }
+        }
+        case .None => {}
+    }
+}
+
 fn normalize_func_params(
     context: AnalyzerContext*,
     params: cir::FuncParams*,
@@ -8422,6 +8519,7 @@ fn normalize_func_params(
 
         switch (*kind) {
             case .FuncParam(var func_param) => {
+                var final_ty: cir::SemaType = .Err(func_param.span);
                 switch (normalize_sema_type(
                     context, 
                     func_param.ty, 
@@ -8429,18 +8527,20 @@ fn normalize_func_params(
                     indirection
                 )) {
                     case .Some(ty) => {
-                        func_param.ty = ty;
-
                         if (validate) {
                             validate_param_type(context, &ty, func_param.span);
                         }
-
-                        *kind = .FuncParam(func_param);
+                        final_ty = ty;
                     }
                     else => {}
                 }
+
+                func_param.ty = final_ty;
+                *kind = .FuncParam(func_param);
+                write_back_param_var_decl(context, func_param.var_decl_id, final_ty);
             }
             case .SelfModifier(var self_modifier) => {
+                var final_ty: cir::SemaType = .Err(self_modifier.span);
                 switch (normalize_sema_type(
                     context, 
                     self_modifier.ty, 
@@ -8448,36 +8548,40 @@ fn normalize_func_params(
                     indirection
                 )) {
                     case .Some(ty) => {
-                        self_modifier.ty = ty;
-
                         if (validate) {
                             validate_param_type(context, &ty, self_modifier.span);
                         }
-
-                        *kind = .SelfModifier(self_modifier);
+                        final_ty = ty;
                     }
                     else => {}
                 }
+
+                self_modifier.ty = final_ty;
+                *kind = .SelfModifier(self_modifier);
+                write_back_param_var_decl(context, self_modifier.var_decl_id, final_ty);
             }
         }
     }
 
     switch (params->variadic) {
         case .Some(.Typed { var_decl_id, ty, span }) => {
+            var final_ty: cir::SemaType = .Err(span);
             switch (normalize_sema_type(context, ty, span, indirection)) {
                 case .Some(normalized_type) => {
                     if (validate) {
                         validate_param_type(context, &normalized_type, span);
                     }
-
-                    params->variadic = .Some(cir::FuncVariadicParam.Typed {
-                        var_decl_id,
-                        ty: normalized_type,
-                        span,
-                    });
+                    final_ty = normalized_type;
                 }
-                case .None => return;
+                case .None => {}
             }
+
+            params->variadic = .Some(cir::FuncVariadicParam.Typed {
+                var_decl_id,
+                ty: final_ty,
+                span,
+            });
+            write_back_param_var_decl(context, var_decl_id, final_ty);
         }
         else => {}
     }
@@ -9834,10 +9938,18 @@ pub fn type_of_decl(
                     context->type_cache.leave(key, ty);
                     return .Some(ty);
                 }
-                case .None => return .None;
+                case .None => {
+                    const err_ty: cir::SemaType = .Err(span);
+                    context->type_cache.leave(key, err_ty);
+                    return .Some(err_ty);
+                }
             }
         }
-        case .None => return .None;
+        case .None => {
+            const err_ty: cir::SemaType = .Err(span);
+            context->type_cache.leave(key, err_ty);
+            return .Some(err_ty);
+        }
     }
 }
 

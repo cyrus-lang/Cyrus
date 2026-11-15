@@ -1,72 +1,58 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::mem{Allocator, alloc_init};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
-import std::mem{Allocator, alloc_init};
 import std::path{Path};
 import std::os;
 
 import parser::ast{ASTProgram, ASTImport, NodeId};
 import driver::lexical{LexicalContext};
-import resolver::loader{
-    resolve_import,
-    ResolverOptions,
-    ResolvedModuleFile,
-    LoaderError,
-    last_sub_module_span,
-};
 import resolver::modules{visit_key};
 import tokens{SourceTokens, Span};
-import source{SourceId};
 import diags{DiagContext};
+import resolver::loader{
+    last_sub_module_span,
+    ResolvedModuleFile,
+    ResolverOptions,
+    resolve_import,
+    LoaderError,
+};
+import source{SourceId};
 import resolver::diags;
 
-/// A resolved import: one edge of the module graph.
+/// A resolved import is 
+/// one edge of the module graph.
 pub struct ModuleEdge {
-    /// Span of the `import` statement that produced this edge.
-    pub span: Span,
-    /// Index of the import node inside the importer's AST.
-    pub import_node: NodeId,
-    /// Index of the target module in `ModuleGraph.nodes`.
-    pub target: usize,
-    /// Resolved filesystem information for the target.
     pub resolved: ResolvedModuleFile,
+    pub import_node: NodeId,
+    pub target: usize,
+    pub span: Span,
 }
 
 /// One module in the graph.
 pub struct ModuleNode {
-    /// Canonical identity of the module (used for deduplication).
-    pub key: String,
-    /// Path used to derive the module name and for diagnostics.
+    pub tokens: Option<SourceTokens>,
     pub file_path: String,
     pub source_id: SourceId,
     pub program: ASTProgram*,
-    /// Owned token stream; `.Some` exactly when `owns_program` is set.
-    pub tokens: Option<SourceTokens>,
     pub owns_program: bool,
     pub edges: Vec<ModuleEdge>,
-    /// Node that first discovered this module (`.None` for the entry).
     pub parent: Option<usize>,
-    /// Import edge in the parent that discovered this module.
     pub parent_edge: Option<usize>,
-    /// Concrete scope of this module's symbol, filled in by the resolver.
     pub symbol: Option<usize>,
+    pub key: String,
 }
 
-/// The reachable module graph obtained by discovery.
-///
-/// Discovery only parses modules and records imports; it never traverses
-/// declarations or bodies.
 pub struct ModuleGraph {
     pub allocator: Allocator,
     pub dctx: DiagContext*,
     pub nodes: Vec<ModuleNode>,
-    /// Deterministic post-order: dependencies appear before dependents.
     pub order: Vec<usize>,
-    active: Vec<usize>,
     pub has_errors: bool,
+    active: Vec<usize>,
 
     pub fn discover(
         allocator: Allocator,
@@ -133,7 +119,6 @@ pub struct ModuleGraph {
         self->active.free();
     }
 
-    /// Index of the node whose canonical key is `key`.
     pub fn index_of(self: const Self*, key: const uint8*) Option<usize> {
         for (var i: usize = 0; i < self->nodes.len(); i += 1) {
             const node = self->nodes.get_const(i).unwrap();
@@ -160,9 +145,14 @@ pub struct ModuleGraph {
         var paths: Vec<String> = Vec.new(self->allocator);
 
         for (var i: usize = 0; i < self->active.len(); i += 1) {
-            const node = self->nodes.get_const(*self->active.get_const(i).unwrap()).unwrap();
+            const node = self->nodes.get_const(
+                *self->active.get_const(i).unwrap()
+            ).unwrap();
             
-            paths.push(visit_key(self->allocator, node->file_path.as_str_const()));
+            paths.push(visit_key(
+                self->allocator, 
+                node->file_path.as_str_const()
+            ));
         }
 
         diags::report_import_cycle(
@@ -237,7 +227,9 @@ pub struct ModuleGraph {
         opts: const ResolverOptions*
     ) {
         const allocator = self->allocator;
-        const parent_path = self->nodes.get_const(from).unwrap()->file_path.as_str_const();
+
+        const parent_path = 
+            self->nodes.get_const(from).unwrap()->file_path.as_str_const();
 
         const load = resolve_import(
             allocator,
@@ -320,7 +312,7 @@ pub struct ModuleGraph {
                 self->push_edge(from, import_, import_node, target, resolved);
 
                 // Recurse only after the edge and node are in place, so a
-                // cycle back to `target` is reported through `active`.
+                // cycle back to `target` is reported through `active`
                 self->visit_node(target, lexical, opts);
                 return;
             }

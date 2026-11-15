@@ -166,8 +166,6 @@ pub fn free_module_maps(maps: ModuleMaps*) {
 }
 
 fn is_ident_char(char: uint8) bool {
-    // Explicit comparisons: `...` is an exclusive-ended range, so
-    // `'a' ... 'z'` would reject identifiers ending in 'z'.
     if (char >= 'a' && char <= 'z') {
         return true;
     }
@@ -192,6 +190,7 @@ pub fn sanitize_into(out: String*, name: const uint8*) {
         } else {
             out->push('_');
         }
+        
         i += 1;
     }
 
