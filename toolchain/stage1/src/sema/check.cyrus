@@ -10,6 +10,7 @@ import std::option{Option};
 
 import resolver::symbols{GlobalSymbolRegistry, is_decl_const};
 import tokens{IntegerSuffix, FloatSuffix, Span};
+import .::monomorph{MonomorphTemplateId};
 import .::context{AnalyzerContext};
 import abi::typectx{TypeContext};
 import abi::target{TargetInfo};
@@ -3143,11 +3144,9 @@ fn analyze_func_call_generic(
     );
     var old_env = context->func_env;
     context->func_env = new_env;
+    defer restore_func_env(context, &old_env);
 
-    // FIXME
-    // NOTE: swapping func_env by value; new_env's heap infer/name leak
-    // (shared infer pointer would double-free if FuncEnv.free were called).
-    const ret_type = monomorphize_generic_func_call(
+    return monomorphize_generic_func_call(
         context,
         operand_type,
         func_call,
@@ -3155,9 +3154,6 @@ fn analyze_func_call_generic(
         func_decl,
         &final_type_args
     );
-
-    context->func_env = old_env;
-    return ret_type;
 }
 
 fn analyze_method_call(
@@ -3586,18 +3582,17 @@ fn analyze_method_call_with_env(
     is_generic_method_call: bool,
     expected_type: Option<cir::SemaType>
 ) Option<cir::SemaType> {
-    // FIXME: Order of these statements 
-    // does not look good to me (bug potential)
     var object = context->func_env.current_object;
     context->func_env.current_object = .None;
+
     normalize_func_params(
         context, 
         &method_decl->func_decl.params,
         true, 
         0
     );
+
     context->func_env.current_object = object;
-    // FIXME END
 
     if (!analyze_call(context,
         original_params,
@@ -3667,6 +3662,7 @@ fn analyze_method_call_with_env(
         );
         var old_env = context->func_env;
         context->func_env = new_env;
+        defer restore_func_env(context, &old_env);
 
         // Substitute Self inside the context modifier
         switch (method_decl->func_decl.params.list.first()) {
@@ -3688,24 +3684,19 @@ fn analyze_method_call_with_env(
             case .None => {}
         }
 
-        var old_object = context->func_env.current_object;
-        
         context->func_env.current_object = .Some(*pure_operand_type);
 
-        const result = finalize_generic_method_call(context,
+        return finalize_generic_method_call(context,
             method_call,
             method_decl,
             method_decl_id,
             operand_type,
             pure_operand_type,
             &final_type_args,
+            &final_generics_params,
             is_instance_method_call,
             method_call->span
         );
-
-        context->func_env.current_object = old_object;
-        context->func_env = old_env;
-        return result;
     }
 
     method_call->operand->ty = .Some(*operand_type);
@@ -5415,8 +5406,9 @@ fn analyze_func_def_body(
     );
     var saved_func_env = context->func_env;
     context->func_env = func_env;
+    defer restore_func_env(context, &saved_func_env);
+
     analyze_func_body(context, func_def->body, &func_def->ret_type);
-    context->func_env = saved_func_env;
 }
 
 fn analyze_func_decl_stmt(
@@ -6326,6 +6318,10 @@ fn analyze_method_body(
         &method_decl->func_decl
     );
     
+    if (method_decl->body.is_none()) {
+        return;
+    }
+
     var method_env = create_method_env(
         context, 
         method_decl_id, 
@@ -6335,14 +6331,11 @@ fn analyze_method_body(
 
     method_env.current_object = .Some(*object_type);
 
-    if (method_decl->body.is_none()) {
-        return;
-    }
-
     const body_id = method_decl->body.unwrap();
 
     var saved_env = context->func_env;
     context->func_env = method_env;
+    defer restore_func_env(context, &saved_env);
 
     var body = 
         context->
@@ -6358,13 +6351,10 @@ fn analyze_method_body(
     switch (context->decl_tables->bodies.get(
         body_id
     )) case .Some(var slot) else {
-        context->func_env = saved_env;
         return;
     }
 
     *slot = body;
-
-    context->func_env = saved_env;
 }
 
 fn analyze_if_stmt(
@@ -12392,6 +12382,7 @@ fn finalize_generic_method_call(
     operand_type: cir::SemaType*,
     pure_operand_type: const cir::SemaType*,
     final_type_args: const cir::TypeArgs*,
+    final_generic_params: const cir::GenericParams*,
     is_instance_method_call: bool,
     span: Span
 ) Option<cir::SemaType> {
@@ -12423,14 +12414,12 @@ fn finalize_generic_method_call(
 
     const ret_type = method_decl->func_decl.ret_type;
 
-    // FIXME: Multi-Phase Analyzer:
-    // Monomorphization should be done 
-    // after first-phase finished.
     switch (monomorphize_generic_method_call(context,
         *pure_operand_type,
         method_decl_id,
         method_decl,
         final_type_args,
+        final_generic_params,
         false,
         span
     )) {
@@ -12758,39 +12747,21 @@ fn monomorphize_generic_func_call(
         case .None => {}
     }
 
-    const monomorph_id = context->monomorph_registry.get_or_create(
+    // Postpone body specialization to 
+    // the monomorphization post-pass
+    //
+    // Only the signature is needed to 
+    // type-check this call site
+    const monomorph_id = context->monomorph_registry.request(
         dynamic context->arena,
         .Func(func_decl_id),
         final_type_args,
-        func_decl->params,
-        func_decl->ret_type
+        &func_decl->params,
+        func_decl->ret_type,
+        func_decl->body,
+        &func_decl->generic_params,
+        .None
     );
-
-    if (!context->monomorph_registry.is_analyzed(monomorph_id)) {
-        context->monomorph_registry.mark_analyzed(monomorph_id);
-
-        switch (func_decl->body) {
-            case .Some(body_id) => {
-                switch (context->decl_tables->bodies.get_const(body_id)) {
-                    case .Some(template_body) => {
-                        var body = specialize_func_body(context, template_body, &func_decl->params);
-                        
-                        analyze_func_body(context, &body, &func_decl->ret_type);
-
-                        const body_id = context->decl_tables->insert_body(body);
-
-                        context->monomorph_registry.set_body_and_params(
-                            monomorph_id,
-                            body_id,
-                            func_decl->params
-                        );
-                    }
-                    else => {}
-                }
-            }
-            else => {}
-        }
-    }
 
     func_call->dispatch = .Monomorph { monomorph_id };
 
@@ -12803,6 +12774,7 @@ fn monomorphize_generic_method_call(
     method_decl_id: cir::MethodDeclId,
     method_decl: cir::MethodDecl*,
     final_type_args: const cir::TypeArgs*,
+    final_generic_params: const cir::GenericParams*,
     is_generic_interface_method_call: bool,
     span: Span
 ) Option<cir::MonomorphId> {
@@ -12827,40 +12799,17 @@ fn monomorphize_generic_method_call(
         case .None => {}
     }
 
-    const monomorph_id = context->monomorph_registry.get_or_create(
+    // Postpone body specialization
+    const monomorph_id = context->monomorph_registry.request(
         dynamic context->arena,
         .Method(method_decl_id),
         final_type_args,
-        method_decl->func_decl.params,
-        method_decl->func_decl.ret_type
+        &method_decl->func_decl.params,
+        method_decl->func_decl.ret_type,
+        method_decl->body,
+        final_generic_params,
+        .Some(pure_operand_type)
     );
-
-    if (!is_generic_interface_method_call && !context->monomorph_registry.is_analyzed(monomorph_id)) {
-        context->monomorph_registry.mark_analyzed(monomorph_id);
-
-        switch (method_decl->body) {
-            case .Some(body_id) => {
-                switch (context->decl_tables->bodies.get_const(body_id)) {
-                    case .Some(template_body) => {
-                        var specialized = specialize_func_body(context,
-                            template_body,
-                            &method_decl->func_decl.params
-                        );
-                        analyze_func_body(context, &specialized, &method_decl->func_decl.ret_type);
-
-                        const specialized_body_id = context->decl_tables->insert_body(specialized);
-                        context->monomorph_registry.set_body_and_params(
-                            monomorph_id,
-                            specialized_body_id,
-                            method_decl->func_decl.params
-                        );
-                    }
-                    else => {}
-                }
-            }
-            else => {}
-        }
-    }
 
     return .Some(monomorph_id);
 }
@@ -12959,6 +12908,7 @@ fn monomorphize_interface_object_methods(
 
             var saved_func_env = context->func_env;
             context->func_env = func_env;
+            defer restore_func_env(context, &saved_func_env);
             context->func_env.current_object = .Some(*concrete_type);
 
             const monomorph_id_opt = monomorphize_generic_method_call(context,
@@ -12966,10 +12916,10 @@ fn monomorphize_interface_object_methods(
                 entry->id,
                 method_decl,
                 &final_type_args,
+                &final_generics_params,
                 true,
                 span
             );
-            context->func_env = saved_func_env;
 
             switch (monomorph_id_opt) {
                 case .Some(monomorph_id) => {
@@ -12984,6 +12934,127 @@ fn monomorphize_interface_object_methods(
 
             generics::pop_generic_env(context);
         }
+    }
+}
+
+/* ************* Deferred Monomorphization ************* */
+
+/// Phase 3: specialize and analyze one deferred instance.
+pub fn analyze_monomorph_instance(
+    context: AnalyzerContext*,
+    monomorph_id: cir::MonomorphId
+) {
+    const inst = context->monomorph_registry.get(monomorph_id);
+
+    if (inst == null) {
+        return;
+    }
+
+    if (inst->analyzed) {
+        return;
+    }
+
+    const template_id: MonomorphTemplateId = inst->template_id;
+    const template_body: Option<cir::BodyId> = inst->template_body;
+    const self_type: Option<cir::SemaType> = inst->self_type;
+    const ret_type: cir::SemaType = inst->ret_type;
+    const generic_params: cir::GenericParams = inst->generic_params;
+    const type_args: cir::TypeArgs = inst->type_args;
+
+    var params = clone::clone_func_params(dynamic context->arena, &inst->params);
+
+    // Prevent infinite recursion 
+    context->monomorph_registry.mark_analyzed(monomorph_id);
+
+    switch (template_body) {
+        case .Some(body_id) => {
+            switch (context->decl_tables->bodies.get_const(body_id)) {
+                case .Some(template_block) => {
+                    const generic_env = env::GenericEnv.from_type_args(
+                        context->allocator,
+                        generic_params,
+                        &type_args
+                    );
+                    generics::push_generic_env(context, generic_env);
+                    defer generics::pop_generic_env(context);
+
+                    const func_type = cir::FuncType {
+                        params: cir::func_params_as_type_params(
+                            context->allocator,
+                            &params
+                        ),
+                        ret_type: alloc_init(context->allocator, ret_type),
+                        vis: .Private,
+                        callconv: .C,
+                        span: template_block->span,
+                    };
+
+                    var display_name: const uint8* = "<monomorph>";
+
+                    switch (template_id) {
+                        case .Func(func_decl_id) => {
+                            switch (context->decl_tables->funcs.get_const(func_decl_id)) {
+                                case .Some(decl) => {
+                                    display_name = decl->name.as_str_const();
+                                }
+                                case .None => {}
+                            }
+                        }
+                        case .Method(method_decl_id) => {
+                            switch (context->decl_tables->methods.get_const(method_decl_id)) {
+                                case .Some(decl) => {
+                                    display_name = decl->func_decl.name.as_str_const();
+                                }
+                                case .None => {}
+                            }
+                        }
+                    }
+
+                    var new_env = create_func_def_env(
+                        context,
+                        display_name,
+                        func_type,
+                        .None
+                    );
+
+                    switch (template_id) {
+                        case .Method(method_decl_id) => {
+                            new_env.current_method = .Some(method_decl_id);
+                        }
+                        case .Func(_) => {}
+                    }
+
+                    switch (self_type) {
+                        case .Some(ty) => {
+                            new_env.current_object = .Some(ty);
+                        }
+                        case .None => {}
+                    }
+
+                    var old_env = context->func_env;
+                    context->func_env = new_env;
+                    defer restore_func_env(context, &old_env);
+
+                    var body = specialize_func_body(
+                        context,
+                        template_block,
+                        &params
+                    );
+
+                    analyze_func_body(context, &body, &ret_type);
+
+                    const specialized_body_id = context->decl_tables->insert_body(body);
+
+                    context->monomorph_registry.set_body_and_params(
+                        monomorph_id,
+                        specialized_body_id,
+                        params
+                    );
+                }
+                case .None => {}
+            }
+        }
+        case .None => {}
     }
 }
 
@@ -14690,6 +14761,33 @@ fn create_inference_generic_env(
     }
 
     return .Some(generic_env);
+}
+
+fn restore_func_env(context: AnalyzerContext*, old: const env::FuncEnv*) {
+    var shares_infer = false;
+
+    switch (context->func_env.infer) {
+        case .Some(new_infer) => {
+            switch (old->infer) {
+                case .Some(old_infer) => {
+                    if (new_infer == old_infer) {
+                        shares_infer = true;
+                    }
+                }
+                case .None => {}
+            }
+        }
+        case .None => {}
+    }
+
+    if (shares_infer) {
+        // Ownership should stay with `old`
+        // to prevent the double free
+        context->func_env.infer = .None;
+    }
+
+    context->func_env.free();
+    context->func_env = *old;
 }
 
 fn create_func_def_env(
