@@ -5614,6 +5614,29 @@ pub struct Emitter {
             return false;
         }
 
+        var needs_non_const_cast = false;
+
+        if (!method->is_self_by_value()) {
+            switch (method->func_decl.params.list.first()) {
+                case .Some(param_kind) => {
+                    switch (*param_kind) {
+                        case .SelfModifier(self_modifier) => {
+                            switch (self_modifier.ty) {
+                                case .Pointer(inner) => {
+                                    if (!inner->is_const()) {
+                                        needs_non_const_cast = true;
+                                    }
+                                }
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+
         switch (operand->ty) {
             case .Some(ty) => {
                 switch (*ty.const_inner()) {
@@ -5625,7 +5648,7 @@ pub struct Emitter {
                         expr.free();
                         return true;
                     }
-                    case .Pointer => {
+                    case .Pointer(inner) => {
                         var expr = self->emit_expr(operand);
 
                         // Value receiver called through a pointer
@@ -5633,6 +5656,20 @@ pub struct Emitter {
                             out->push_str("(*");
                             out->push_str(expr.as_str_const());
                             out->push(')');
+                        } else if (needs_non_const_cast) {
+                            var non_const_inner = *inner->const_inner();
+                            
+                            const ptr_type: cir::SemaType = .Pointer(&non_const_inner);
+
+                            var cast_type = self->types.build_decl(&ptr_type, "");
+                            
+                            out->push_str("((");
+                            out->push_str(cast_type.as_str_const());
+                            out->push_str(")(");
+                            out->push_str(expr.as_str_const());
+                            out->push_str("))");
+                            
+                            cast_type.free();
                         } else {
                             out->push_str(expr.as_str_const());
                         }
@@ -5645,6 +5682,22 @@ pub struct Emitter {
                             var expr = self->emit_expr(operand);
                             out->push_str(expr.as_str_const());
                             expr.free();
+                        } else if (needs_non_const_cast) {
+                            var addr = self->emit_addr_of_expr(operand);
+                            var non_const_inner = *ty.const_inner();
+
+                            const ptr_type: cir::SemaType = .Pointer(&non_const_inner);
+                            
+                            var cast_type = self->types.build_decl(&ptr_type, "");
+                            
+                            out->push_str("((");
+                            out->push_str(cast_type.as_str_const());
+                            out->push_str(")(");
+                            out->push_str(addr.as_str_const());
+                            out->push_str("))");
+                            cast_type.free();
+
+                            addr.free();
                         } else {
                             var addr = self->emit_addr_of_expr(operand);
                             out->push_str(addr.as_str_const());
