@@ -1,0 +1,18 @@
+// @stdout: 1 1 1 0
+
+import std::libc{printf};
+
+fn is_fiu(ch: uint8) int32 {
+    switch (ch) case 'f' | 'i' | 'u' else {
+        return 0;
+    }
+
+    return 1;
+}
+
+pub fn main() {
+    printf("%d ", is_fiu('f'));
+    printf("%d ", is_fiu('i'));
+    printf("%d ", is_fiu('u'));
+    printf("%d\n", is_fiu('x'));
+}
