@@ -71,6 +71,16 @@ jobs:
           chmod +x ./scripts/release.sh
           ./scripts/release.sh
 
+      - name: Build stage1 & stage2
+        env:
+          LLVM_CONFIG: /usr/bin/llvm-config-22
+          CC: clang-22
+          CXX: clang++-22
+          CYRUS_LINKER: clang-22
+        run: |
+          python3 ./x.py build --stage stage1 --profile release
+          python3 ./x.py bootstrap --stage stage1 --profile release
+
       - name: Run tests
         env:
           LLVM_CONFIG: /usr/bin/llvm-config-22
@@ -89,6 +99,8 @@ jobs:
         run: |
           mkdir -p ./dist
           cp ./toolchain/stage0/target/release/cyrus ./dist/
+          cp ./toolchain/stage1/build/output/cyrus ./dist/cyrus-stage1
+          cp ./toolchain/stage1/build/output/cyrus-stage2 ./dist/cyrus-stage2
           cp -r ./lib/std ./dist/stdlib
           if [ -f "./scripts/install.sh" ]; then
             cp ./scripts/install.sh ./dist/
@@ -99,6 +111,14 @@ jobs:
         with:
           name: cyrus-${{ steps.version.outputs.VERSION }}-binary
           path: ./dist
+
+      - name: Upload stage1 & stage2 compiler artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyrus-${{ steps.version.outputs.VERSION }}-selfhost
+          path: |
+            ./toolchain/stage1/build/output/cyrus
+            ./toolchain/stage1/build/output/cyrus-stage2
 
       - name: Generate PKGBUILD
         run: |
@@ -287,5 +307,7 @@ jobs:
             ./release-files/**/*.rpm
             ./release-files/**/PKGBUILD
             ./release-files/**/cyrus
+            ./release-files/**/cyrus-stage1
+            ./release-files/**/cyrus-stage2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
