@@ -20,7 +20,7 @@ pub fn current_generic_env(context: AnalyzerContext*) Option<env::GenericEnv*> {
 }
 
 pub fn push_generic_env(context: AnalyzerContext*, env: env::GenericEnv) {
-    const env = alloc_init(dynamic context->arena, env);
+    const env = alloc_init(dynamic context->scratch_arena, env);
     context->generic_env_stack.push(env);
 }
 

@@ -5,19 +5,13 @@ import std::collections{Vec};
 import std::fiber{Fiber, FiberState};
 
 import .::check{
+    analyze_monomorph_instance,
     analyze_toplevel_headers,
     analyze_toplevel_body_item,
     BodyWorkItem,
 };
 import .::context{AnalyzerContext};
 
-/// Shared state handed to the body worker fiber.
-///
-/// Body analysis is **cooperative**, not parallel: a single worker owns the
-/// analyzer state, processes one function body at a time, and yields
-/// between bodies so the scheduler can observe progress and stop early.
-/// Bodies therefore never observe another body's partially-built
-/// environment, and diagnostics stay in a deterministic order.
 pub struct BodyScheduler {
     pub context: AnalyzerContext*,
     pub work: const Vec<BodyWorkItem>*,
@@ -28,19 +22,21 @@ pub fn trigger_analyzer(context: AnalyzerContext*) {
     var work: Vec<BodyWorkItem> = Vec.new(context->allocator);
     defer work.free();
 
-    // Stage B: top-level traversal for every reachable module. Signatures,
-    // symbols and globals are established here; function bodies are only
-    // recorded as work items.
-    for (var i: usize = 0; i < context->trees.len(); i += 1) {
-        var tree = context->trees.get(i).unwrap();
-        analyze_toplevel_headers(context, tree, i, &work);
-    }
-
-    // Stage C: scheduled body traversal.
-    run_body_work(context, &work);
+    run_header_phase(context, &work);
+    run_body_phase(context, &work);
+    run_monomorphization_phase(context);
 }
 
-fn run_body_work(context: AnalyzerContext*, work: const Vec<BodyWorkItem>*) {
+/// Phase 1: top-level traversal for every reachable module.
+fn run_header_phase(context: AnalyzerContext*, work: Vec<BodyWorkItem>*) {
+    for (var i: usize = 0; i < context->trees.len(); i += 1) {
+        var tree = context->trees.get(i).unwrap();
+        analyze_toplevel_headers(context, tree, i, work);
+    }
+}
+
+/// Phase 2: scheduled body traversal.
+fn run_body_phase(context: AnalyzerContext*, work: const Vec<BodyWorkItem>*) {
     if (work->len() == 0) {
         return;
     }
@@ -71,8 +67,24 @@ fn body_worker(fiber: Fiber*) {
         scheduler->next += 1;
 
         analyze_toplevel_body_item(scheduler->context, item->tree, item->stmt);
+        scheduler->context->scratch_arena.reset();
 
-        // Cooperative yield: the scheduler resumes us for the next body.
+        // Cooperative yield: 
+        // The scheduler resumes us for the next body
         fiber->yield();
+    }
+}
+
+/// Phase 3: specialize deferred generic instances.
+fn run_monomorphization_phase(context: AnalyzerContext*) {
+    var index: usize = 0;
+
+    while (index < context->monomorph_registry.instances.len()) {
+        if (context->monomorph_registry.is_pending(index)) {
+            analyze_monomorph_instance(context, index);
+            context->scratch_arena.reset();
+        }
+
+        index += 1;
     }
 }

@@ -21,11 +21,13 @@ import .::env;
 import cir;
 
 const ANALYZER_ARENA_INITIAL_SIZE: usize = 65536;
+const SCRATCH_ARENA_INITIAL_SIZE: usize = 16384;
 const TYPE_CACHE_INITIAL_SIZE: usize = 64;
 
 pub struct AnalyzerContext {
     pub allocator: Allocator,
     pub arena: ArenaAllocator,
+    pub scratch_arena: ArenaAllocator,
     pub dctx: DiagContext*,
     pub registry: GlobalSymbolRegistry*,
     pub decl_tables: tables::DeclTables*,
@@ -50,6 +52,7 @@ pub struct AnalyzerContext {
         const control_region_stack: Vec<flow::ControlRegion> = Vec.new(allocator);
         const generic_env_stack: Vec<env::GenericEnv*> = Vec.new(allocator);
         const arena = ArenaAllocator.new(allocator, ANALYZER_ARENA_INITIAL_SIZE);
+        const scratch_arena = ArenaAllocator.new(allocator, SCRATCH_ARENA_INITIAL_SIZE);
         const reported_typedef_cycles: Vec<String> = Vec.new(allocator);
         const instantiations: Vec<InstanceSite> = Vec.new(allocator);
         const monomorph_registry = MonomorphRegistry.new(allocator);
@@ -61,6 +64,7 @@ pub struct AnalyzerContext {
         return Self {
             allocator,
             arena,
+            scratch_arena,
             dctx,
             registry,
             decl_tables,
@@ -104,6 +108,7 @@ pub struct AnalyzerContext {
         self->monomorph_registry.free();
         self->vtable_registry.free();
         self->func_env.free();
+        self->scratch_arena.destroy();
         self->arena.destroy();
     }
 }

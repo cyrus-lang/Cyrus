@@ -1,0 +1,17 @@
+// @stdout: 2 4 12
+
+import std::libc{printf};
+
+fn twice<T>(v: T) T {
+    return v + v;
+}
+
+fn quad<T>(v: T) T {
+    return twice(twice(v));
+}
+
+pub fn main() {
+    printf("%d ", twice(1));
+    printf("%d ", twice(2));
+    printf("%d\n", quad(3));
+}
