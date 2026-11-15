@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::mem{Allocator, alloc_init};
+import std::mem::arena{ArenaAllocator};
 import std::libc::types{c_int, c_char};
 import std::io{Writer, StdoutWriter};
 import std::collections{Vec};
@@ -15,6 +16,7 @@ import std::libc{
     stderr, ERANGE
 };
 
+const CLI_ARENA_INITIAL_SIZE: usize = 4096;
 const HELP_WS_LEN: usize = 16;
 
 pub type ProgramArgs = struct {
@@ -64,17 +66,20 @@ pub enum Value {
 
 pub struct App {
     allocator: Allocator,
+    arena: ArenaAllocator,
     cmds: Cmds,
     opts: Opts*,
     args: Vec<Value>,
     program_name: uint8*,
 
     pub fn new(allocator: Allocator, opts: Opts*, program_name: uint8*) Self {
+        const arena = ArenaAllocator.new(allocator, 4096);
         const args: Vec<Value> = Vec.new(allocator);
         const cmds = Cmds.new(allocator);
 
         return Self {
             allocator,
+            arena,
             cmds,
             opts,
             args,
@@ -94,19 +99,8 @@ pub struct App {
             return .Value(self);
         }
 
-        switch (self->parse_command(pargs)) {
-            case .Value(result) => {
-                const cmd = result.cmd;
-
-                switch (self->parse_remaining_args(cmd, pargs, result.rem_args)) {
-                    case .Error(err) => {
-                        self->display_parse_error(err);
-                        self->cleanup_after_error();
-                        return .Error(());
-                    }
-                    else => {}
-                }
-
+        switch (self->parse_command_and_args(pargs)) {
+            case .Value(cmd) => {
                 // If help option is enabled, only show options
                 // and DO NOT trigger action
                 if (self->opts->enabled("help")) {
@@ -153,6 +147,7 @@ pub struct App {
         self->cmds = Cmds.new(self->allocator);
         self->args.free();
         self->args = Vec.new(self->allocator);
+        self->arena.reset();
     }
 
     pub fn free(self: Self*) {
@@ -163,108 +158,76 @@ pub struct App {
 
         self->cmds.free();
         self->args.free();
+        self->arena.destroy();
     }
 
-    fn parse_remaining_args(self: Self*, cmd: const Cmd*, pargs: ProgramArgs, rem_args: usize) ErrorOr<(), Error> {
-        if (rem_args == 0) {
-            return .Value(());
-        }
-
+    fn parse_command_and_args(self: Self*, pargs: ProgramArgs) ErrorOr<Cmd*, Error> {
         const argc = @cast(usize, pargs.argc);
-
-        for (var i: usize = argc - rem_args; i < argc; i += 1) {
-            switch (self->parse_option(cmd, &i, pargs)) {
-                case .Error(err) => return .Error(err);
-                else => {}
-            }
-        }
-        
-        return .Value(());
-    }
-
-    fn parse_command(self: Self*, pargs: ProgramArgs) ErrorOr<struct {
-        cmd: Cmd*,
-        rem_args: usize
-    }, Error> {
-        const argc = @cast(usize, pargs.argc);
-        
         var i: usize = 1;
-        var arg = pargs.argv[i];
+        const first_arg = pargs.argv[i];
 
-        // First command is necessary, but extra commands,
-        // if not defined, it should be considered
-        // as an argument
-        switch (self->cmds.find(arg)) case .Some(var cmd) else {
-            return .Error(.UnknownCommand { cmd: arg });
+        switch (self->cmds.find(first_arg)) case .Some(var cmd) else {
+            return .Error(.UnknownCommand { cmd: first_arg });
         }
 
         i += 1;
-        
-        // Handle args: We expect to parse input args until 
-        // we achieve an option or end of args
+
         while (i < argc) {
             const arg = pargs.argv[i];
 
-            if (!arg || is_arg_an_opt(arg)) {
+            if (!arg) {
+                i += 1;
+                continue;
+            }
+
+            if (strcmp(arg, "--") == 0) {
+                i += 1;
+                while (i < argc) {
+                    if (pargs.argv[i]) {
+                        self->args.push(self->parse_value(pargs.argv[i]));
+                    }
+                    i += 1;
+                }
                 break;
             }
 
-            // Descend into a sub-command when this argument names one,
-            // instead of consuming it as a positional argument
-            const sub = cmd->sub_cmds->find(arg);
-
-            if (sub.is_some()) {
-                cmd = sub.unwrap();
+            if (is_arg_an_opt(arg)) {
+                switch (self->parse_option(cmd, &i, pargs)) {
+                    case .Error(err) => return .Error(err);
+                    else => {}
+                }
                 i += 1;
                 continue;
+            }
+
+            if (self->args.len() == 0) {
+                const sub = cmd->sub_cmds->find(arg);
+                if (sub.is_some()) {
+                    cmd = sub.unwrap();
+                    i += 1;
+                    continue;
+                }
             }
 
             self->args.push(self->parse_value(arg));
             i += 1;
         }
 
-        // Handle sub commands
-        for (; i < argc; i += 1) {
-            arg = pargs.argv[i];
-            
-            // We expect arg to be cmd until first 
-            // option consumed, and after that we do not 
-            // consider any identifier to be a cmd, 
-            // but a value given to an option.
-            if (is_arg_an_opt(arg)) {
-                break;
-            }
-
-            const (is_assign, _) = is_opt_assign(arg);
-
-            if (is_assign) {
-                break;
-            }
-
-            switch (cmd->sub_cmds->find(arg)) {
-                case .Some(sub_cmd) => cmd = sub_cmd;
-                case .None => return .Error(.UnknownCommand { cmd: arg });
-            }
-        }
-        
-        return .Value(struct { cmd, rem_args: argc - i });
+        return .Value(cmd);
     }
-    
+
     fn parse_option(
-        self: const Self*,
+        self: Self*,
         cmd: const Cmd*,
         i: usize*,
         pargs: ProgramArgs
     ) ErrorOr<(), Error> {
-        var arg = pargs.argv[*i];
-        
-        var next_arg: const uint8*;
+        const arg = pargs.argv[*i];
+        var next_arg: const uint8* = null;
 
         if (*i + 1 < @cast(usize, pargs.argc)) {
             next_arg = pargs.argv[*i + 1];
         }
-
-        const len = strlen(arg);
 
         const (single_dash, double_dash) = is_opt_dashed(arg);
 
@@ -273,83 +236,43 @@ pub struct App {
         }
 
         var name: const uint8* = undefined;
+        if (double_dash) { name = arg + 2; }
+        else { name = arg + 1; }
 
-        // FIXME: Use ternary expression 
-        // Skip dashes
-        if (double_dash) { name = arg + 2; } // Double dash
-        else { name = arg + 1; } // Single dash
-    
-        // Check option name to be present
-        if (strcmp(name, "\0") == 0) {
+        if (*name == '\0') {
             return .Error(.InvalidOption { opt: arg });
         }
 
-        const (is_assign, var assign_index) = is_opt_assign(name);
-
-        var assign_name_buf: uint8*;
-        var assign_value_buf: uint8*;
+        const (is_assign, assign_index) = is_opt_assign(name);
 
         if (is_assign) {
-            // REVIEW: We have to make a buffer for 
-            // storing option name and value because language 
-            // currently do not have a strong support of slices.
-
-            const val_len = strlen(name + assign_index + 1);
-            assign_name_buf = self->allocator.alloc(assign_index + 1);
-            assign_value_buf = self->allocator.alloc(val_len + 1);
-
-            @memcpy(assign_name_buf, name, assign_index);
-            assign_name_buf[assign_index] = '\0';
+            const arena_alloc: Allocator = dynamic self->arena;
+            var name_buf: uint8* = arena_alloc.alloc(assign_index + 1);
+            @memcpy(name_buf, name, assign_index);
+            name_buf[assign_index] = '\0';
 
             @assert(name[assign_index] == '=', "assign index is wrong");
 
-            @memcpy(assign_value_buf, name + assign_index + 1, val_len);
-            assign_value_buf[val_len] = '\0';
-            
-            name = assign_name_buf;
-            next_arg = assign_value_buf;
+            next_arg = name + assign_index + 1;
+            name = name_buf;
         }
 
         var value: Value;
 
         switch (cmd->find_option(name)) case .Some(opt) else {
-            if (assign_value_buf) {
-                self->allocator.free(assign_value_buf);
-            }
             return .Error(.UnknownOption { opt: name });
         }
 
-        // Flag enabled, no matter
-        // what it's value is
         opt->enabled = true;
 
         const ty = opt->arg_type.unwrap_or(.Bool);
 
         if (ty.is_bool() && (!next_arg || is_arg_an_opt(next_arg))) {
-            // Option used as flag
             value = .Bool(true);
-            if (assign_name_buf) {
-                self->allocator.free(assign_name_buf);
-            }
-            if (assign_value_buf) { 
-                self->allocator.free(assign_value_buf);
-            }
             goto register_value;
         }
-        
-        // For non-boolean options, or boolean with explicit value
-        if (!next_arg) {
-            if (assign_value_buf) {
-                self->allocator.free(assign_value_buf);
-            }
-            return .Error(.MissingValue { opt: name });
-        }
 
-        if (is_arg_an_opt(next_arg)) {
-            // Next arg is an option, but we need a value
-            if (assign_value_buf) {
-                self->allocator.free(assign_value_buf);
-            }
+        if (!next_arg || is_arg_an_opt(next_arg)) {
             return .Error(.MissingValue { opt: name });
         }
 
@@ -357,21 +280,11 @@ pub struct App {
             *i += 1;
         }
 
-        // Parse the value
         value = self->parse_value(next_arg);
 
-        if (assign_name_buf) {
-            self->allocator.free(assign_name_buf);
-        }
-        if (assign_value_buf) {
-            self->allocator.free(assign_value_buf);
-        }
-    
     register_value:
         opt->add_value(value);
 
-        // Validate parsed value type
-        // with expected type
         if (!is_value_valid(ty, value)) {
             return .Error(.BadValueType {
                 opt: arg,
@@ -379,7 +292,6 @@ pub struct App {
             });
         }
 
-        // Option policy check
         switch (opt->check()) {
             case .Error(err) => return .Error(err);
             else => {}
@@ -1275,8 +1187,8 @@ fn is_ident(str: const uint8*) bool {
     }
     
     // Check remaining characters 
-    // Allow letters, digits, underscore, and dash
-    for (var i: usize = 1; str[i] != '\0'; i += 1) {
+    // Allow letters, digits, underscore, and dash (stop at '=')
+    for (var i: usize = 1; str[i] != '\0' && str[i] != '='; i += 1) {
         var char = @cast(c_int, @cast(uint8, str[i]));
         if (isalnum(char) == 0 && (str[i] != '_' && str[i] != '-')) {
             return false;
