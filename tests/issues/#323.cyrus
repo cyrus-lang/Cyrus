@@ -1,0 +1,9 @@
+import std::libc{printf};
+
+const x = y + 2; //~ ERROR cyclic constant evaluation detected for `x`
+const y = x + 2;
+
+pub fn main() {
+    printf("%d\n", x);
+    printf("%d\n", y);
+}

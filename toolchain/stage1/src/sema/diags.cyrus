@@ -107,6 +107,36 @@ pub fn report_cyclic_type_definition(
     mesg.free();
 }
 
+pub fn report_cyclic_const_eval(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    cycle: const Vec<String>*,
+) {
+    var mesg = String.new(allocator);
+
+    if (cycle->len() == 0) {
+        mesg.push_str("cyclic constant evaluation detected");
+    } else {
+        const first = cycle->get_const(0).unwrap();
+        mesg.push_str("cyclic constant evaluation detected for `");
+        mesg.push_str(first->as_str_const());
+        mesg.push_str("`");
+    }
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    diag->help("constants cannot depend on themselves directly or indirectly");
+
+    for (var i: usize = 1; i < cycle->len(); i += 1) {
+        const name = cycle->get_const(i).unwrap();
+        diag->info(name->as_str_const());
+    }
+
+    dctx->report(diag);
+
+    mesg.free();
+}
+
 pub fn report_redundant_const_qualifier(
     dctx: DiagContext*,
     allocator: Allocator,
