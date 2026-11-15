@@ -1,21 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-/* REVIEW
-    We'll add hashing support to our lexer after stage1 completed.
-    Nice resources to check out later:
-    https://xnacly.me/posts/2025/fast-lexer-strategies/
-*/
-
 import std::mem::arena{ArenaAllocator};
 import std::mem{Allocator, alloc_init};
 import std::libc::types{c_char};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{
-    parse_str_as_int128,
     parse_str_as_uint128,
     parse_str_as_float64,
+    parse_str_as_int128,
     String
 };
 import std::libc{
@@ -27,17 +21,17 @@ import std::libc{
 import diags{DiagContext, Diag};
 import source{SourceId};
 import tokens{
-    Token,
-    TokenKind,
-    Literal,
-    IntegerSuffix,
-    FloatSuffix,
-    StringPrefix,
-    Loc,
-    Span,
     escape_sequence_to_char,
     is_valid_escape,
-    unescape_string
+    unescape_string,
+    IntegerSuffix,
+    StringPrefix,
+    FloatSuffix,
+    TokenKind,
+    Literal,
+    Token,
+    Span,
+    Loc,
 };
 
 pub struct Lexer {
@@ -159,7 +153,8 @@ pub struct Lexer {
         }
     }
 
-    /// Advances lexer by consuming a character and updates line and column.
+    /// Advances lexer by consuming a character
+    /// and updates line and column.
     fn read(self: Self*) {
         if (self->pos >= self->input->len()) {
             return;
@@ -185,37 +180,44 @@ pub struct Lexer {
         return self->read_ident_or_keyword();
     }
 
-    // TODO: Hash keywords
     [[inline]]
     fn read_ident_or_keyword(self: Self*) TokenKind* {
-        var str = self->read_ident();
+        const (start_pos, len, hash) = self->scan_ident();
+        const ptr = self->input->as_str_const() + start_pos;
 
-        switch (TokenKind.lookup_keyword(str.as_str_const())) {
+        if (len == 1 && ptr[0] == '_') {
+            return self->init_kind(.Underscore);
+        }
+
+        switch (TokenKind.lookup_keyword_hashed(ptr, len, hash)) {
             case .Some(token_kind) => {
-                str.free();
                 return self->init_kind(token_kind);
             }
             else => {}
         }
 
-        if (str.as_str_const() == "_") {
-            str.free();
-            return self->init_kind(.Underscore);
+        var str = String.with_capacity(self->allocator, len + 1);
+        for (var i: usize = 0; i < len; i += 1) {
+            str.push(ptr[i]);
         }
-
         return self->init_ident(str);
     }
 
     [[inline]]
-    fn read_ident(self: Self*) String {
-        var ident = String.new(self->allocator);
+    fn scan_ident(self: Self*) (usize, usize, uint64) {
+        const buf = self->input->as_str_const();
+        const input_len = self->input->len();
+        const start_pos = self->pos;
 
-        while (!self->is_eof() && is_alphanumeric(self->cur())) {
-            ident.push(self->cur());
-            self->read();
+        var hash: uint64 = 5381;
+
+        while (self->pos < input_len && is_alphanumeric(buf[self->pos])) {
+            hash = hash ^ (hash << 5) ^ @cast(uint64, buf[self->pos]);
+            self->pos += 1;
+            self->col += 1;
         }
 
-        return ident;
+        return (start_pos, self->pos - start_pos, hash);
     }
 
     [[inline]]
@@ -715,10 +717,10 @@ pub struct Lexer {
 
     fn read_integer_suffix(self: Self*) (Option<IntegerSuffix>, bool) {
         if (self->cur() == 'i' || self->cur() == 'u') {
-            var suffix = self->read_ident();
-            defer suffix.free();
+            const (start_pos, len, hash) = self->scan_ident();
+            const ptr = self->input->as_str_const() + start_pos;
 
-            switch (TokenKind.lookup_keyword(suffix.as_str_const())) {
+            switch (TokenKind.lookup_keyword_hashed(ptr, len, hash)) {
                 case .Some(token_kind) => {
                     return (
                         token_kind.as_integer_suffix(), 
@@ -734,10 +736,10 @@ pub struct Lexer {
 
     fn read_float_suffix(self: Self*) Option<FloatSuffix> {
         if (self->cur() == 'f') {
-            var suffix = self->read_ident();
-            defer suffix.free();
+            const (start_pos, len, hash) = self->scan_ident();
+            const ptr = self->input->as_str_const() + start_pos;
 
-            switch (TokenKind.lookup_keyword(suffix.as_str_const())) {
+            switch (TokenKind.lookup_keyword_hashed(ptr, len, hash)) {
                 case .Some(token_kind) => {
                     return token_kind.as_float_suffix();
                 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::libc{printf, memcmp, strlen};
 import std::mem::arena{ArenaAllocator};
 import std::mem::libc{LibcAllocator};
 import std::collections{Vec};
@@ -8,7 +9,6 @@ import std::io{StringWriter};
 import std::string{String};
 import std::mem{Allocator};
 import std::option{Option};
-import std::libc{printf};
 import source{SourceId};
 import std::io{Writer};
 import std::format{
@@ -221,61 +221,80 @@ pub enum TokenKind : Format {
 
     pub fn is_unsigned_integer(self: const Self*) bool {
         switch (*self) {
-            case .USize | .UInt8 | .UInt16 | .UInt32 | .UInt64 | .UInt128 => return true;
+            case .USize 
+            | .UInt8 
+            | .UInt16 
+            | .UInt32 
+            | .UInt64 
+            | .UInt128 => return true;
+
             else => return false;
         }
     }
 
     pub fn lookup_keyword(str: const uint8*) Option<Self> {
-        switch (str) {
-            case "dynamic" => return .Some(.Dynamic);
-            case "static" => return .Some(.Static);
-            case "var" => return .Some(.Var);
-            case "mod" => return .Some(.Module);
-            case "interface" => return .Some(.Interface);
-            case "type" => return .Some(.Type);
-            case "fn" => return .Some(.Function);
-            case "switch" => return .Some(.Switch);
-            case "case" => return .Some(.Case);
-            case "struct" => return .Some(.Struct);
-            case "import" => return .Some(.Import);
-            case "if" => return .Some(.If);
-            case "else" => return .Some(.Else);
-            case "return" => return .Some(.Return);
-            case "for" => return .Some(.For);
-            case "break" => return .Some(.Break);
-            case "continue" => return .Some(.Continue);
-            case "true" => return .Some(.True);
-            case "false" => return .Some(.False);
-            case "null" => return .Some(.Null);
-            case "uintptr" => return .Some(.UIntPtr);
-            case "intptr" => return .Some(.IntPtr);
-            case "isize" => return .Some(.ISize);
-            case "usize" => return .Some(.USize);
-            case "int8" => return .Some(.Int8);
-            case "int16" => return .Some(.Int16);
-            case "int32" => return .Some(.Int32);
-            case "int64" => return .Some(.Int64);
-            case "int128" => return .Some(.Int128);
-            case "uint8" => return .Some(.UInt8);
-            case "uint16" => return .Some(.UInt16);
-            case "uint32" => return .Some(.UInt32);
-            case "uint64" => return .Some(.UInt64);
-            case "uint128" => return .Some(.UInt128);
-            case "float16" => return .Some(.Float16);
-            case "float32" => return .Some(.Float32);
-            case "float64" => return .Some(.Float64);
-            case "float128" => return .Some(.Float128);
-            case "bool" => return .Some(.Bool);
-            case "void" => return .Some(.Void);
-            case "enum" => return .Some(.Enum);
-            case "extern" => return .Some(.Extern);
-            case "pub" => return .Some(.Public);
-            case "const" => return .Some(.Const);
-            case "goto" => return .Some(.Goto);
-            case "defer" => return .Some(.Defer);
-            case "union" => return .Some(.Union);
-            case "while" => return .Some(.While);
+        const len = strlen(str);
+
+        var hash: uint64 = 5381;
+
+        for (var i: usize = 0; i < len; i += 1) {
+            hash = hash ^ (hash << 5) ^ @cast(uint64, str[i]);
+        }
+
+        return Self.lookup_keyword_hashed(str, len, hash);
+    }
+
+    pub fn lookup_keyword_hashed(ptr: const uint8*, len: usize, hash: uint64) Option<Self> {
+        switch (hash) {
+            case 0x0000ad5be5850ff0 => if (len == 7 && ptr == "dynamic") { return .Some(.Dynamic); }
+            case 0x00000540f644da7d => if (len == 6 && ptr == "static") { return .Some(.Static); }
+            case 0x000000000ad5f5e0 => if (len == 3 && ptr == "var") { return .Some(.Var); }
+            case 0x000000000ad59823 => if (len == 3 && ptr == "mod") { return .Some(.Module); }
+            case 0x02b5cf7696d6c000 => if (len == 9 && ptr == "interface") { return .Some(.Interface); }
+            case 0x00000001506a219d => if (len == 4 && ptr == "type") { return .Some(.Type); }
+            case 0x0000000000540dcd => if (len == 2 && ptr == "fn") { return .Some(.Function); }
+            case 0x00000540f670fa37 => if (len == 6 && ptr == "switch") { return .Some(.Switch); }
+            case 0x0000000150619f11 => if (len == 4 && ptr == "case") { return .Some(.Case); }
+            case 0x00000540f64d1152 => if (len == 6 && ptr == "struct") { return .Some(.Struct); }
+            case 0x00000540c27c7078 => if (len == 6 && ptr == "import") { return .Some(.Import); }
+            case 0x0000000000540c2a => if (len == 2 && ptr == "if") { return .Some(.If); }
+            case 0x000000015062b3da => if (len == 4 && ptr == "else") { return .Some(.Else); }
+            case 0x00000540f54e0b8f => if (len == 6 && ptr == "return") { return .Some(.Return); }
+            case 0x000000000ad5b43e => if (len == 3 && ptr == "for") { return .Some(.For); }
+            case 0x0000002b5c4bebba => if (len == 5 && ptr == "break") { return .Some(.Break); }
+            case 0x0015061b1b653b24 => if (len == 8 && ptr == "continue") { return .Some(.Continue); }
+            case 0x00000001506a0d33 => if (len == 4 && ptr == "true") { return .Some(.True); }
+            case 0x0000002b5c020398 => if (len == 5 && ptr == "false") { return .Some(.False); }
+            case 0x000000015067795e => if (len == 4 && ptr == "null") { return .Some(.Null); }
+            case 0x0000ad5f859fe8f5 => if (len == 7 && ptr == "uintptr") { return .Some(.UIntPtr); }
+            case 0x00000540c24e1c20 => if (len == 6 && ptr == "intptr") { return .Some(.IntPtr); }
+            case 0x0000002b5cfb5ce9 => if (len == 5 && ptr == "isize") { return .Some(.ISize); }
+            case 0x0000002b5d3b5cf5 => if (len == 5 && ptr == "usize") { return .Some(.USize); }
+            case 0x0000000150648aee => if (len == 4 && ptr == "int8") { return .Some(.Int8); }
+            case 0x0000002b5cf5d631 => if (len == 5 && ptr == "int16") { return .Some(.Int16); }
+            case 0x0000002b5cf5d677 => if (len == 5 && ptr == "int32") { return .Some(.Int32); }
+            case 0x0000002b5cf5d6d4 => if (len == 5 && ptr == "int64") { return .Some(.Int64); }
+            case 0x00000540c24f10ad => if (len == 6 && ptr == "int128") { return .Some(.Int128); }
+            case 0x0000002b5d362a3b => if (len == 5 && ptr == "uint8") { return .Some(.UInt8); }
+            case 0x00000540fbf36c44 => if (len == 6 && ptr == "uint16") { return .Some(.UInt16); }
+            case 0x00000540fbf36c02 => if (len == 6 && ptr == "uint32") { return .Some(.UInt32); }
+            case 0x00000540fbf36ca1 => if (len == 6 && ptr == "uint64") { return .Some(.UInt64); }
+            case 0x0000ad5f859ee478 => if (len == 7 && ptr == "uint128") { return .Some(.UInt128); }
+            case 0x0000ad5b4ee56a52 => if (len == 7 && ptr == "float16") { return .Some(.Float16); }
+            case 0x0000ad5b4ee56a14 => if (len == 7 && ptr == "float32") { return .Some(.Float32); }
+            case 0x0000ad5b4ee56ab7 => if (len == 7 && ptr == "float64") { return .Some(.Float64); }
+            case 0x00150632924820ae => if (len == 8 && ptr == "float128") { return .Some(.Float128); }
+            case 0x00000001506120ab => if (len == 4 && ptr == "bool") { return .Some(.Bool); }
+            case 0x00000001506b72f1 => if (len == 4 && ptr == "void") { return .Some(.Void); }
+            case 0x000000015062bb16 => if (len == 4 && ptr == "enum") { return .Some(.Enum); }
+            case 0x00000540dbee4975 => if (len == 6 && ptr == "extern") { return .Some(.Extern); }
+            case 0x000000000ad5ef62 => if (len == 3 && ptr == "pub") { return .Some(.Public); }
+            case 0x0000002b5c553240 => if (len == 5 && ptr == "const") { return .Some(.Const); }
+            case 0x000000015063b776 => if (len == 4 && ptr == "goto") { return .Some(.Goto); }
+            case 0x0000002b5c2039d5 => if (len == 5 && ptr == "defer") { return .Some(.Defer); }
+            case 0x0000002b5d35a9f6 => if (len == 5 && ptr == "union") { return .Some(.Union); }
+            case 0x0000002b5d16b15a => if (len == 5 && ptr == "while") { return .Some(.While); }
+            else {}
         }
 
         return .None;
