@@ -39,6 +39,7 @@ pub struct ModuleNode {
     pub source_id: SourceId,
     pub program: ASTProgram*,
     pub owns_program: bool,
+    pub has_errors: bool,
     pub edges: Vec<ModuleEdge>,
     pub parent: Option<usize>,
     pub parent_edge: Option<usize>,
@@ -79,6 +80,7 @@ pub struct ModuleGraph {
             program: entry_program,
             tokens: .None,
             owns_program: false,
+            has_errors: false,
             edges: Vec.new(allocator),
             parent: .None,
             parent_edge: .None,
@@ -242,6 +244,7 @@ pub struct ModuleGraph {
         switch (load) {
             case .Error(err) => {
                 self->report_load_error(import_, err);
+                self->nodes.get(from).unwrap()->has_errors = true;
                 err.free();
                 return;
             }
@@ -252,9 +255,14 @@ pub struct ModuleGraph {
                     case .Some(existing) => {
                         if (self->active_contains(existing)) {
                             self->report_cycle(import_->span);
+                            self->nodes.get(from).unwrap()->has_errors = true;
                             key.free();
                             resolved.free();
                             return;
+                        }
+
+                        if (self->nodes.get_const(existing).unwrap()->has_errors) {
+                            self->nodes.get(from).unwrap()->has_errors = true;
                         }
 
                         self->push_edge(from, import_, import_node, existing, resolved);
@@ -273,6 +281,7 @@ pub struct ModuleGraph {
                     );
 
                     self->has_errors = true;
+                    self->nodes.get(from).unwrap()->has_errors = true;
                     key.free();
                     resolved.free();
                     return;
@@ -281,32 +290,68 @@ pub struct ModuleGraph {
                 const path = Path.new(allocator, resolved.file_path.as_str_const());
 
                 switch (lexical->tokenize_source(path)) case .Value(var source_tokens) else {
-                    key.free();
-                    resolved.free();
+                    const target = self->nodes.len();
+
+                    self->nodes.push(ModuleNode {
+                        key,
+                        file_path: String.from_str(allocator, resolved.file_path.as_str_const()),
+                        source_id: 0,
+                        program: null,
+                        tokens: .None,
+                        owns_program: false,
+                        has_errors: true,
+                        edges: Vec.new(allocator),
+                        parent: .Some(from),
+                        parent_edge: .None,
+                        symbol: .None,
+                    });
+                    
+                    self->push_edge(from, import_, import_node, target, resolved);
+                    self->nodes.get(from).unwrap()->has_errors = true;
+                    self->has_errors = true;
                     return;
                 }
 
+                const target_source_id = source_tokens.source_id;
+
                 switch (lexical->parse_source(source_tokens)) case .Value(var parsed) else {
                     source_tokens.free();
-                    key.free();
-                    resolved.free();
+                    const target = self->nodes.len();
+
+                    self->nodes.push(ModuleNode {
+                        key,
+                        file_path: String.from_str(allocator, resolved.file_path.as_str_const()),
+                        source_id: target_source_id,
+                        program: null,
+                        tokens: .None,
+                        owns_program: false,
+                        has_errors: true,
+                        edges: Vec.new(allocator),
+                        parent: .Some(from),
+                        parent_edge: .None,
+                        symbol: .None,
+                    });
+
+                    self->push_edge(from, import_, import_node, target, resolved);
+                    self->nodes.get(from).unwrap()->has_errors = true;
+                    self->has_errors = true;
                     return;
                 }
 
                 const target = self->nodes.len();
-                const target_source_id = source_tokens.source_id;
 
                 self->nodes.push(ModuleNode {
-                    key,
                     file_path: String.from_str(allocator, resolved.file_path.as_str_const()),
-                    source_id: target_source_id,
                     program: alloc_init(allocator, parsed),
+                    source_id: target_source_id,
                     tokens: .Some(source_tokens),
-                    owns_program: true,
                     edges: Vec.new(allocator),
                     parent: .Some(from),
                     parent_edge: .None,
+                    owns_program: true,
+                    has_errors: false,
                     symbol: .None,
+                    key,
                 });
 
                 self->push_edge(from, import_, import_node, target, resolved);

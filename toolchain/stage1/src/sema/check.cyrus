@@ -1294,7 +1294,9 @@ fn analyze_array(
                         span: array->span,
                     }));
                 }
-                case .None => {}
+                case .None => {
+                    return .Some(.Err(array->span));
+                }
             }
 
             analyzed_first_element = true;
@@ -1751,6 +1753,10 @@ fn analyze_struct_init(
 
     operand = expand_sema_type(context, operand, struct_init->span);
 
+    if (operand.contains_error()) {
+        return .Some(.Err(struct_init->span));
+    }
+
     switch (operand.as_named_type()) case .Some(named_type) else {
         var type_name = format::format_sema_type(context->allocator, context->decl_tables, &operand);
 
@@ -1877,6 +1883,9 @@ fn analyze_unnamed_struct_value(
 
     switch (expected_type) {
         case .Some(ty) => {
+            if (ty.contains_error()) {
+                return .Some(.Err(struct_valueue->span));
+            }
             switch (ty.as_named_type()) {
                 case .Some(named_type) => {
                     switch (named_type.type_decl_id.as_struct()) {
@@ -2050,6 +2059,10 @@ fn analyze_union_init(
 
     operand = expand_sema_type(context, operand, union_init->span);
 
+    if (operand.contains_error()) {
+        return .Some(.Err(union_init->span));
+    }
+
     switch (operand.as_named_type()) case .Some(named_type) else {
         var type_name = format::format_sema_type(
             context->allocator,
@@ -2195,6 +2208,9 @@ fn analyze_unnamed_union_value(
 
     switch (expected_type) {
         case .Some(ty) => {
+            if (ty.contains_error()) {
+                return .Some(.Err(union_value->span));
+            }
             switch (ty.as_named_type()) {
                 case .Some(named_type) => {
                     switch (named_type.type_decl_id.as_union()) {
@@ -2594,6 +2610,10 @@ fn analyze_builtin_offsetof(
     ty = expand_sema_type(context, ty, builtin_func->span);
     ty = generics::substitute_type(context, &ty);
 
+    if (ty.contains_error()) {
+        return .Some(.Err(builtin_func->span));
+    }
+
     if (!ty.is_struct()) {
         var type_name = format::format_sema_type(
             context->allocator, 
@@ -2673,6 +2693,15 @@ fn analyze_builtin_cast(
 
     analyze_expr_non_terminal(context, type_arg, .None);
     analyze_expr(context, value_arg, .None);
+
+    switch (type_arg->ty) {
+        case .Some(ty) => {
+            if (ty.contains_error()) {
+                return .Some(.Err(builtin_func->span));
+            }
+        }
+        case .None => {}
+    }
 
     switch (type_arg->kind.as_type_expr(
         context->allocator
@@ -4850,6 +4879,7 @@ fn analyze_block_stmt(
     context: AnalyzerContext*, 
     block: cir::BlockStmt*
 ) flow::FlowState {
+    const start_diags = context->dctx->diag_count();
     const total = block->stmts.len();
 
     var flow_state: flow::FlowState = .Reachable;
@@ -4878,7 +4908,7 @@ fn analyze_block_stmt(
         if (terminated) {
             stmt->is_dead = true;
 
-            if (!context->dctx->has_errors()) {
+            if (!context->dctx->has_errors_since(start_diags)) {
                 diags::report_unreachable_code(
                     context->dctx,
                     context->allocator,
@@ -5094,7 +5124,9 @@ fn analyze_global_var(
                     global_var->ty = .Some(inner);
                 }
                 case .None => {
-                    global_var->ty = .None;
+                    global_var->ty = .Some(cir::SemaType.Err(global_var->span));
+                    write_back_global_var(context, global_var);
+                    return;
                 }
             }
         }
@@ -5497,12 +5529,14 @@ fn analyze_func_body(
     body: cir::BlockStmt*, 
     ret_type: const cir::SemaType*
 ) {
+    const start_diags = context->dctx->diag_count();
     const flow_state = analyze_block_stmt(context, body);
 
-    if (!ret_type->is_void() 
+    if (!ret_type->contains_error()
+        && !ret_type->is_void() 
         && !flow_state.is_returns() 
         && !flow_state.is_unreachable() 
-        && !context->dctx->has_errors())
+        && !context->dctx->has_errors_since(start_diags))
     {
         diags::report_missing_return(
             context->dctx, 
@@ -5931,6 +5965,10 @@ fn analyze_enum_variant(
 
             switch (value->ty) {
                 case .Some(value_type) => {
+                    if (value_type.contains_error()) {
+                        return;
+                    }
+
                     if (is_repr_c && !value_type.is_integer()) {
                         diags::report_repr_c_enum_with_non_integer_variant(
                             context->dctx,
@@ -6153,6 +6191,39 @@ fn analyze_interface(
     interface_decl->is_interface_dynamically_dispatchable = is_interface_dynamically_dispatchable;
 }
 
+fn func_decl_contains_error(func_decl: const cir::FuncDecl*) bool {
+    if (func_decl->ret_type.contains_error()) {
+        return true;
+    }
+
+    for (var i: usize = 0; i < func_decl->params.list.len(); i += 1) {
+        const param = func_decl->params.list.get_const(i).unwrap();
+        switch (*param) {
+            case .FuncParam(fp) => {
+                if (fp.ty.contains_error()) {
+                    return true;
+                }
+            }
+            case .SelfModifier(sm) => {
+                if (sm.ty.contains_error()) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    switch (func_decl->params.variadic) {
+        case .Some(.Typed { ty, .. }) => {
+            if (ty.contains_error()) {
+                return true;
+            }
+        }
+        else => {}
+    }
+
+    return false;
+}
+
 fn analyze_object_implements_interfaces(
     context: AnalyzerContext*,
     object_name: const uint8*,
@@ -6173,6 +6244,10 @@ fn analyze_object_implements_interfaces(
         }
 
         const ty = expand_sema_type(context, normalized_type, implement_interface->span);
+
+        if (ty.contains_error()) {
+            continue;
+        }
 
         switch (ty.as_named_interface()) case .Some(interface_id) else {
             var symbol = format::format_sema_type(
@@ -6232,6 +6307,8 @@ fn analyze_object_implements_interfaces(
                 methods.get_owned(method_id).unwrap();
 
             if (!is_object_generic && !object_method.func_decl.is_generic() && 
+                !func_decl_contains_error(&object_method.func_decl) &&
+                !func_decl_contains_error(inst_func) &&
                 !cir::func_decl_eq(&object_method.func_decl, inst_func)) 
             {
                 diags::report_interface_method_type_mismatch(
@@ -6494,13 +6571,13 @@ fn analyze_return(
                         got.free();
                     }
                 }
-                case .None => return .Reachable;
+                case .None => return .Returns;
             }
         }
         case .None => {
             const expand = expand_sema_type(context, *ret_type, return_->span);
 
-            if (!expand.is_void()) {
+            if (!expand.contains_error() && !expand.is_void()) {
                 var symbol = format::format_sema_type(
                     context->allocator, 
                     context->decl_tables, 
@@ -7551,6 +7628,7 @@ fn poison_tuple_export_pattern(
                 poison_tuple_export_pattern(context, sub, span);
             }
         }
+        case .Ignore => {}
     }
 }
 
@@ -8351,6 +8429,15 @@ fn normalize_array(
         case .Fixed(expr) => {
             analyze_expr(context, expr, .None);
 
+            switch (expr->ty) {
+                case .Some(ty) => {
+                    if (ty.contains_error()) {
+                        return .None;
+                    }
+                }
+                case .None => {}
+            }
+
             if (expr->literal_const_int_value().is_none()) {
                 if (!fold_type_builtin_as_integer(context, expr)) {
                     diags::report_array_capacity_not_const(
@@ -8581,7 +8668,7 @@ fn normalize_func_params(
                 ty: final_ty,
                 span,
             });
-            write_back_param_var_decl(context, var_decl_id, final_ty);
+            write_back_param_var_decl(context, .Some(var_decl_id), final_ty);
         }
         else => {}
     }
@@ -8644,6 +8731,10 @@ fn analyze_enum_init(
     }
 
     operand = expand_sema_type(context, operand, enum_init->span);
+
+    if (operand.contains_error()) {
+        return .Some(.Err(enum_init->span));
+    }
 
     switch (operand.as_named_type()) case .Some(named_type) else {
         var type_name = format::format_sema_type(
@@ -8890,6 +8981,9 @@ fn analyze_unnamed_enum_value(
 
     switch (expected_type) {
         case .Some(ty) => {
+            if (ty.contains_error()) {
+                return .Some(.Err(enum_value->span));
+            }
             switch (ty.as_named_type()) {
                 case .Some(named_type) => {
                     switch (named_type.type_decl_id.as_enum()) {
@@ -12748,6 +12842,10 @@ fn check_argument_satisfies_generic_param_bounds(
     arg_loc: Span,
     arg_index: usize
 ) bool {
+    if (arg_type->contains_error()) {
+        return true;
+    }
+
     switch (original_params->lookup_param(param_name)) case .Some(original_param) else {
         return false;
     }

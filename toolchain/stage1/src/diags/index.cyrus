@@ -108,8 +108,16 @@ pub struct DiagContext {
         return &self->diags;
     }
 
+    pub fn diag_count(self: const Self*) usize {
+        return self->diags.len();
+    }
+
     pub fn has_errors(self: const Self*) bool {
-        for (var i: usize = 0; i < self->diags.len(); i += 1) {
+        return self->has_errors_since(0);
+    }
+
+    pub fn has_errors_since(self: const Self*, start_index: usize) bool {
+        for (var i: usize = start_index; i < self->diags.len(); i += 1) {
             const diag = self->diags.get_const(i).unwrap();
 
             if (diag->level == .Error) {

@@ -3631,6 +3631,8 @@ pub struct ProgramTree {
     pub arena: StmtArena,
     pub file_name: String,
     pub module_name: String,
+    pub has_errors: bool,
+    pub deps: Vec<SourceId>,
 
     [[inline]]
     pub fn body_len(self: const Self*) usize {

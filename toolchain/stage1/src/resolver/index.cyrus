@@ -51,6 +51,13 @@ struct GroupImportRecord {
 
 const RESOLVER_ARENA_SIZE: usize = 65536;
 
+enum ModuleResolveState {
+    Unvisited,
+    Resolving,
+    Succeeded,
+    Failed,
+}
+
 pub struct Resolver {
     pub allocator: Allocator,
     pub opts: const ResolverOptions*,
@@ -136,32 +143,25 @@ pub struct Resolver {
         );
         defer graph.free();
 
-        if (graph.has_errors || self->lexical->context->dctx.has_errors()) {
-            return;
-        }
-
         // B. Create the entry module symbol
         //
         // Imported modules get theirs when their
         // import edge is processed below
         self->create_entry_module_symbol(&graph);
 
-        if (self->lexical->context->dctx.has_errors()) {
+        if (self->lexical->context->dctx.has_errors() && graph.nodes.len() == 1) {
             return;
         }
 
         // C. Resolve modules recursively in import order
-        var resolved: Vec<bool> = Vec.new(self->allocator);
-        defer resolved.free();
+        var states: Vec<ModuleResolveState> = Vec.new(self->allocator);
+        defer states.free();
 
         for (var i: usize = 0; i < graph.nodes.len(); i += 1) {
-            resolved.push(false);
+            states.push(.Unvisited);
         }
 
-        if (!self->resolve_module_recursive(&graph, 0, &resolved)) {
-            return;
-        }
-
+        self->resolve_module_recursive(&graph, 0, &states);
         self->adopt_discovered_modules(&graph);
     }
 
@@ -235,21 +235,23 @@ pub struct Resolver {
         self: Self*,
         graph: ModuleGraph*,
         index: usize,
-        resolved: Vec<bool>*
+        states: Vec<ModuleResolveState>*
     ) bool {
         const allocator = self->allocator;
 
-        switch (resolved->get_const(index)) {
-            case .Some(flag) => {
-                if (*flag) {
-                    return true;
+        switch (states->get_const(index)) {
+            case .Some(state) => {
+                switch (*state) {
+                    case .Succeeded | .Resolving => return true;
+                    case .Failed => return false;
+                    case .Unvisited => {}
                 }
             }
             else => return false;
         }
 
-        switch (resolved->get(index)) {
-            case .Some(flag) => *flag = true;
+        switch (states->get(index)) {
+            case .Some(state) => *state = .Resolving;
             else => return false;
         }
 
@@ -259,22 +261,37 @@ pub struct Resolver {
 
         switch (node->symbol) {
             case .Some(symbol) => module_symbol_id = symbol;
-            case .None => return false;
+            case .None => {
+                *states->get(index).unwrap() = .Failed;
+                return false;
+            }
         }
+
+        var deps: Vec<SourceId> = Vec.new(dynamic self->arena);
+        var dep_failed = node->has_errors;
 
         for (var e: usize = 0; e < node->edges.len(); e += 1) {
             const edge = node->edges.get_const(e).unwrap();
+            const target_node = graph->nodes.get_const(edge->target).unwrap();
+            const target_source_id = target_node->source_id;
+            deps.push(target_source_id);
 
-            const import_ast_node = 
+            if (target_node->has_errors) {
+                switch (states->get(edge->target)) {
+                    case .Some(state) => *state = .Failed;
+                    else => {}
+                }
+                dep_failed = true;
+                continue;
+            }
+
+            const import_ast_node =
                 node->
                 program->
                 nodes.get_const(edge->import_node).unwrap();
 
             switch (*import_ast_node) {
                 case .Import(import_) => {
-                    const target_source_id = graph->nodes
-                        .get_const(edge->target).unwrap()->source_id;
-
                     const segment = last_sub_module_name(allocator, &import_.segments);
 
                     const real_symbol_id = modules::get_or_create_module_symbol(
@@ -292,13 +309,10 @@ pub struct Resolver {
                     const concrete = self->global_symbols
                         .resolve_concrete_scope_id(real_symbol_id);
 
-                    const target_node = graph->nodes.get_const(edge->target).unwrap();
-
                     switch (target_node->symbol) {
                         case .None => {
-                            const node = graph->nodes.get(edge->target).unwrap();
-                            
-                            node->symbol = .Some(concrete);
+                            const mut_target = graph->nodes.get(edge->target).unwrap();
+                            mut_target->symbol = .Some(concrete);
                         }
                         else => {}
                     }
@@ -306,9 +320,10 @@ pub struct Resolver {
                     if (!self->resolve_module_recursive(
                         graph,
                         edge->target,
-                        resolved
+                        states
                     )) {
-                        return false;
+                        dep_failed = true;
+                        continue;
                     }
 
                     if (!self->bind_resolved_import(
@@ -317,12 +332,19 @@ pub struct Resolver {
                         concrete,
                         edge->resolved.consumed_segments
                     )) {
-                        return false;
+                        dep_failed = true;
                     }
                 }
                 else => {}
             }
         }
+
+        if (dep_failed || node->program == null) {
+            *states->get(index).unwrap() = .Failed;
+            return false;
+        }
+
+        const start_diags = self->lexical->context->dctx.diag_count();
 
         bind_program_decl_names(
             &self->global_symbols,
@@ -345,13 +367,22 @@ pub struct Resolver {
         );
 
         const body = resolve_decl_full(&ctx, node->program);
+        const mod_has_errors = self->lexical->context->dctx.has_errors_since(start_diags);
         self->insert_program_tree(
             node->source_id,
             node->file_path.as_str_const(),
-            body
+            body,
+            mod_has_errors,
+            deps
         );
         ctx.free();
 
+        if (mod_has_errors) {
+            *states->get(index).unwrap() = .Failed;
+            return false;
+        }
+
+        *states->get(index).unwrap() = .Succeeded;
         return true;
     }
 
@@ -360,6 +391,8 @@ pub struct Resolver {
         source_id: SourceId,
         file_path: const uint8*,
         body: Vec<Stmt>,
+        has_errors: bool,
+        deps: Vec<SourceId>,
     ) {
         const allocator: Allocator = dynamic self->arena;
 
@@ -383,6 +416,8 @@ pub struct Resolver {
             arena,
             file_name: String.from_str(allocator, file_path),
             module_name,
+            has_errors,
+            deps,
         });
     }
 
@@ -530,6 +565,7 @@ pub struct Resolver {
                     switch (self->global_symbols.lookup_symbol_id_in_scope(source_scope_id, actual)) {
                         case .None => {
                             diags::report_symbol_not_found(dctx, allocator, single_span, actual);
+                            self->global_symbols.insert_poisoned_symbol(parent_scope_id, name);
                             ok = false;
                         }
                         case .Some(target) => {
@@ -544,6 +580,7 @@ pub struct Resolver {
                                         single_span,
                                         entry->name.as_str_const()
                                     );
+                                    self->global_symbols.insert_poisoned_symbol(parent_scope_id, name);
                                     ok = false;
                                 }
                                 else => {
@@ -561,6 +598,7 @@ pub struct Resolver {
                                             single_span, 
                                             actual
                                         );
+                                        self->global_symbols.insert_poisoned_symbol(parent_scope_id, name);
                                         ok = false;
                                     } else {
                                         switch (self->global_symbols.lookup_symbol_id_in_scope(parent_scope_id, name)) {

@@ -99,6 +99,7 @@ pub enum SymbolEntryKind {
     Var(cir::VarDeclId),
     Module(Module),
     Unresolved,
+    Poisoned,
 }
 
 pub struct SymbolEntry {
@@ -449,12 +450,33 @@ pub struct GlobalSymbolRegistry {
                     case .ProxiedModule 
                     | .ProxiedSymbol 
                     | .Unresolved 
+                    | .Poisoned
                     | .Namespace 
                     | .Module => return .None;
                 }
             }
             case .None => return .None;
         }
+    }
+
+    pub fn insert_poisoned_symbol(
+        self: Self*,
+        scope_id: cir::SymbolId,
+        name: const uint8*
+    ) {
+        if (self->lookup_symbol_id_in_scope(scope_id, name).is_some()) {
+            return;
+        }
+
+        const entry_id = self->insert_symbol_entry(SymbolEntry {
+            parent_scope_id: .Some(scope_id),
+            vis_opt: .None,
+            kind: .Poisoned,
+            name: String.from_str(self->allocator, name),
+            used: true,
+        });
+
+        self->insert_symbol_name(scope_id, entry_id, name);
     }
 
 }
