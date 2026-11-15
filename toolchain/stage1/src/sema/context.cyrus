@@ -37,6 +37,7 @@ pub struct AnalyzerContext {
     pub typedef_stack: Vec<usize>,
     pub generic_env_stack: Vec<env::GenericEnv*>,
     pub reported_typedef_cycles: Vec<String>,
+    pub reported_const_cycles: Vec<cir::GlobalVarDeclId>,
     pub control_region_stack: Vec<flow::ControlRegion>,
     pub instantiations: Vec<InstanceSite>,
     pub monomorph_registry: MonomorphRegistry,
@@ -54,6 +55,7 @@ pub struct AnalyzerContext {
         const arena = ArenaAllocator.new(allocator, ANALYZER_ARENA_INITIAL_SIZE);
         const scratch_arena = ArenaAllocator.new(allocator, SCRATCH_ARENA_INITIAL_SIZE);
         const reported_typedef_cycles: Vec<String> = Vec.new(allocator);
+        const reported_const_cycles: Vec<cir::GlobalVarDeclId> = Vec.new(allocator);
         const instantiations: Vec<InstanceSite> = Vec.new(allocator);
         const monomorph_registry = MonomorphRegistry.new(allocator);
         const vtable_registry = VTableRegistry.new(allocator);
@@ -76,6 +78,7 @@ pub struct AnalyzerContext {
             generic_env_stack,
             control_region_stack,
             reported_typedef_cycles,
+            reported_const_cycles,
             vtable_registry,
             monomorph_registry,
         };
@@ -102,6 +105,7 @@ pub struct AnalyzerContext {
         }
 
         self->reported_typedef_cycles.free();
+        self->reported_const_cycles.free();
         self->typedef_stack.free();
         self->control_region_stack.free();
         self->type_cache.free();

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::collections{Vec};
 import std::option{Option};
+import std::mem{Allocator};
+import std::string{String};
 
 import cir::tables{DeclTables};
 import resolver::symbols{
@@ -16,14 +19,33 @@ pub fn fold_const_expr_int(
     registry: const GlobalSymbolRegistry*, 
     expr: const cir::Expr*
 ) Option<cir::IntegerLiteral> {
-    return fold_const_expr_int_depth(decl_tables, registry, expr, 0);
+    var visited: Vec<cir::GlobalVarDeclId> = Vec.new(decl_tables->allocator);
+    defer visited.free();
+
+    return fold_const_expr_int_depth(
+        decl_tables, 
+        registry, 
+        expr, 
+        0, 
+        &visited
+    );
+}
+
+fn contains_global_var_id(list: const Vec<cir::GlobalVarDeclId>*, target: cir::GlobalVarDeclId) Option<usize> {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        if (*list->get_const(i).unwrap() == target) {
+            return .Some(i);
+        }
+    }
+    return .None;
 }
 
 fn fold_const_expr_int_depth(
     decl_tables: const DeclTables*,
     registry: const GlobalSymbolRegistry*,
     expr: const cir::Expr*,
-    depth: usize
+    depth: usize,
+    visited: Vec<cir::GlobalVarDeclId>*
 ) Option<cir::IntegerLiteral> {
     if (depth > 32) {
         return .None;
@@ -58,11 +80,18 @@ fn fold_const_expr_int_depth(
 
                     switch (decl_id) {
                         case .GlobalVar(global_var_decl_id) => {
+                            if (contains_global_var_id(visited, global_var_decl_id).is_some()) {
+                                return .None;
+                            }
+
                             const global_var_decl = decl_tables->global_vars.get_const(global_var_decl_id).unwrap();
 
                             switch (global_var_decl->rhs) {
                                 case .Some(rhs) => {
-                                    return fold_const_expr_int_depth(decl_tables, registry, &rhs, depth + 1);
+                                    visited->push(global_var_decl_id);
+                                    const res = fold_const_expr_int_depth(decl_tables, registry, &rhs, depth + 1, visited);
+                                    visited->pop();
+                                    return res;
                                 }
                                 else => {}
                             }
@@ -81,7 +110,8 @@ fn fold_const_expr_int_depth(
                         decl_tables, 
                         registry, 
                         prefix_expr.operand, 
-                        depth + 1
+                        depth + 1,
+                        visited
                     );
                     
                     switch (inner) {
@@ -95,8 +125,8 @@ fn fold_const_expr_int_depth(
         }
 
         case .Infix(infix_expr) => {
-            const lhs = fold_const_expr_int_depth(decl_tables, registry, infix_expr.lhs, depth + 1);
-            const rhs = fold_const_expr_int_depth(decl_tables, registry, infix_expr.rhs, depth + 1);
+            const lhs = fold_const_expr_int_depth(decl_tables, registry, infix_expr.lhs, depth + 1, visited);
+            const rhs = fold_const_expr_int_depth(decl_tables, registry, infix_expr.rhs, depth + 1, visited);
 
             switch (lhs) case .Some(lv) else {
                 return .None;
@@ -241,4 +271,220 @@ pub fn is_expr_const_evaluable(kind: const cir::ExprKind*) bool {
 
         else => return false;
     }
+}
+
+pub fn detect_const_eval_cycle(
+    decl_tables: const DeclTables*,
+    registry: const GlobalSymbolRegistry*,
+    start_id: cir::GlobalVarDeclId,
+    allocator: Allocator,
+    cycle_ids_out: Vec<cir::GlobalVarDeclId>*
+) Option<Vec<String>> {
+    var visiting: Vec<cir::GlobalVarDeclId> = Vec.new(allocator);
+    defer visiting.free();
+
+    const start_decl = decl_tables->global_vars.get_const(start_id).unwrap();
+
+    switch (start_decl->rhs) {
+        case .Some(rhs) => {
+            visiting.push(start_id);
+            
+            return detect_const_cycle_in_expr(
+                decl_tables, 
+                registry, 
+                &rhs, 
+                &visiting, 
+                allocator, 
+                cycle_ids_out
+            );
+        }
+        case .None => return .None;
+    }
+}
+
+fn detect_const_cycle_in_expr(
+    decl_tables: const DeclTables*,
+    registry: const GlobalSymbolRegistry*,
+    expr: const cir::Expr*,
+    visiting: Vec<cir::GlobalVarDeclId>*,
+    allocator: Allocator,
+    cycle_ids_out: Vec<cir::GlobalVarDeclId>*
+) Option<Vec<String>> {
+    switch (expr->kind) {
+        case .Symbol(symbol_expr) => {
+            switch (symbol_decl_id(registry, &symbol_expr)) {
+                case .Some(.GlobalVar(dep_id)) => {
+                    switch (contains_global_var_id(visiting, dep_id)) {
+                        case .Some(cycle_start) => {
+                            var cycle: Vec<String> = Vec.new(allocator);
+
+                            for (var i: usize = cycle_start; i < visiting->len(); i += 1) {
+                                const id = visiting->get_owned(i).unwrap();
+                                const decl = decl_tables->global_vars.get_const(id).unwrap();
+                                cycle.push(String.from_str(allocator, decl->name.as_str_const()));
+                                cycle_ids_out->push(id);
+                            }
+
+                            const dep_decl = decl_tables->global_vars.get_const(dep_id).unwrap();
+                            cycle.push(String.from_str(allocator, dep_decl->name.as_str_const()));
+                            return .Some(cycle);
+                        }
+                        case .None => {
+                            const dep_decl = decl_tables->global_vars.get_const(dep_id).unwrap();
+                            
+                            if (dep_decl->is_const && !dep_decl->is_static) {
+                                switch (dep_decl->rhs) {
+                                    case .Some(rhs) => {
+                                        visiting->push(dep_id);
+                                        
+                                        const found = detect_const_cycle_in_expr(
+                                            decl_tables,
+                                            registry,
+                                            &rhs,
+                                            visiting,
+                                            allocator,
+                                            cycle_ids_out
+                                        );
+                                        
+                                        visiting->pop();
+
+                                        if (found.is_some()) {
+                                            return found;
+                                        }
+                                    }
+                                    case .None => {}
+                                }
+                            }
+                        }
+                    }
+                }
+                else => {}
+            }
+        }
+        case .Prefix(prefix_expr) => {
+            return detect_const_cycle_in_expr(
+                decl_tables, 
+                registry, 
+                prefix_expr.operand, 
+                visiting, 
+                allocator, 
+                cycle_ids_out
+            );
+        }
+        case .Infix(infix_expr) => {
+            const left = detect_const_cycle_in_expr(
+                decl_tables, 
+                registry, 
+                infix_expr.lhs, 
+                visiting, 
+                allocator, 
+                cycle_ids_out
+            );
+            
+            if (left.is_some()) {
+                return left;
+            }
+            
+            return detect_const_cycle_in_expr(
+                decl_tables, 
+                registry, 
+                infix_expr.rhs, 
+                visiting, 
+                allocator, 
+                cycle_ids_out
+            );
+        }
+        case .ArrayIndex(array_index) => {
+            const operand = detect_const_cycle_in_expr(
+                decl_tables, 
+                registry, 
+                array_index.operand, 
+                visiting, 
+                allocator, 
+                cycle_ids_out
+            );
+            
+            if (operand.is_some()) {
+                return operand;
+            }
+            
+            return detect_const_cycle_in_expr(
+                decl_tables, 
+                registry, 
+                array_index.index, 
+                visiting, 
+                allocator, 
+                cycle_ids_out
+            );
+        }
+        case .Array(array_expr) => {
+            for (var i: usize = 0; i < array_expr.elements.len(); i += 1) {
+                const element = array_expr.elements.get_const(i).unwrap();
+                
+                const found = detect_const_cycle_in_expr(
+                    decl_tables, 
+                    registry, 
+                    element, 
+                    visiting, 
+                    allocator, 
+                    cycle_ids_out
+                );
+                
+                if (found.is_some()) {
+                    return found;
+                }
+            }
+        }
+        case .Tuple(tuple_expr) => {
+            for (var i: usize = 0; i < tuple_expr.elements.len(); i += 1) {
+                const element = tuple_expr.elements.get_const(i).unwrap();
+
+                const found = detect_const_cycle_in_expr(
+                    decl_tables, 
+                    registry, 
+                    element, 
+                    visiting, 
+                    allocator, 
+                    cycle_ids_out
+                );
+                
+                if (found.is_some()) {
+                    return found;
+                }
+            }
+        }
+        case .FieldAccess(field_access) => {
+            return detect_const_cycle_in_expr(
+                decl_tables, 
+                registry, 
+                field_access.operand, 
+                visiting, 
+                allocator, 
+                cycle_ids_out
+            );
+        }
+        case .AddrOf(addr_expr) => {
+            return detect_const_cycle_in_expr(
+                decl_tables, 
+                registry, 
+                addr_expr.operand, 
+                visiting, 
+                allocator, 
+                cycle_ids_out
+            );
+        }
+        case .Deref(deref_expr) => {
+            return detect_const_cycle_in_expr(
+                decl_tables, 
+                registry, 
+                deref_expr.operand, 
+                visiting, 
+                allocator, 
+                cycle_ids_out
+            );
+        }
+        else => {}
+    }
+
+    return .None;
 }

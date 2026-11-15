@@ -6,47 +6,47 @@ import std::option{Option};
 import std::string{String};
 import std::mem{Allocator};
 
-import .::state{ParserState};
-import .::exprs{ParserExprs};
 import .::diags{
+    report_expected_unsuffixed_integer,
+    report_attrs_after_modifiers,
+    report_modifier_not_allowed,
+    report_undefined_needs_type,
+    report_modifier_order_error,
+    report_attr_not_applicable,
+    report_duplicate_modifier,
     report_unexpected_token,
     report_local_decl_error,
-    report_undefined_needs_type,
     report_invalid_abi,
-    report_duplicate_modifier,
-    report_modifier_not_allowed,
-    report_modifier_order_error,
-    report_attrs_after_modifiers,
-    report_attr_not_applicable,
-    report_expected_unsuffixed_integer
 };
-import diags{Diag};
 import .::attrs{
-    parse_attr,
-    skip_attr_close,
-    check_attrs,
-    check_attrs_cross,
-    apply_func_attrs,
+    report_attrs_not_applicable,
     apply_global_attrs,
     apply_object_attrs,
-    report_attrs_not_applicable,
+    check_attrs_cross,
+    apply_func_attrs,
+    skip_attr_close,
+    check_attrs,
+    parse_attr,
     ObjectKind,
     attr_key
 };
 import tokens{
-    Token, 
-    TokenKind, 
     SourceTokens, 
+    TokenKind, 
+    Token, 
     Span
 };
+import .::exprs{ParserExprs};
+import .::state{ParserState};
+import diags{Diag};
 import .::ast;
 
 pub struct ParserStmts {
     allocator: Allocator,
-    program: ast::ASTProgram*,
-    state: ParserState*,
     pub pending_attrs: Vec<ast::ASTAttr>,
+    program: ast::ASTProgram*,
     is_method_context: bool,
+    state: ParserState*,
 
     [[inline]]
     pub fn new(
@@ -73,7 +73,7 @@ pub struct ParserStmts {
         return self->exprs().parse_expr_list(close);
     }
 
-    /// Pattern expressions parse a prefix/postfix operand only.
+    /// Pattern expressions parse a prefix / postfix operand only.
     fn parse_pattern_expr(self: Self*) Option<ast::NodeId> {
         return self->exprs().parse_expr_with_precedence(.Prefix);
     }
@@ -84,14 +84,14 @@ pub struct ParserStmts {
         return exprs.parse_type();
     }
 
-    /// Creates an expression parser that can parse lambda bodies through
-    /// this statement parser.
     fn exprs(self: Self*) ParserExprs {
         var sub = ParserExprs.new(self->program, self->state);
+        
         sub.set_block_parser(struct {
             handler: parse_stmt_block, 
             context: @cast(void*, self)
         });
+
         return sub;
     }
 
@@ -99,9 +99,13 @@ pub struct ParserStmts {
     pub fn parse_toplevels(self: Self*) {
         while (!self->state->is(.EOF)) {
             // Recovery;
-            // - A failed declaration leaves its closing token behind.
-            // - A stray `;` left behind by a failed initializer is 
-            //   skipped for the same reason.
+            //
+            // - A failed declaration leaves its 
+            //   closing token behind
+            // 
+            // - A stray `;` left behind by a failed 
+            //   initializer is skipped for the same 
+            //   reason
             if (self->state->dctx->has_errors()
                 && (self->state->is(.RightBrace)
                     || self->state->is(.RightParen)
@@ -126,17 +130,24 @@ pub struct ParserStmts {
 
     pub fn parse_toplevel(self: Self*) bool {
         // Attributes have the highest priority and may appear in
-        // any number of groups before the modifiers.
+        // any number of groups before the modifiers
         var attrs: Vec<ast::ASTAttr> = Vec.new(self->allocator);
 
         // Attributes written in front of a builtin, 
-        // for example `[[x]] @ident() stmt`, are stashed in `pending_attrs` 
-        // while the builtin itself is parsed,
-        // because the builtin and the statement it wraps are two separate
-        // parse steps. The wrapped statement is parsed by a nested call to
-        // this function, so adopt the stash first: those attributes then
-        // behave exactly as if they had been written in front of this
-        // statement, which is what they semantically belong to.
+        // for example `[[x]] @ident() stmt`, are 
+        // stashed in `pending_attrs` while the 
+        // builtin itself is  parsed, because 
+        // the builtin and the statement 
+        // it wraps are two separate 
+        // parse steps.
+        // 
+        // The wrapped statement is parsed by a nested call to
+        // this function, so adopt the stash first. 
+        //
+        // Those attributes then behave exactly as
+        // if they had been written in front of this
+        // statement, which is what they semantically
+        // belong to.
         if (self->pending_attrs.len() > 0) {
             attrs.free();
             attrs = self->pending_attrs;
@@ -161,8 +172,8 @@ pub struct ParserStmts {
             return false;
         }
 
-        // Attributes and modifiers are never mixed.
-        // Attributes always come first.
+        // Attributes and modifiers are never mixed;
+        // Attributes always come first
         self->reject_attrs_after_modifiers();
 
         var attrs_ptr: Option<Vec<ast::ASTAttr>*> = .None;
@@ -174,7 +185,8 @@ pub struct ParserStmts {
         var ok = false;
 
         if (self->state->is(.LeftBrace)) {
-            // Attributes cannot be attached to a block statement.
+            // Attributes cannot be attached 
+            // to a block statement
             report_attrs_not_applicable(
                 self->allocator,
                 self->state->dctx,
@@ -187,11 +199,11 @@ pub struct ParserStmts {
 
             ok = self->parse_grouped_modifiers(is_pub, extern_);
         } else if (self->state->is(.Module)) {
-            // `mod` never accepts attributes; the declaration reports
-            // them as not applicable.
+            // Module never accepts attributes
             ok = self->parse_toplevel_decl(is_pub, extern_, attrs_ptr);
         } else if (self->state->is(.At)) {
-            // Builtins hand their attributes to the wrapped statement.
+            // Builtins hand their attributes
+            // to the wrapped statement
             if (attrs.len() > 0) {
                 self->pending_attrs.free();
                 self->pending_attrs = attrs;
@@ -259,22 +271,27 @@ pub struct ParserStmts {
 
                 return self->parse_module_decl(is_pub);
             }
+
             case .Interface => {
                 self->reject_extrn_modifier(extern_, "interface");
                 return self->parse_interface(is_pub);
             }
+            
             case .Type => {
                 self->reject_extrn_modifier(extern_, "type alias");
                 return self->parse_type_alias(is_pub);
             }
+            
             case .Struct => {
                 self->reject_extrn_modifier(extern_, "struct");
                 return self->parse_struct(is_pub, attrs, true);
             }
+            
             case .Union => {
                 self->reject_extrn_modifier(extern_, "union");
                 return self->parse_union(is_pub, attrs, true);
             }
+            
             case .Enum => {
                 self->reject_extrn_modifier(extern_, "enum");
                 return self->parse_enum(is_pub, attrs, true);
@@ -585,11 +602,12 @@ pub struct ParserStmts {
 
         // Method declarations finalize their attributes onto themselves
         // Every other statement inside a block accumulates them on 
-        // the stack for the enclosing toplevel statement.
+        // the stack for the enclosing toplevel statement
         const is_method = self->is_method_context;
         self->is_method_context = false;
 
-        // Attributes cannot be attached to a block statement.
+        // Attributes cannot be attached 
+        // to a block statement
         if (had_attrs && self->state->is(.LeftBrace)) {
             report_attrs_not_applicable(
                 self->allocator,
@@ -621,10 +639,11 @@ pub struct ParserStmts {
         }
 
         // Attributes written right before the closing `}` of the
-        // enclosing body have no declaration to attach to: they were
-        // already adopted by `pending_attrs` above (or belong to the
-        // method, in which case they are dropped), so simply let the
-        // `}` close the body.
+        // enclosing body have no declaration to attach to. 
+        //
+        // They were already adopted by `pending_attrs` above 
+        // (or belong to the method, in which case they are dropped),
+        // so simply let the `}` close the body.
         if (had_attrs && self->state->is(.RightBrace)) {
             ast::free_attrs(&attrs);
             return;
@@ -639,8 +658,8 @@ pub struct ParserStmts {
             return;
         }
 
-        // Attributes and modifiers are never mixed.
-        // Attributes always come first.
+        // Attributes and modifiers are never mixed;
+        // Attributes always come first
         self->reject_attrs_after_modifiers();
 
         const token = self->state->current();
@@ -675,7 +694,7 @@ pub struct ParserStmts {
                 }
             }
             
-            case .Ident(_) => self->parse_ident_stmt();
+            case .Ident => self->parse_ident_stmt();
             
             case .Type => {
                 if (extern_.is_some()) {
@@ -793,8 +812,9 @@ pub struct ParserStmts {
         self->pending_attrs = Vec.new(self->allocator);
     }
 
-    /// Data structure declarations are only allowed at file scope; report the
-    /// error, still consume the declaration for recovery, then drop its node.
+    /// Data structure declarations are only allowed at file scope. 
+    /// Report the error, still consume the declaration for recovery, 
+    // then drop its node.
     fn reject_local_decl(self: Self*, is_pub: bool, keyword: const uint8*, kind: TokenKind) {
         report_local_decl_error(
             self->allocator,
@@ -1167,8 +1187,9 @@ pub struct ParserStmts {
                     const inner_opt = self->parse_destruct_pattern();
 
                     if (inner_opt.is_none()) {
-                        // Recovery: Skip garbage up to `,` or `)` so a single
-                        // stray token still reports one error.
+                        // Recovery: Skip garbage up to `,` or `)`
+                        // so a single stray token still reports
+                        // one error
                         if (self->state->is(.RightParen)) {
                             break;
                         }
@@ -1210,8 +1231,9 @@ pub struct ParserStmts {
                         self->state->current_span()
                     ));
 
-                    // Recovery: skip garbage up to `,` or `)` and keep going,
-                    // so a missing separator reports one error.
+                    // Recovery: skip garbage up to `,` or `)` 
+                    // and keep going, so a missing separator 
+                    // reports one error
                     while (!self->state->is(.EOF)
                         && !self->state->is(.Comma)
                         && !self->state->is(.RightParen)
@@ -1340,6 +1362,7 @@ pub struct ParserStmts {
             self->reject_var_in_decl(&params);
 
             const end = self->state->current_span();
+
             self->state->next();
 
             const node = ast::ASTFuncDecl {
@@ -1350,6 +1373,7 @@ pub struct ParserStmts {
                 modifiers,
                 span: start.merge(end),
             };
+            
             self->state->pending->push(self->program->create_node(.FuncDecl(node)));
             return true;
         }
@@ -1456,10 +1480,12 @@ pub struct ParserStmts {
         }
 
         const stmts = self->program->commit_pending(self->state->pending, mark);
+        
         const node = ast::ASTBlock {
             stmts,
             span: start.merge(self->state->current_span()),
         };
+
         return .Some(self->program->create_node(.Block(node)));
     }
 
@@ -1567,6 +1593,7 @@ pub struct ParserStmts {
             argument,
             span: start.merge(self->state->current_span()),
         };
+
         self->state->pending->push(self->program->create_node(.Return(node)));
     }
 
@@ -1600,6 +1627,7 @@ pub struct ParserStmts {
             body,
             span: start.merge(self->state->current_span()),
         };
+
         self->state->pending->push(self->program->create_node(.While(node)));
     }
 
@@ -1648,6 +1676,7 @@ pub struct ParserStmts {
                 body,
                 span: start.merge(self->state->current_span()),
             };
+
             self->state->pending->push(self->program->create_node(.For(node)));
             return;
         }
@@ -1692,6 +1721,7 @@ pub struct ParserStmts {
             body,
             span: start.merge(self->state->current_span()),
         };
+
         self->state->pending->push(self->program->create_node(.For(node)));
     }
 
@@ -1705,7 +1735,10 @@ pub struct ParserStmts {
             return;
         }
 
-        const node = ast::ASTBreak { span: start.merge(self->state->current_span()) };
+        const node = ast::ASTBreak {
+            span: start.merge(self->state->current_span())
+        };
+
         self->state->pending->push(self->program->create_node(.Break(node)));
     }
 
@@ -1719,7 +1752,10 @@ pub struct ParserStmts {
             return;
         }
 
-        const node = ast::ASTContinue { span: start.merge(self->state->current_span()) };
+        const node = ast::ASTContinue {
+            span: start.merge(self->state->current_span())
+        };
+
         self->state->pending->push(self->program->create_node(.Continue(node)));
     }
 
@@ -1738,7 +1774,11 @@ pub struct ParserStmts {
             return;
         }
 
-        const node = ast::ASTGoto { name, span: start.merge(self->state->current_span()) };
+        const node = ast::ASTGoto {
+            name, 
+            span: start.merge(self->state->current_span())
+        };
+
         self->state->pending->push(self->program->create_node(.Goto(node)));
     }
 
@@ -1756,7 +1796,11 @@ pub struct ParserStmts {
             return;
         }
 
-        const node = ast::ASTLabel { name, span: start.merge(self->state->current_span()) };
+        const node = ast::ASTLabel {
+            name, 
+            span: start.merge(self->state->current_span())
+        };
+
         self->state->pending->push(self->program->create_node(.Label(node)));
     }
 
@@ -1769,14 +1813,14 @@ pub struct ParserStmts {
 
         self->parse_stmt();
 
-        // The inner statement must have pushed exactly one node.
+        // The inner statement must have pushed exactly one node
         if (self->state->pending->len() != mark + 1) {
             self->state->sync();
             return;
         }
 
         // The inner statement must be `;` terminated, which means the
-        // last token it consumed has to be the semicolon itself.
+        // last token it consumed has to be the semicolon itself
         switch (self->state->get(self->state->pos() - 1)) case .Some(token) else {
             self->state->sync();
             return;
@@ -1790,6 +1834,7 @@ pub struct ParserStmts {
                     operand,
                     span: start.merge(self->state->current_span()),
                 };
+
                 self->state->pending->push(self->program->create_node(.Defer(node)));
             }
             else => {
@@ -2007,11 +2052,12 @@ pub struct ParserStmts {
             return;
         }
 
-        // The guard case has no body of its own, use an empty block.
+        // The guard case has no body of its own, use an empty block
         const dummy_stmts = self->program->commit_pending(
             self->state->pending,
             self->state->pending->len()
         );
+
         const first_span = patterns.get_const(0).unwrap()->span;
         const dummy = ast::ASTBlock { stmts: dummy_stmts, span: first_span };
 
@@ -2034,9 +2080,9 @@ pub struct ParserStmts {
     }
 
     /// Grammar:
-    /// _ 
-    /// | .IDENT 
-    /// | .IDENT (Pattern, ...)? 
+    /// _
+    /// | .IDENT
+    /// | .IDENT (Pattern, ...)?
     /// | .IDENT { FieldPattern, ... }
     /// | var IDENT | Expr | Expr...Expr | Expr..=Expr
     fn parse_switch_pattern(self: Self*, nested: bool) Option<ast::ASTSwitchCasePattern> {
@@ -2241,6 +2287,7 @@ pub struct ParserStmts {
             }
 
             const span = start.merge(self->state->current_span());
+
             return .Some(ast::ASTSwitchCasePattern {
                 kind: .Range(ast::ASTRange {
                     lower,
@@ -2289,6 +2336,7 @@ pub struct ParserStmts {
                     span,
                     value.as_str_const()
                 );
+
                 abi.free();
                 self->state->next();
                 return .Some(.C); // Fallback
@@ -2430,7 +2478,13 @@ pub struct ParserStmts {
             return false;
         }
 
-        const node = ast::ASTImport { alias, segments, relative_level, span };
+        const node = ast::ASTImport {
+            alias,
+            segments,
+            relative_level,
+            span
+        };
+
         self->state->pending->push(self->program->create_node(.Import(node)));
         return true;
     }
@@ -2462,7 +2516,9 @@ pub struct ParserStmts {
             }
 
             switch (self->exprs().parse_unsuffixed_integer_value()) {
-                case .Some(value) => align = .Some(value);
+                case .Some(value) => {
+                    align = .Some(value);
+                }
                 else => {
                     report_expected_unsuffixed_integer(
                         self->state->allocator,
@@ -2579,8 +2635,8 @@ pub struct ParserStmts {
             }
 
             if (attrs.len() > 0 && (is_pub || extern_.is_some())) {
-                // Attributes and modifiers are never mixed.
-                // Attributes always come first.
+                // Attributes and modifiers are never mixed;
+                // Attributes always come first
                 for (var i: usize = 0; i < attrs.len(); i += 1) {
                     switch (attrs.get_const(i)) {
                         case .Some(attr) => {
@@ -2637,11 +2693,12 @@ pub struct ParserStmts {
                 }
 
                 const method = self->state->pending->pop();
+                
                 var is_def = false;
 
                 switch (self->program->nodes.get(method)) {
                     case .Some(node) => switch (*node) {
-                        case .FuncDef(_) => is_def = true;
+                        case .FuncDef => is_def = true;
                         else => {}
                     }
                     else => {}
@@ -2688,7 +2745,9 @@ pub struct ParserStmts {
 
             if (self->state->is_ident()) {
                 switch (self->parse_struct_field(is_pub)) {
-                    case .Some(field) => fields.push(field);
+                    case .Some(field) => {
+                        fields.push(field);
+                    }
                     else => {
                         ast::free_generic_params(&generic_params);
                         impls.free();
@@ -2751,6 +2810,7 @@ pub struct ParserStmts {
             is_packed: false,
             span,
         };
+
         self->state->pending->push(self->program->create_node(.Struct(node)));
         return true;
     }
@@ -2771,6 +2831,7 @@ pub struct ParserStmts {
         }
 
         const span = start.merge(self->state->current_span());
+        
         var vis = ast::ASTVisibility.Private;
 
         if (is_pub) {
@@ -2835,7 +2896,9 @@ pub struct ParserStmts {
             }
 
             switch (self->exprs().parse_unsuffixed_integer_value()) {
-                case .Some(value) => align = .Some(value);
+                case .Some(value) => {
+                    align = .Some(value);
+                }
                 else => {
                     report_expected_unsuffixed_integer(
                         self->state->allocator,
@@ -2923,7 +2986,7 @@ pub struct ParserStmts {
 
             switch (self->parse_enum_variant()) case .Some(variant) else {
                 // NOTE: This is temporary until we support attributes for 
-                // enum variants!
+                // enum variants.
                 //
                 // A malformed attribute in front of a variant is
                 // reported by expect_ident; skip it and keep parsing
@@ -3001,11 +3064,12 @@ pub struct ParserStmts {
             }
 
             const method = self->state->pending->pop();
+            
             var is_def = false;
 
             switch (self->program->nodes.get(method)) {
                 case .Some(node) => switch (*node) {
-                    case .FuncDef(_) => is_def = true;
+                    case .FuncDef => is_def = true;
                     else => {}
                 }
                 else => {}
@@ -3064,10 +3128,11 @@ pub struct ParserStmts {
             align,
             span,
         };
+
         self->state->pending->push(self->program->create_node(.Enum(node)));
+        
         return true;
     }
-
 
     /// Grammar: union IDENT align(N)? <GenericParams>? (: Impl)? { (Field | Method)* }
     pub fn parse_union(
@@ -3096,7 +3161,9 @@ pub struct ParserStmts {
             }
 
             switch (self->exprs().parse_unsuffixed_integer_value()) {
-                case .Some(value) => align = .Some(value);
+                case .Some(value) => {
+                    align = .Some(value);
+                }
                 else => {
                     report_expected_unsuffixed_integer(
                         self->state->allocator,
@@ -3223,11 +3290,12 @@ pub struct ParserStmts {
             }
 
             const method = self->state->pending->pop();
+            
             var is_def = false;
 
             switch (self->program->nodes.get(method)) {
                 case .Some(node) => switch (*node) {
-                    case .FuncDef(_) => is_def = true;
+                    case .FuncDef => is_def = true;
                     else => {}
                 }
                 else => {}
@@ -3285,7 +3353,9 @@ pub struct ParserStmts {
             align,
             span,
         };
+
         self->state->pending->push(self->program->create_node(.Union(node)));
+        
         return true;
     }
 
@@ -3387,7 +3457,9 @@ pub struct ParserStmts {
             vis,
             span,
         };
+
         self->state->pending->push(self->program->create_node(.TypeAlias(node)));
+        
         return true;
     }
 
@@ -3428,7 +3500,9 @@ pub struct ParserStmts {
         while (self->state->is(.Function)) {
             const mark = self->state->pending->len();
 
-            if (!self->parse_func(false, .None, .None, false) || self->state->pending->len() != mark + 1) {
+            if (!self->parse_func(false, .None, .None, false) || 
+                self->state->pending->len() != mark + 1) 
+            {
                 ast::free_generic_params(&generic_params);
                 methods.free();
                 self->state->sync();
@@ -3436,13 +3510,14 @@ pub struct ParserStmts {
             }
 
             const method = self->state->pending->pop();
+            
             var def_span: Option<Span> = .None;
             var is_decl = false;
 
             switch (self->program->nodes.get(method)) {
                 case .Some(node) => switch (*node) {
                     case .FuncDef(func_def) => def_span = .Some(func_def.span);
-                    case .FuncDecl(_) => is_decl = true;
+                    case .FuncDecl => is_decl = true;
                     else => {}
                 }
                 else => {}
@@ -3468,8 +3543,8 @@ pub struct ParserStmts {
                     }
                 }
 
-                // Drop the malformed method and keep parsing the rest
-                // of the interface.
+                // Drop the malformed method and 
+                // keep parsing the rest of the interface
                 if (self->state->is(.RightBrace)) {
                     break;
                 }
@@ -3522,7 +3597,9 @@ pub struct ParserStmts {
             vis,
             span,
         };
+
         self->state->pending->push(self->program->create_node(.Interface(node)));
+        
         return true;
     }
 
@@ -3566,7 +3643,9 @@ pub struct ParserStmts {
             vis,
             span: start.merge(self->state->current_span()),
         };
+        
         self->state->pending->push(self->program->create_node(.ModuleDecl(node)));
+        
         return true;
     }
 
@@ -3602,8 +3681,9 @@ pub struct ParserStmts {
 
     /// Grammar: @ IDENT ( Expr, ... ) ( ToplevelBlock | Block | stmt | ε ) ;
     pub fn parse_builtin_stmt(self: Self*, is_toplevel: bool) bool {
-        // Inline assembly is a builtin but has a special syntax
-        // and always parses as an expression.
+        // Inline assembly is a builtin but 
+        // has a special syntax and always 
+        // parses as an expression
         if (self->state->is_peek_ident_str("asm")) {
             self->parse_expr_stmt();
             return true;
@@ -3642,6 +3722,7 @@ pub struct ParserStmts {
                 }
 
                 const block_span = start.merge(self->state->current_span());
+                
                 block = .Some(self->program->create_node(.Block(ast::ASTBlock {
                     stmts: toplevel_stmts,
                     span: block_span,
@@ -3662,6 +3743,7 @@ pub struct ParserStmts {
             }
 
             const end = self->state->current_span();
+
             const node = ast::ASTBuiltinBlock {
                 name,
                 args,
@@ -3669,9 +3751,13 @@ pub struct ParserStmts {
                 is_toplevel,
                 span: start.merge(end),
             };
+            
             self->state->pending->push(
-                self->program->create_node(.Builtin(ast::ASTBuiltin.BuiltinBlock(node)))
+                self->program->create_node(.Builtin(
+                    ast::ASTBuiltin.BuiltinBlock(node)
+                ))
             );
+
             return true;
         }
 
@@ -3701,6 +3787,7 @@ pub struct ParserStmts {
             }));
 
             const end = self->state->current_span();
+
             const node = ast::ASTBuiltinBlock {
                 name,
                 args,
@@ -3708,9 +3795,13 @@ pub struct ParserStmts {
                 is_toplevel,
                 span: start.merge(end),
             };
+
             self->state->pending->push(
-                self->program->create_node(.Builtin(ast::ASTBuiltin.BuiltinBlock(node)))
+                self->program->create_node(.Builtin(
+                    ast::ASTBuiltin.BuiltinBlock(node)
+                ))
             );
+            
             return true;
         }
 
@@ -3727,9 +3818,13 @@ pub struct ParserStmts {
             args,
             span: start.merge(end),
         };
+
         self->state->pending->push(
-            self->program->create_node(.Builtin(ast::ASTBuiltin.BuiltinFunc(node)))
+            self->program->create_node(.Builtin(
+                ast::ASTBuiltin.BuiltinFunc(node)
+            ))
         );
+        
         return true;
     }
 
@@ -3789,7 +3884,9 @@ pub struct ParserStmts {
             self->state->next();
 
             switch (self->parse_type()) {
-                case .Some(ty) => default = .Some(self->program->create_node(.Type(ty)));
+                case .Some(ty) => {
+                    default = .Some(self->program->create_node(.Type(ty)));
+                }
                 else => {
                     ast::free_option_bounds(&bounds);
                     return .None;
@@ -3912,8 +4009,6 @@ fn make_func_modifiers(
     };
 }
 
-/// Statement block parser handed to `ParserExprs` so that lambdas can
-/// parse their bodies without `exprs.cyrus` importing this module.
 fn parse_stmt_block(context: void*) Option<ast::NodeId> {
     const stmts = @cast(ParserStmts*, context);
     return stmts->parse_block_node();

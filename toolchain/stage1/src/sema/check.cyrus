@@ -5053,6 +5053,50 @@ fn analyze_global_var(
     context: AnalyzerContext*, 
     global_var: cir::GlobalVarStmt*
 ) {
+    if (global_var->is_const && !global_var->is_static && global_var->rhs.is_some()) {
+        for (var i: usize = 0; i < context->reported_const_cycles.len(); i += 1) {
+            if (*context->reported_const_cycles.get_const(i).unwrap() == global_var->global_var_decl_id) {
+                global_var->ty = .Some(cir::SemaType.Err(global_var->span));
+                write_back_global_var(context, global_var);
+                return;
+            }
+        }
+
+        var cycle_ids: Vec<cir::GlobalVarDeclId> = Vec.new(context->allocator);
+        defer cycle_ids.free();
+
+        switch (ciri::detect_const_eval_cycle(
+            context->decl_tables,
+            context->registry,
+            global_var->global_var_decl_id,
+            context->allocator,
+            &cycle_ids
+        )) {
+            case .Some(var cycle) => {
+                diags::report_cyclic_const_eval(
+                    context->dctx,
+                    context->allocator,
+                    global_var->span,
+                    &cycle
+                );
+
+                for (var i: usize = 0; i < cycle.len(); i += 1) {
+                    cycle.get(i).unwrap()->free();
+                }
+                cycle.free();
+
+                for (var i: usize = 0; i < cycle_ids.len(); i += 1) {
+                    context->reported_const_cycles.push(*cycle_ids.get_const(i).unwrap());
+                }
+
+                global_var->ty = .Some(cir::SemaType.Err(global_var->span));
+                write_back_global_var(context, global_var);
+                return;
+            }
+            case .None => {}
+        }
+    }
+
     switch (global_var->rhs) {
         case .Some(var expr) => {
             const rhs_ty_opt = analyze_expr(context, &expr, global_var->ty);
