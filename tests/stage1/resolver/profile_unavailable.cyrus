@@ -1,0 +1,22 @@
+// @resolve
+
+@debug()
+pub fn only_in_debug() {}
+
+pub fn main() {
+    only_in_debug();
+}
+
+/*@resolve
+tests/stage1/resolver/profile_unavailable.cyrus:7:5: error: profile-dependent reference is not available in all required profiles
+      |
+    7 ~     only_in_debug();
+      |     ^^^^^^^^^^^^^
+      |
+      = note: reference is active in: Debug, Release
+      |
+      = note: declaration `only_in_debug` is available in: Debug
+      |
+      = note: missing profiles: Release
+      |
+@resolve*/

@@ -161,7 +161,9 @@ pub struct Emitter {
             case .Builtin(builtin) => {
                 switch (builtin) {
                     case .BuiltinBlock(block) => {
-                        self->push_toplevel_block(block.block, out);
+                        if (block.is_active) {
+                            self->push_toplevel_block(block.block, out);
+                        }
                     }
                     case .BuiltinFunc(_) => {
                         out->push(*stmt);
@@ -319,7 +321,7 @@ pub struct Emitter {
         for (var i: usize = 0; i < self->tables->methods.len(); i += 1) {
             const method = self->tables->methods.get_const(i).unwrap();
 
-            if (method->func_decl.is_generic()) {
+            if (!method->is_active || method->func_decl.is_generic()) {
                 continue;
             }
 
@@ -1629,7 +1631,9 @@ pub struct Emitter {
                         str.free();
                     }
                     case .BuiltinBlock(block) => {
-                        self->emit_block_stmts(block.block, false);
+                        if (block.is_active) {
+                            self->emit_block_stmts(block.block, false);
+                        }
                     }
                 }
             }

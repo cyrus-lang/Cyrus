@@ -1,0 +1,6 @@
+@debug()
+fn foo() {}
+
+pub fn main() {
+    foo(); //~ ERROR profile-dependent reference is not available in all required profiles
+}

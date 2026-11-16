@@ -2716,7 +2716,22 @@ pub fn report_builtin_param_mismatch(
     param_type_str.free();
 }
 
-// MeOW
+pub fn report_incompatible_profile_definitions(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("profile-specific definitions of `");
+    mesg.push_str(name);
+    mesg.push_str("` have incompatible signatures or types across profiles");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
 
 pub fn append_usize(out: String*, value: usize) {
     var writer: Writer = dynamic StringWriter.new(out);

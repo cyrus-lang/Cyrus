@@ -8,6 +8,7 @@ import .::check{
     analyze_monomorph_instance,
     analyze_toplevel_headers,
     analyze_toplevel_body_item,
+    check_profile_symbol_pairs,
     BodyWorkItem,
 };
 import .::context{AnalyzerContext};
@@ -24,6 +25,7 @@ pub fn trigger_analyzer(context: AnalyzerContext*) {
     defer work.free();
 
     run_header_phase(context, &work);
+    check_profile_symbol_pairs(context);
     run_body_phase(context, &work);
     run_monomorphization_phase(context);
 }

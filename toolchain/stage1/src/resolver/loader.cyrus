@@ -37,6 +37,105 @@ pub enum Profile {
     Release,
 }
 
+pub struct ProfileSet {
+    pub debug: bool,
+    pub release: bool,
+
+    [[inline]]
+    pub fn all() Self {
+        return Self { debug: true, release: true };
+    }
+
+    [[inline]]
+    pub fn none() Self {
+        return Self { debug: false, release: false };
+    }
+
+    [[inline]]
+    pub fn only_debug() Self {
+        return Self { debug: true, release: false };
+    }
+
+    [[inline]]
+    pub fn only_release() Self {
+        return Self { debug: false, release: true };
+    }
+
+    [[inline]]
+    pub fn from_profile(profile: Profile) Self {
+        switch (profile) {
+            case .Debug => return Self.only_debug();
+            case .Release => return Self.only_release();
+        }
+    }
+
+    [[inline]]
+    pub fn contains_profile(self: Self, profile: Profile) bool {
+        switch (profile) {
+            case .Debug => return self.debug;
+            case .Release => return self.release;
+        }
+    }
+
+    [[inline]]
+    pub fn is_empty(self: Self) bool {
+        return !self.debug && !self.release;
+    }
+
+    [[inline]]
+    pub fn is_all(self: Self) bool {
+        return self.debug && self.release;
+    }
+
+    [[inline]]
+    pub fn intersect(self: Self, other: Self) Self {
+        return Self {
+            debug: self.debug && other.debug,
+            release: self.release && other.release,
+        };
+    }
+
+    [[inline]]
+    pub fn union_with(self: Self, other: Self) Self {
+        return Self {
+            debug: self.debug || other.debug,
+            release: self.release || other.release,
+        };
+    }
+
+    [[inline]]
+    pub fn difference(self: Self, other: Self) Self {
+        return Self {
+            debug: self.debug && !other.debug,
+            release: self.release && !other.release,
+        };
+    }
+
+    [[inline]]
+    pub fn is_subset_of(self: Self, other: Self) bool {
+        return (!self.debug || other.debug) &&
+            (!self.release || other.release);
+    }
+
+    [[inline]]
+    pub fn overlaps(self: Self, other: Self) bool {
+        return (self.debug && other.debug) ||
+            (self.release && other.release);
+    }
+
+    pub fn append_to(self: Self, out: String*) {
+        if (self.debug && self.release) {
+            out->push_str("debug, release");
+        } else if (self.debug) {
+            out->push_str("debug");
+        } else if (self.release) {
+            out->push_str("release");
+        } else {
+            out->push_str("none");
+        }
+    }
+}
+
 pub struct ResolverOptions {
     pub stdlib_path: Option<String>,
     pub source_dirs: Vec<String>,

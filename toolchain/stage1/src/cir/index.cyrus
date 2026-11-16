@@ -296,6 +296,7 @@ pub struct BuiltinBlock {
     pub args: Vec<Expr>,
     pub block: BlockStmt*,
     pub is_toplevel: Option<bool>,
+    pub is_active: bool,
     pub span: Span,
 }
 
@@ -3500,6 +3501,7 @@ pub struct MethodDecl {
     pub object_name: Option<String>,
     pub func_decl: FuncDecl,
     pub body: Option<BodyId>,
+    pub is_active: bool,
 
     pub fn is_instance_method(self: const Self*) bool {
         return self->func_decl.params.is_instance_method();
@@ -3669,6 +3671,7 @@ pub fn instantiate_method_decl(
             type_args
         ),
         body: method_decl->body,
+        is_active: method_decl->is_active,
     };
 }
 

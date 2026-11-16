@@ -1,0 +1,19 @@
+// @resolve
+
+@debug()
+pub fn validate() {}
+
+@debug()
+pub fn validate() {}
+
+pub fn main() {}
+
+/*@resolve
+tests/stage1/resolver/profile_overlapping.cyrus:7:8: error: overlapping definitions of `validate` in profile Debug
+      |
+    7 ~ pub fn validate() {}
+      |        ^^^^^^^^
+      |
+      = help: each profile may have at most one definition of a symbol
+      |
+@resolve*/

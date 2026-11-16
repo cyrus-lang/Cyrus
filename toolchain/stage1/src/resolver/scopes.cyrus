@@ -6,11 +6,48 @@ import std::option{Option};
 import std::string{String};
 import std::mem{Allocator};
 
+import resolver::loader{Profile, ProfileSet};
 import cir;
 
 pub struct LocalBinding {
     pub name: String,
     pub symbol_id: cir::SymbolId,
+    pub debug_symbol_id: Option<cir::SymbolId>,
+    pub release_symbol_id: Option<cir::SymbolId>,
+    pub availability: ProfileSet,
+
+    pub fn symbol_for_profiles(self: const Self*, active: ProfileSet, target_profile: Profile) cir::SymbolId {
+        if (active.debug && !active.release) {
+            switch (self->debug_symbol_id) {
+                case .Some(id) => return id;
+                case .None => {}
+            }
+        }
+
+        if (active.release && !active.debug) {
+            switch (self->release_symbol_id) {
+                case .Some(id) => return id;
+                case .None => {}
+            }
+        }
+
+        switch (target_profile) {
+            case .Debug => {
+                switch (self->debug_symbol_id) {
+                    case .Some(id) => return id;
+                    case .None => {}
+                }
+            }
+            case .Release => {
+                switch (self->release_symbol_id) {
+                    case .Some(id) => return id;
+                    case .None => {}
+                }
+            }
+        }
+
+        return self->symbol_id;
+    }
 }
 
 pub struct LabelBinding {
@@ -33,11 +70,45 @@ pub struct LocalScope {
     }
 
     pub fn insert(self: Self*, name: const uint8*, symbol_id: cir::SymbolId) {
+        self->insert_with_profiles(name, symbol_id, ProfileSet.all(), .Debug);
+    }
+
+    pub fn insert_with_profiles(
+        self: Self*,
+        name: const uint8*,
+        symbol_id: cir::SymbolId,
+        profiles: ProfileSet,
+        target_profile: Profile,
+    ) {
+        var debug_symbol_id: Option<cir::SymbolId> = .None;
+        var release_symbol_id: Option<cir::SymbolId> = .None;
+
+        if (profiles.debug) {
+            debug_symbol_id = .Some(symbol_id);
+        }
+
+        if (profiles.release) {
+            release_symbol_id = .Some(symbol_id);
+        }
+
         for (var i: usize = 0; i < self->symbols.len(); i += 1) {
             var binding = self->symbols.get(i).unwrap();
 
             if (binding->name.as_str_const() == name) {
-                binding->symbol_id = symbol_id;
+                if (profiles.debug) {
+                    binding->debug_symbol_id = .Some(symbol_id);
+                }
+
+                if (profiles.release) {
+                    binding->release_symbol_id = .Some(symbol_id);
+                }
+
+                binding->availability = binding->availability.union_with(profiles);
+
+                if (profiles.contains_profile(target_profile)) {
+                    binding->symbol_id = symbol_id;
+                }
+
                 return;
             }
         }
@@ -45,6 +116,9 @@ pub struct LocalScope {
         self->symbols.push(LocalBinding {
             name: String.from_str(self->allocator, name),
             symbol_id,
+            debug_symbol_id,
+            release_symbol_id,
+            availability: profiles,
         });
     }
 
@@ -54,6 +128,18 @@ pub struct LocalScope {
 
             if (binding->name.as_str_const() == name) {
                 return .Some(binding->symbol_id);
+            }
+        }
+
+        return .None;
+    }
+
+    pub fn resolve_binding(self: const Self*, name: const uint8*) Option<const LocalBinding*> {
+        for (var i: usize = 0; i < self->symbols.len(); i += 1) {
+            const binding = self->symbols.get_const(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                return .Some(binding);
             }
         }
 
