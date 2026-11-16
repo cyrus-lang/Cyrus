@@ -13,11 +13,19 @@ fn validate() {
     printf("release validate - ");
 }
 
+@test()
+fn validate() {
+    printf("test validate - ");
+}
+
 @debug()
 const MODE_VAL: int32 = 42;
 
 @release()
 const MODE_VAL: int32 = 99;
+
+@test()
+const MODE_VAL: int32 = 77;
 
 pub fn main() {
     validate();

@@ -2,6 +2,6 @@
 fn validate() {}
 
 @debug()
-fn validate() {} //~ ERROR overlapping definitions of `validate` in profile Debug
+fn validate() {} //~ ERROR overlapping definitions of `validate` in profile debug
 
 pub fn main() {}

@@ -1,0 +1,9 @@
+@test("first test") {
+    @assert(true);
+}
+
+@test("first test") { //~ ERROR duplicate test case `first test` in this module
+    @assert(true);
+}
+
+pub fn main() {}

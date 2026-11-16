@@ -1,0 +1,5 @@
+@test(123) { //~ ERROR test case name must be a constant string literal
+    @assert(true);
+}
+
+pub fn main() {}

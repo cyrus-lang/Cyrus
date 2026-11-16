@@ -1,0 +1,5 @@
+@test("return value invalid") {
+    return 42; //~ ERROR return statement argument must be a value of type `void` but got `int32`
+}
+
+pub fn main() {}
