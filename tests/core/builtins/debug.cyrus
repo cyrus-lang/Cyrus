@@ -12,8 +12,10 @@ import std::libc{printf};
 }
 
 pub fn main() {
-    printf("%d - ", x);
-    foo(5);
+    @debug() {
+        printf("%d - ", x);
+        foo(5);
+    }
 
     @debug() printf("shorthand - ");
 

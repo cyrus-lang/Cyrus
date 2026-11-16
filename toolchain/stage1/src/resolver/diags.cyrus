@@ -6,6 +6,7 @@ import std::mem{Allocator};
 import std::string{String};
 
 import diags{DiagContext, Diag};
+import resolver::loader{ProfileSet};
 import tokens{Span};
 import parser::ast;
 
@@ -546,4 +547,76 @@ pub fn report_builtin_block_as_type(
     dctx->report(diag);
 
     msg.free();
+}
+
+pub fn report_profile_unavailable_reference(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+    active: ProfileSet,
+    available: ProfileSet,
+) {
+    const missing = active.difference(available);
+
+    const diag = Diag.new(
+        allocator,
+        .Error,
+        "profile-dependent reference is not available in all required profiles",
+        span
+    );
+
+    var active_note = String.from_str(allocator, "reference is active in: ");
+    active.append_to(&active_note);
+    diag->note(active_note.as_str_const());
+    active_note.free();
+
+    var avail_note = String.from_str(allocator, "declaration `");
+    avail_note.push_str(name);
+    avail_note.push_str("` is available in: ");
+    available.append_to(&avail_note);
+    diag->note(avail_note.as_str_const());
+    avail_note.free();
+
+    var missing_note = String.from_str(allocator, "missing profiles: ");
+    missing.append_to(&missing_note);
+    diag->note(missing_note.as_str_const());
+    missing_note.free();
+
+    dctx->report(diag);
+}
+
+pub fn report_overlapping_profile_definitions(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+    overlap: ProfileSet,
+) {
+    var msg = String.new(allocator);
+    msg.push_str("overlapping definitions of `");
+    msg.push_str(name);
+    msg.push_str("` in profile ");
+    overlap.append_to(&msg);
+
+    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    diag->help("each profile may have at most one definition of a symbol");
+    dctx->report(diag);
+
+    msg.free();
+}
+
+pub fn report_inactive_profile_block(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    const diag = Diag.new(
+        allocator,
+        .Warning,
+        "profile block is inactive in every supported configuration",
+        span
+    );
+    diag->help("remove the unreachable profile block or move it outside the enclosing profile block");
+    dctx->report(diag);
 }

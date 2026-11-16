@@ -318,6 +318,7 @@ fn clone_builtin(
                 args: clone_expr_vec(allocator, &builtin_block.args),
                 block: clone_block_alloc(allocator, builtin_block.block),
                 is_toplevel: builtin_block.is_toplevel,
+                is_active: builtin_block.is_active,
                 span: builtin_block.span,
             });
         }

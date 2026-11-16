@@ -1,0 +1,13 @@
+@debug()
+fn produce() int32 {
+    return 1;
+}
+
+@release()
+fn produce() float64 { //~ ERROR profile-specific definitions of `produce` have incompatible signatures or types across profiles
+    return 1.0;
+}
+
+pub fn main() {
+    produce();
+}

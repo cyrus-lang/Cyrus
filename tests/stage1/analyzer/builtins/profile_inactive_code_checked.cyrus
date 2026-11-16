@@ -1,0 +1,6 @@
+@release()
+fn inspect() {
+    missing_function(); //~ ERROR symbol `missing_function` not found
+}
+
+pub fn main() {}

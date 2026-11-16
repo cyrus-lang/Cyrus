@@ -562,13 +562,14 @@ pub struct Resolver {
                         else => {}
                     }
 
-                    switch (self->global_symbols.lookup_symbol_id_in_scope(source_scope_id, actual)) {
+                    switch (self->global_symbols.lookup_binding_in_scope(source_scope_id, actual)) {
                         case .None => {
                             diags::report_symbol_not_found(dctx, allocator, single_span, actual);
                             self->global_symbols.insert_poisoned_symbol(parent_scope_id, name);
                             ok = false;
                         }
-                        case .Some(target) => {
+                        case .Some(source_binding) => {
+                            const target = source_binding->symbol_id;
                             const entry = self->global_symbols.entries
                                 .get_const(target).unwrap();
 
@@ -591,6 +592,26 @@ pub struct Resolver {
                                         else => {}
                                     }
 
+                                    switch (source_binding->debug_symbol_id) {
+                                        case .Some(dbg_id) => {
+                                            switch (self->global_symbols.entries.get_const(dbg_id).unwrap()->vis_opt) {
+                                                case .Some(.Private) => is_private = true;
+                                                else => {}
+                                            }
+                                        }
+                                        case .None => {}
+                                    }
+
+                                    switch (source_binding->release_symbol_id) {
+                                        case .Some(rel_id) => {
+                                            switch (self->global_symbols.entries.get_const(rel_id).unwrap()->vis_opt) {
+                                                case .Some(.Private) => is_private = true;
+                                                else => {}
+                                            }
+                                        }
+                                        case .None => {}
+                                    }
+
                                     if (is_private) {
                                         diags::report_private_symbol(
                                             dctx, 
@@ -609,11 +630,12 @@ pub struct Resolver {
                                                 ok = false;
                                             }
                                             case .None => {
-                                                self->global_symbols.insert_proxied_symbol(
+                                                self->global_symbols.insert_proxied_binding(
                                                     parent_scope_id,
                                                     name,
                                                     source_scope_id,
-                                                    target
+                                                    source_binding,
+                                                    self->opts->profile
                                                 );
                                             }
                                         }

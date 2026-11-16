@@ -6,9 +6,9 @@ import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
 
-import resolver::symbols{GlobalSymbolRegistry, SymbolEntry};
-import resolver::loader{first_segment_span, Profile};
-import resolver::scopes{LocalScope, GenericScope};
+import resolver::symbols{GlobalSymbolRegistry, SymbolEntry, ScopeBinding};
+import resolver::loader{first_segment_span, Profile, ProfileSet};
+import resolver::scopes{LocalScope, GenericScope, LocalBinding};
 import resolver::context{TraverseContext};
 import tokens{Span, Loc, Token, Literal};
 import diags{DiagContext};
@@ -27,7 +27,7 @@ pub fn bind_program_decl_names(
 ) {
     switch (program->statements) {
         case .Some(statements) => {
-            resolve_decl_names(registry, dctx, allocator, scope_id, program, &statements, profile);
+            resolve_decl_names(registry, dctx, allocator, scope_id, program, &statements, profile, ProfileSet.all());
         }
         else => {}
     }
@@ -42,7 +42,8 @@ fn resolve_decl_names(
     scope_id: cir::ScopeId,
     program: const ast::ASTProgram*,
     statements: const ast::ASTNodeList*,
-    profile: Profile
+    profile: Profile,
+    active_profiles: ProfileSet
 ) {
     for (var i: usize = 0; i < statements->len; i += 1) {
         const node_id = program->children.get_owned(statements->start + i).unwrap();
@@ -50,10 +51,10 @@ fn resolve_decl_names(
 
         switch (*node) {
             case .ModuleDecl(module_decl) => {
-                resolve_module_decl_names(registry, dctx, allocator, scope_id, program, &module_decl, profile);
+                resolve_module_decl_names(registry, dctx, allocator, scope_id, program, &module_decl, profile, active_profiles);
             }
             case .Builtin(builtin) => {
-                resolve_builtin_decl_names(registry, dctx, allocator, scope_id, program, &builtin, profile);
+                resolve_builtin_decl_names(registry, dctx, allocator, scope_id, program, &builtin, profile, active_profiles);
             }
             else => {
                 // Skip statement if it's not a declaration symbol
@@ -61,12 +62,59 @@ fn resolve_decl_names(
                     case .Some(decl_name) => {
                         const name = decl_name.str.as_str_const();
 
-                        switch (registry->lookup_symbol_id_in_scope(scope_id, name)) {
-                            case .Some => {
-                                diags::report_duplicate_symbol(dctx, allocator, decl_name.span, name);
+                        switch (registry->lookup_binding_in_scope(scope_id, name)) {
+                            case .Some(existing) => {
+                                if (existing->availability.overlaps(active_profiles)) {
+                                    if (existing->availability.is_all() && active_profiles.is_all()) {
+                                        diags::report_duplicate_symbol(dctx, allocator, decl_name.span, name);
+                                    } else {
+                                        diags::report_overlapping_profile_definitions(
+                                            dctx,
+                                            allocator,
+                                            decl_name.span,
+                                            name,
+                                            existing->availability.intersect(active_profiles)
+                                        );
+                                    }
+                                } else {
+                                    registry->insert_unresolved_symbol_with_profiles(
+                                        scope_id,
+                                        name,
+                                        node->vis(),
+                                        active_profiles,
+                                        profile
+                                    );
+                                    switch (registry->lookup_binding_in_scope(scope_id, name)) {
+                                        case .Some(updated) => {
+                                            switch (updated->debug_symbol_id) {
+                                                case .Some(did) => {
+                                                    switch (updated->release_symbol_id) {
+                                                        case .Some(rid) => {
+                                                            registry->record_profile_pair(
+                                                                name, 
+                                                                did, 
+                                                                rid, 
+                                                                decl_name.span
+                                                            );
+                                                        }
+                                                        case .None => {}
+                                                    }
+                                                }
+                                                case .None => {}
+                                            }
+                                        }
+                                        case .None => {}
+                                    }
+                                }
                             }
                             case .None => {
-                                registry->insert_unresolved_symbol(scope_id, name, node->vis());
+                                registry->insert_unresolved_symbol_with_profiles(
+                                    scope_id,
+                                    name,
+                                    node->vis(),
+                                    active_profiles,
+                                    profile
+                                );
                             }
                         }
                     }
@@ -84,7 +132,8 @@ fn resolve_module_decl_names(
     parent_scope_id: cir::ScopeId,
     program: const ast::ASTProgram*,
     module_decl: const ast::ASTModuleDecl*,
-    profile: Profile
+    profile: Profile,
+    active_profiles: ProfileSet
 ) {
     const name = module_decl->ident.str.as_str_const();
 
@@ -95,15 +144,17 @@ fn resolve_module_decl_names(
             module_scope_id = registry->resolve_concrete_scope_id(existing);
         }
         case .None => {
-            module_scope_id = registry->insert_namespace_symbol(
+            module_scope_id = registry->insert_namespace_symbol_with_profiles(
                 parent_scope_id,
                 name,
-                .Some(module_decl->vis)
+                .Some(module_decl->vis),
+                active_profiles,
+                profile
             );
         }
     }
 
-    resolve_decl_names(registry, dctx, allocator, module_scope_id, program, &module_decl->stmts, profile);
+    resolve_decl_names(registry, dctx, allocator, module_scope_id, program, &module_decl->stmts, profile, active_profiles);
 }
 
 /// (Second Pass) Resolves the full meaning of each top-level declaration
@@ -375,19 +426,71 @@ fn is_poisoned_symbol(ctx: TraverseContext*, symbol_id: cir::SymbolId) bool {
     }
 }
 
+fn check_and_select_local_binding(
+    ctx: TraverseContext*,
+    binding: const LocalBinding*,
+    span: Span,
+    name: const uint8*
+) Option<cir::SymbolId> {
+    if (!ctx->active_profiles.is_subset_of(binding->availability)) {
+        diags::report_profile_unavailable_reference(
+            ctx->dctx,
+            ctx->diag_allocator,
+            span,
+            name,
+            ctx->active_profiles,
+            binding->availability
+        );
+        return .None;
+    }
+    
+    return .Some(binding->symbol_for_profiles(
+        ctx->active_profiles, 
+        ctx->profile
+    ));
+}
+
+fn check_and_select_scope_binding(
+    ctx: TraverseContext*,
+    binding: const ScopeBinding*,
+    span: Span,
+    name: const uint8*
+) Option<cir::SymbolId> {
+    if (!ctx->active_profiles.is_subset_of(binding->availability)) {
+        diags::report_profile_unavailable_reference(
+            ctx->dctx,
+            ctx->diag_allocator,
+            span,
+            name,
+            ctx->active_profiles,
+            binding->availability
+        );
+        return .None;
+    }
+
+    return .Some(binding->symbol_for_profiles(
+        ctx->active_profiles, 
+        ctx->profile
+    ));
+}
+
 fn resolve_ident(
     ctx: TraverseContext*,
     ident: const ast::ASTIdent*
 ) Option<cir::SymbolId> {
     const name = ident->str.as_str_const();
 
-    switch (ctx->lookup_local(name)) {
-        case .Some(symbol_id) => return .Some(symbol_id);
+    switch (ctx->lookup_local_binding(name)) {
+        case .Some(binding) => {
+            return check_and_select_local_binding(ctx, binding, ident->span, name);
+        }
         else => {}
     }
 
-    switch (ctx->lookup_symbol(name)) {
-        case .Some(symbol_id) => return .Some(symbol_id);
+    switch (ctx->lookup_symbol_binding(name)) {
+        case .Some(binding) => {
+            return check_and_select_scope_binding(ctx, binding, ident->span, name);
+        }
         else => {}
     }
 
@@ -438,11 +541,14 @@ fn resolve_module_import(
     const first_name = first_ident.str.as_str_const();
     var current_symbol: cir::SymbolId;
 
-    switch (ctx->lookup_symbol(first_name)) {
-        case .Some(symbol_id) => {
+    switch (ctx->lookup_symbol_binding(first_name)) {
+        case .Some(binding) => {
+            const symbol_id = binding->symbol_for_profiles(ctx->active_profiles, ctx->profile);
+
             if (is_poisoned_symbol(ctx, symbol_id)) {
                 return .Some(symbol_id);
             }
+            
             current_symbol = symbol_id;
         }
         case .None => {
@@ -474,10 +580,48 @@ fn resolve_module_import(
 
         const name = seg_ident.str.as_str_const();
 
-        switch (ctx->registry->lookup_symbol_id_in_scope(current_symbol, name)) {
-            case .Some(next_symbol) => {
-                report_if_symbol_is_private(ctx, next_symbol, module_import->span);
-                current_symbol = next_symbol;
+        switch (ctx->registry->lookup_binding_in_scope(current_symbol, name)) {
+            case .Some(next_binding) => {
+                switch (next_binding->debug_symbol_id) {
+                    case .Some(id) => {
+                        report_if_symbol_is_private(ctx, id, module_import->span);
+                    }
+                    case .None => {}
+                }
+                switch (next_binding->release_symbol_id) {
+                    case .Some(id) => {
+                        var already_checked = false;
+
+                        switch (next_binding->debug_symbol_id) {
+                            case .Some(did) => {
+                                already_checked = did == id;
+                            }
+                            case .None => {}
+                        }
+                        
+                        if (!already_checked) {
+                            report_if_symbol_is_private(ctx, id, module_import->span);
+                        }
+                    }
+                    case .None => {}
+                }
+
+                if (idx + 1 == segments->len()) {
+                    switch (check_and_select_scope_binding(
+                        ctx, 
+                        next_binding, 
+                        seg_ident.span, 
+                        name
+                    )) {
+                        case .Some(selected) => current_symbol = selected;
+                        case .None => return .None;
+                    }
+                } else {
+                    current_symbol = next_binding->symbol_for_profiles(
+                        ctx->active_profiles, 
+                        ctx->profile
+                    );
+                }
             }
             case .None => {
                 var module_name = format::format_module_segments_upto(ctx->allocator, segments, i);
@@ -1726,9 +1870,29 @@ fn insert_variable_symbol_to_current_scope(
 ) bool {
     switch (ctx->current_local_scope()) {
         case .Some(scope) => {
-            if (scope->contains(name)) {
-                diags::report_duplicate_symbol_in_this_scope(ctx->dctx, ctx->diag_allocator, span, name);
-                return false;
+            switch (scope->resolve_binding(name)) {
+                case .Some(existing) => {
+                    if (existing->availability.overlaps(ctx->active_profiles)) {
+                        if (existing->availability.is_all() && ctx->active_profiles.is_all()) {
+                            diags::report_duplicate_symbol_in_this_scope(
+                                ctx->dctx, 
+                                ctx->diag_allocator, 
+                                span, 
+                                name
+                            );
+                        } else {
+                            diags::report_overlapping_profile_definitions(
+                                ctx->dctx,
+                                ctx->diag_allocator,
+                                span,
+                                name,
+                                existing->availability.intersect(ctx->active_profiles)
+                            );
+                        }
+                        return false;
+                    }
+                }
+                case .None => {}
             }
 
             const symbol_id = ctx->registry->insert_symbol_entry(SymbolEntry {
@@ -1737,10 +1901,28 @@ fn insert_variable_symbol_to_current_scope(
                 kind: .Unresolved,
                 used: false,
                 vis_opt: .None,
+                availability: ctx->active_profiles,
             });
 
             ctx->registry->set_symbol_kind(symbol_id, .Var(var_decl_id));
-            scope->insert(name, symbol_id);
+            scope->insert_with_profiles(name, symbol_id, ctx->active_profiles, ctx->profile);
+
+            switch (scope->resolve_binding(name)) {
+                case .Some(updated) => {
+                    switch (updated->debug_symbol_id) {
+                        case .Some(d_id) => {
+                            switch (updated->release_symbol_id) {
+                                case .Some(r_id) => {
+                                    ctx->registry->record_profile_pair(name, d_id, r_id, span);
+                                }
+                                case .None => {}
+                            }
+                        }
+                        case .None => {}
+                    }
+                }
+                case .None => {}
+            }
         }
         case .None => {
             return false;
@@ -1847,6 +2029,7 @@ fn resolve_method_decls(
                                 span: ast_method.span,
                             },
                             body: .None,
+                            is_active: ctx->active_profiles.contains_profile(ctx->profile),
                         });
 
                         method_decls.insert(String.from_str(ctx->allocator, ast_method.ident.str.as_str_const()), method_decl_id);
@@ -1928,7 +2111,7 @@ fn resolve_global_var_stmt(
     var symbol_id: cir::SymbolId;
     var found = false;
 
-    switch (ctx->lookup_symbol(name)) {
+    switch (ctx->lookup_decl_symbol(name)) {
         case .Some(id) => {
             symbol_id = id;
             found = true;
@@ -1999,7 +2182,7 @@ fn resolve_typedef(
     var symbol_id: cir::SymbolId;
     var found = false;
 
-    switch (ctx->lookup_symbol(name)) {
+    switch (ctx->lookup_decl_symbol(name)) {
         case .Some(id) => {
             symbol_id = id;
             found = true;
@@ -2086,7 +2269,7 @@ fn resolve_func_def(
     var symbol_id: cir::SymbolId;
     var found = false;
 
-    switch (ctx->lookup_symbol(name)) {
+    switch (ctx->lookup_decl_symbol(name)) {
         case .Some(id) => {
             symbol_id = id;
             found = true;
@@ -2172,7 +2355,7 @@ fn resolve_func_decl(
     var symbol_id: cir::SymbolId;
     var found = false;
 
-    switch (ctx->lookup_symbol(name)) {
+    switch (ctx->lookup_decl_symbol(name)) {
         case .Some(id) => {
             symbol_id = id;
             found = true;
@@ -2184,8 +2367,14 @@ fn resolve_func_decl(
         return .None;
     }
 
-    switch (resolve_func_signature(ctx, program, &func_decl->generic_params, &func_decl->params, func_decl->ret_type, func_decl->span)) {
-        case .None => return .None;
+    switch (resolve_func_signature(
+        ctx, 
+        program, 
+        &func_decl->generic_params, 
+        &func_decl->params, 
+        func_decl->ret_type, 
+        func_decl->span
+    )) {
         case .Some(sig) => {
             const func_decl_id = ctx->decl_tables->insert_func(cir::FuncDecl {
                 file_id: ctx->file_id,
@@ -2212,6 +2401,7 @@ fn resolve_func_decl(
                 span: func_decl->span,
             }));
         }
+        case .None => return .None;
     }
 }
 
@@ -2225,7 +2415,7 @@ fn resolve_struct_stmt(
     var symbol_id: cir::SymbolId;
     var found = false;
 
-    switch (ctx->lookup_symbol(name)) {
+    switch (ctx->lookup_decl_symbol(name)) {
         case .Some(id) => {
             symbol_id = id;
             found = true;
@@ -2317,7 +2507,7 @@ fn resolve_enum_stmt(
     var symbol_id: cir::SymbolId;
     var found = false;
 
-    switch (ctx->lookup_symbol(name)) {
+    switch (ctx->lookup_decl_symbol(name)) {
         case .Some(id) => {
             symbol_id = id;
             found = true;
@@ -2405,7 +2595,7 @@ fn resolve_union_stmt(
     var symbol_id: cir::SymbolId;
     var found = false;
 
-    switch (ctx->lookup_symbol(name)) {
+    switch (ctx->lookup_decl_symbol(name)) {
         case .Some(id) => {
             symbol_id = id;
             found = true;
@@ -2494,7 +2684,7 @@ fn resolve_interface_stmt(
     var symbol_id: cir::SymbolId;
     var found = false;
 
-    switch (ctx->lookup_symbol(name)) {
+    switch (ctx->lookup_decl_symbol(name)) {
         case .Some(id) => {
             symbol_id = id;
             found = true;
@@ -2547,6 +2737,7 @@ fn resolve_interface_stmt(
                                         span: method.span,
                                     },
                                     body: .None,
+                                    is_active: ctx->active_profiles.contains_profile(ctx->profile),
                                 });
 
                                 interface_methods.insert(String.from_str(ctx->allocator, method.ident.str.as_str_const()), method_decl_id);
@@ -2611,9 +2802,28 @@ fn resolve_builtin(
             }));
         }
         case .BuiltinBlock(builtin_block) => {
-            if (!is_builtin_active(ctx->profile, builtin_block.name.str.as_str_const())) {
-                return .None;
+            const prev_profiles = ctx->active_profiles;
+
+            var inner_profiles = prev_profiles;
+
+            switch (builtin_profile_set(builtin_block.name.str.as_str_const())) {
+                case .Some(block_profiles) => {
+                    inner_profiles = prev_profiles.intersect(block_profiles);
+                    if (inner_profiles.is_empty()) {
+                        if (!prev_profiles.is_empty()) {
+                            diags::report_inactive_profile_block(
+                                ctx->dctx,
+                                ctx->diag_allocator,
+                                builtin_block.span
+                            );
+                        }
+                        return .None;
+                    }
+                }
+                case .None => {}
             }
+
+            ctx->active_profiles = inner_profiles;
 
             var args: Vec<cir::Expr> = Vec.new(ctx->allocator);
 
@@ -2653,6 +2863,8 @@ fn resolve_builtin(
                 else => {}
             }
 
+            ctx->active_profiles = prev_profiles;
+
             const block = alloc_init(ctx->allocator, cir::BlockStmt {
                 stmts,
                 defers: Vec.new(ctx->allocator),
@@ -2664,6 +2876,7 @@ fn resolve_builtin(
                 args,
                 block,
                 is_toplevel: .None,
+                is_active: inner_profiles.contains_profile(ctx->profile),
                 span: builtin_block.span,
             }));
         }
@@ -2676,12 +2889,17 @@ fn resolve_ident_expr(
 ) Option<cir::Expr> {
     const name = ident->str.as_str_const();
 
-    switch (ctx->lookup_local(name)) {
-        case .Some(symbol_id) => {
-            return .Some(cir::Expr.new(.Symbol(.Unresolved {
-                symbol_id,
-                span: ident->span,
-            }), ident->span));
+    switch (ctx->lookup_local_binding(name)) {
+        case .Some(binding) => {
+            switch (check_and_select_local_binding(ctx, binding, ident->span, name)) {
+                case .Some(symbol_id) => {
+                    return .Some(cir::Expr.new(.Symbol(.Unresolved {
+                        symbol_id,
+                        span: ident->span,
+                    }), ident->span));
+                }
+                case .None => return .None;
+            }
         }
         else => {}
     }
@@ -3638,8 +3856,13 @@ fn resolve_ident_type(
 ) Option<cir::SemaType> {
     const name = ident->str.as_str_const();
 
-    switch (ctx->lookup_local(name)) {
-        case .Some(symbol_id) => return .Some(.Unresolved(.Decl(symbol_id)));
+    switch (ctx->lookup_local_binding(name)) {
+        case .Some(binding) => {
+            switch (check_and_select_local_binding(ctx, binding, ident->span, name)) {
+                case .Some(symbol_id) => return .Some(.Unresolved(.Decl(symbol_id)));
+                case .None => return .Some(.Err(ident->span));
+            }
+        }
         else => {}
     }
 
@@ -3648,12 +3871,18 @@ fn resolve_ident_type(
         else => {}
     }
 
-    switch (ctx->lookup_symbol(name)) {
-        case .Some(symbol_id) => {
-            if (is_poisoned_symbol(ctx, symbol_id)) {
-                return .Some(.Err(ident->span));
+    switch (ctx->lookup_symbol_binding(name)) {
+        case .Some(binding) => {
+            switch (check_and_select_scope_binding(ctx, binding, ident->span, name)) {
+                case .Some(symbol_id) => {
+                    if (is_poisoned_symbol(ctx, symbol_id)) {
+                        return .Some(.Err(ident->span));
+                    }
+
+                    return .Some(.Unresolved(.Decl(symbol_id)));
+                }
+                case .None => return .Some(.Err(ident->span));
             }
-            return .Some(.Unresolved(.Decl(symbol_id)));
         }
         else => {}
     }
@@ -4237,12 +4466,22 @@ fn resolve_builtin_decl_names(
     scope_id: cir::ScopeId,
     program: const ast::ASTProgram*,
     builtin: const ast::ASTBuiltin*,
-    profile: Profile
+    profile: Profile,
+    active_profiles: ProfileSet
 ) {
     switch (*builtin) {
         case .BuiltinBlock(builtin_block) => {
-            if (!is_builtin_active(profile, builtin_block.name.str.as_str_const())) {
-                return;
+            var inner_profiles = active_profiles;
+
+            switch (builtin_profile_set(builtin_block.name.str.as_str_const())) {
+                case .Some(block_profiles) => {
+                    inner_profiles = active_profiles.intersect(block_profiles);
+
+                    if (inner_profiles.is_empty()) {
+                        return;
+                    }
+                }
+                case .None => {}
             }
 
             switch (cir::lookup_builtin(builtin_block.name.str.as_str_const())) {
@@ -4261,7 +4500,8 @@ fn resolve_builtin_decl_names(
                                     scope_id,
                                     program,
                                     &block_stmt.stmts,
-                                    profile
+                                    profile,
+                                    inner_profiles
                                 );
                             }
                             else => {}
@@ -4275,15 +4515,15 @@ fn resolve_builtin_decl_names(
     }
 }
 
-fn is_builtin_active(profile: Profile, name: const uint8*) bool {
+fn builtin_profile_set(name: const uint8*) Option<ProfileSet> {
     switch (cir::lookup_builtin(name)) {
         case .Some(builtin_kind) => {
             const builtin_spec = cir::builtin_spec_of(builtin_kind);
 
             if (builtin_spec.phase == .Resolver) {
                 switch (builtin_spec.kind) {
-                    case .Release => return profile == .Release;
-                    case .Debug => return profile == .Debug;
+                    case .Release => return .Some(ProfileSet.only_release());
+                    case .Debug => return .Some(ProfileSet.only_debug());
                     else => {}
                 }
             }
@@ -4291,5 +4531,5 @@ fn is_builtin_active(profile: Profile, name: const uint8*) bool {
         else => {}
     }
 
-    return true;
+    return .None;
 }

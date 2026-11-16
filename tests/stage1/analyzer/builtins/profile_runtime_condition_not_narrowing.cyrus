@@ -1,0 +1,12 @@
+@debug()
+fn foo() {}
+
+fn debug_enabled() bool {
+    return true;
+}
+
+pub fn main() {
+    if (debug_enabled()) {
+        foo(); //~ ERROR profile-dependent reference is not available in all required profiles
+    }
+}

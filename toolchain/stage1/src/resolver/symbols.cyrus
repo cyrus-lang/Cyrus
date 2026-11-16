@@ -6,15 +6,64 @@ import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
 
+import resolver::loader{Profile, ProfileSet};
 import parser::ast{ASTVisibility};
 import cir::tables{DeclTables};
+import tokens{Span};
 import cir;
 
 const GLOBAL_NAMESPACE = "GLOBAL";
 
+pub struct ProfileSymbolPair {
+    pub name: String,
+    pub debug_symbol_id: cir::SymbolId,
+    pub release_symbol_id: cir::SymbolId,
+    pub span: Span,
+}
+
 pub struct ScopeBinding {
     pub name: String,
     pub symbol_id: cir::SymbolId,
+    pub debug_symbol_id: Option<cir::SymbolId>,
+    pub release_symbol_id: Option<cir::SymbolId>,
+    pub availability: ProfileSet,
+
+    pub fn symbol_for_profiles(
+        self: const Self*, 
+        active: ProfileSet, 
+        target_profile: Profile
+    ) cir::SymbolId {
+        if (active.debug && !active.release) {
+            switch (self->debug_symbol_id) {
+                case .Some(id) => return id;
+                case .None => {}
+            }
+        }
+
+        if (active.release && !active.debug) {
+            switch (self->release_symbol_id) {
+                case .Some(id) => return id;
+                case .None => {}
+            }
+        }
+
+        switch (target_profile) {
+            case .Debug => {
+                switch (self->debug_symbol_id) {
+                    case .Some(id) => return id;
+                    case .None => {}
+                }
+            }
+            case .Release => {
+                switch (self->release_symbol_id) {
+                    case .Some(id) => return id;
+                    case .None => {}
+                }
+            }
+        }
+
+        return self->symbol_id;
+    }
 }
 
 pub struct ScopeTable {
@@ -37,6 +86,18 @@ pub struct ScopeTable {
         return .None;
     }
 
+    pub fn lookup_binding(self: const Self*, name: const uint8*) Option<const ScopeBinding*> {
+        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
+            const binding = self->bindings.get_const(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                return .Some(binding);
+            }
+        }
+
+        return .None;
+    }
+
     pub fn bind(self: Self*, name: const uint8*, symbol_id: cir::SymbolId) Option<cir::SymbolId> {
         for (var i: usize = 0; i < self->bindings.len(); i += 1) {
             var binding = self->bindings.get(i).unwrap();
@@ -44,6 +105,9 @@ pub struct ScopeTable {
             if (binding->name.as_str_const() == name) {
                 const previous = binding->symbol_id;
                 binding->symbol_id = symbol_id;
+                binding->debug_symbol_id = .Some(symbol_id);
+                binding->release_symbol_id = .Some(symbol_id);
+                binding->availability = ProfileSet.all();
                 return .Some(previous);
             }
         }
@@ -51,6 +115,62 @@ pub struct ScopeTable {
         self->bindings.push(ScopeBinding {
             name: String.from_str(self->allocator, name),
             symbol_id,
+            debug_symbol_id: .Some(symbol_id),
+            release_symbol_id: .Some(symbol_id),
+            availability: ProfileSet.all(),
+        });
+
+        return .None;
+    }
+
+    pub fn bind_with_profiles(
+        self: Self*,
+        name: const uint8*,
+        symbol_id: cir::SymbolId,
+        profiles: ProfileSet,
+        target_profile: Profile,
+    ) Option<cir::SymbolId> {
+        var debug_symbol_id: Option<cir::SymbolId> = .None;
+        var release_symbol_id: Option<cir::SymbolId> = .None;
+
+        if (profiles.debug) {
+            debug_symbol_id = .Some(symbol_id);
+        }
+
+        if (profiles.release) {
+            release_symbol_id = .Some(symbol_id);
+        }
+
+        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
+            var binding = self->bindings.get(i).unwrap();
+
+            if (binding->name.as_str_const() == name) {
+                const previous = binding->symbol_id;
+
+                if (profiles.debug) {
+                    binding->debug_symbol_id = .Some(symbol_id);
+                }
+
+                if (profiles.release) {
+                    binding->release_symbol_id = .Some(symbol_id);
+                }
+
+                binding->availability = binding->availability.union_with(profiles);
+
+                if (profiles.contains_profile(target_profile)) {
+                    binding->symbol_id = symbol_id;
+                }
+
+                return .Some(previous);
+            }
+        }
+
+        self->bindings.push(ScopeBinding {
+            name: String.from_str(self->allocator, name),
+            symbol_id,
+            debug_symbol_id,
+            release_symbol_id,
+            availability: profiles,
         });
 
         return .None;
@@ -106,6 +226,7 @@ pub struct SymbolEntry {
     pub parent_scope_id: Option<cir::SymbolId>,
     pub vis_opt: Option<ASTVisibility>,
     pub kind: SymbolEntryKind,
+    pub availability: ProfileSet,
     pub name: String,
     pub used: bool,
 
@@ -123,6 +244,7 @@ pub struct SymbolEntry {
 pub struct GlobalSymbolRegistry {
     pub allocator: Allocator,
     pub entries: Vec<SymbolEntry>,
+    pub profile_pairs: Vec<ProfileSymbolPair>,
     root: Option<cir::SymbolId>,
 
     pub fn new(allocator: Allocator) Self {
@@ -131,6 +253,7 @@ pub struct GlobalSymbolRegistry {
         var registry = Self {
             allocator,
             entries,
+            profile_pairs: Vec.new(allocator),
             root: .None,
         };
 
@@ -140,6 +263,7 @@ pub struct GlobalSymbolRegistry {
             kind: .Namespace(Namespace {
                 scope: alloc_init(allocator, ScopeTable.new(allocator)),
             }),
+            availability: ProfileSet.all(),
             used: false,
             vis_opt: .None,
         });
@@ -155,6 +279,32 @@ pub struct GlobalSymbolRegistry {
         }
 
         self->entries.free();
+
+        for (var i: usize = 0; i < self->profile_pairs.len(); i += 1) {
+            var pair = self->profile_pairs.get_owned(i).unwrap();
+            pair.name.free();
+        }
+
+        self->profile_pairs.free();
+    }
+
+    pub fn record_profile_pair(
+        self: Self*,
+        name: const uint8*,
+        debug_symbol_id: cir::SymbolId,
+        release_symbol_id: cir::SymbolId,
+        span: Span,
+    ) {
+        if (debug_symbol_id == release_symbol_id) {
+            return;
+        }
+
+        self->profile_pairs.push(ProfileSymbolPair {
+            name: String.from_str(self->allocator, name),
+            debug_symbol_id,
+            release_symbol_id,
+            span,
+        });
     }
 
     pub fn root_scope_id(self: const Self*) cir::SymbolId {
@@ -183,6 +333,38 @@ pub struct GlobalSymbolRegistry {
         }
     }
 
+    pub fn insert_symbol_name_with_profiles(
+        self: Self*,
+        scope_id: cir::SymbolId,
+        symbol_id: cir::SymbolId,
+        name: const uint8*,
+        profiles: ProfileSet,
+        target_profile: Profile,
+    ) {
+        const scope_idx = self->resolve_concrete_scope_id(scope_id);
+        const scope_entry = self->entries.get(scope_idx).unwrap();
+
+        switch (scope_entry->kind) {
+            case .Module(module) => {
+                module.scope->bind_with_profiles(
+                    name, 
+                    symbol_id, 
+                    profiles, 
+                    target_profile
+                );
+            }
+            case .Namespace(namespace) => {
+                namespace.scope->bind_with_profiles(
+                    name, 
+                    symbol_id, 
+                    profiles, 
+                    target_profile
+                );
+            }
+            else => @assert(false, "scope does not exist for given scope id");
+        }
+    }
+
     pub fn insert_module_symbol(
         self: Self*,
         parent_scope_id: cir::SymbolId,
@@ -195,6 +377,7 @@ pub struct GlobalSymbolRegistry {
             name: String.from_str(self->allocator, name),
             parent_scope_id: .Some(parent_scope_id),
             kind: .Module(Module { scope }),
+            availability: ProfileSet.all(),
             used: false,
             vis_opt: .None,
         });
@@ -209,17 +392,35 @@ pub struct GlobalSymbolRegistry {
         name: const uint8*,
         vis_opt: Option<ASTVisibility>,
     ) cir::SymbolId {
+        return self->insert_namespace_symbol_with_profiles(
+            parent_scope_id,
+            name,
+            vis_opt,
+            ProfileSet.all(),
+            .Debug
+        );
+    }
+
+    pub fn insert_namespace_symbol_with_profiles(
+        self: Self*,
+        parent_scope_id: cir::SymbolId,
+        name: const uint8*,
+        vis_opt: Option<ASTVisibility>,
+        profiles: ProfileSet,
+        target_profile: Profile,
+    ) cir::SymbolId {
         const scope = alloc_init(self->allocator, ScopeTable.new(self->allocator));
 
         const namespace_symbol_id = self->insert_symbol_entry(SymbolEntry {
             name: String.from_str(self->allocator, name),
             parent_scope_id: .Some(parent_scope_id),
             kind: .Namespace(Namespace { scope }),
+            availability: profiles,
             used: false,
             vis_opt,
         });
 
-        self->insert_symbol_name(parent_scope_id, namespace_symbol_id, name);
+        self->insert_symbol_name_with_profiles(parent_scope_id, namespace_symbol_id, name, profiles, target_profile);
         return namespace_symbol_id;
     }
 
@@ -229,15 +430,39 @@ pub struct GlobalSymbolRegistry {
         name: const uint8*,
         vis_opt: Option<ASTVisibility>,
     ) cir::SymbolId {
+        return self->insert_unresolved_symbol_with_profiles(
+            scope_id,
+            name,
+            vis_opt,
+            ProfileSet.all(),
+            .Debug
+        );
+    }
+
+    pub fn insert_unresolved_symbol_with_profiles(
+        self: Self*,
+        scope_id: cir::SymbolId,
+        name: const uint8*,
+        vis_opt: Option<ASTVisibility>,
+        profiles: ProfileSet,
+        target_profile: Profile,
+    ) cir::SymbolId {
         const symbol_id = self->insert_symbol_entry(SymbolEntry {
             name: String.from_str(self->allocator, name),
             parent_scope_id: .Some(scope_id),
+            availability: profiles,
             kind: .Unresolved,
             used: false,
             vis_opt,
         });
 
-        self->insert_symbol_name(scope_id, symbol_id, name);
+        self->insert_symbol_name_with_profiles(
+            scope_id, 
+            symbol_id, 
+            name, 
+            profiles, 
+            target_profile
+        );
         return symbol_id;
     }
 
@@ -248,12 +473,15 @@ pub struct GlobalSymbolRegistry {
         imported_scope_id: cir::SymbolId,
         target_symbol_id: cir::SymbolId,
     ) cir::SymbolId {
-        // The proxy inherits visibility from the target symbol
+        // The proxy inherits visibility 
+        // and availability from the target symbol
         var vis_opt: Option<ASTVisibility> = .None;
+        var availability = ProfileSet.all();
         
         if (target_symbol_id < self->entries.len()) {
             const entry = self->entries.get_const(target_symbol_id).unwrap();
             vis_opt = entry->vis_opt;
+            availability = entry->availability;
         }
 
         const proxy_id = self->insert_symbol_entry(SymbolEntry {
@@ -263,12 +491,112 @@ pub struct GlobalSymbolRegistry {
                 scope_id: imported_scope_id,
                 symbol_id: target_symbol_id,
             },
+            availability,
             used: false,
             vis_opt
         });
 
-        self->insert_symbol_name(current_scope_id, proxy_id, name);
+        self->insert_symbol_name_with_profiles(
+            current_scope_id, 
+            proxy_id, 
+            name, 
+            availability, 
+            .Debug
+        );
         return proxy_id;
+    }
+
+    pub fn insert_proxied_binding(
+        self: Self*,
+        current_scope_id: cir::SymbolId,
+        name: const uint8*,
+        imported_scope_id: cir::SymbolId,
+        source_binding: const ScopeBinding*,
+        target_profile: Profile,
+    ) {
+        switch (source_binding->debug_symbol_id) {
+            case .Some(dbg_target) => {
+                var vis_opt: Option<ASTVisibility> = .None;
+                var profiles = ProfileSet.only_debug();
+
+                if (dbg_target < self->entries.len()) {
+                    vis_opt = self->entries.get_const(dbg_target).unwrap()->vis_opt;
+                }
+
+                switch (source_binding->release_symbol_id) {
+                    case .Some(rel_target) => {
+                        if (rel_target == dbg_target) {
+                            profiles = ProfileSet.all();
+                        }
+                    }
+                    case .None => {}
+                }
+
+                const dbg_proxy = self->insert_symbol_entry(SymbolEntry {
+                    name: String.from_str(self->allocator, name),
+                    parent_scope_id: .Some(current_scope_id),
+                    kind: .ProxiedSymbol {
+                        scope_id: imported_scope_id,
+                        symbol_id: dbg_target,
+                    },
+                    availability: profiles,
+                    used: false,
+                    vis_opt,
+                });
+
+                self->insert_symbol_name_with_profiles(
+                    current_scope_id,
+                    dbg_proxy,
+                    name,
+                    profiles,
+                    target_profile
+                );
+            }
+            case .None => {}
+        }
+
+        switch (source_binding->release_symbol_id) {
+            case .Some(rel_target) => {
+                var same_as_debug = false;
+                switch (source_binding->debug_symbol_id) {
+                    case .Some(dbg_target) => {
+                        if (dbg_target == rel_target) {
+                            same_as_debug = true;
+                        }
+                    }
+                    case .None => {}
+                }
+
+                if (!same_as_debug) {
+                    var vis_opt: Option<ASTVisibility> = .None;
+
+                    if (rel_target < self->entries.len()) {
+                        vis_opt = self->entries.get_const(rel_target).unwrap()->vis_opt;
+                    }
+
+                    const rel_proxy = self->insert_symbol_entry(SymbolEntry {
+                        name: String.from_str(self->allocator, name),
+                        parent_scope_id: .Some(current_scope_id),
+                        kind: .ProxiedSymbol {
+                            scope_id: imported_scope_id,
+                            symbol_id: rel_target,
+                        },
+                        availability: ProfileSet.only_release(),
+                        used: false,
+                        vis_opt,
+                    });
+
+                    self->insert_symbol_name_with_profiles(
+                        current_scope_id,
+                        rel_proxy,
+                        name,
+                        ProfileSet.only_release(),
+                        target_profile
+                    );
+                }
+            }
+            case .None => {}
+        }
     }
 
     pub fn insert_proxied_module(
@@ -283,6 +611,7 @@ pub struct GlobalSymbolRegistry {
             name: String.from_str(self->allocator, name),
             parent_scope_id: .Some(parent_scope_id),
             kind: .ProxiedModule { symbol_id: target_symbol_id },
+            availability: ProfileSet.all(),
             used: false,
             vis_opt: .None,
         });
@@ -342,6 +671,20 @@ pub struct GlobalSymbolRegistry {
         return self->lookup_in_single_scope(index, name);
     }
 
+    pub fn lookup_binding_in_scope(
+        self: const Self*,
+        scope_id: cir::SymbolId,
+        name: const uint8*,
+    ) Option<const ScopeBinding*> {
+        const index = self->resolve_concrete_scope_id(scope_id);
+
+        if (index >= self->entries.len()) {
+            return .None;
+        }
+
+        return self->lookup_binding_in_single_scope(index, name);
+    }
+
     pub fn lookup_in_scope_chain(
         self: const Self*,
         scope_id: cir::SymbolId,
@@ -361,6 +704,45 @@ pub struct GlobalSymbolRegistry {
             switch (found) {
                 case .Some(symbol_id) => {
                     return .Some(symbol_id);
+                }
+                case .None => {
+                    const entry = self->entries.get_const(current_idx).unwrap();
+
+                    switch (entry->parent_scope_id) {
+                        case .Some(parent) => {
+                            current = parent;
+                            continue;
+                        }
+                        case .None => {
+                            return .None;
+                        }
+                    }
+                }
+            }
+        }
+
+        @unreachable();
+    }
+
+    pub fn lookup_binding_in_scope_chain(
+        self: const Self*,
+        scope_id: cir::SymbolId,
+        name: const uint8*,
+    ) Option<const ScopeBinding*> {
+        var current = self->resolve_concrete_scope_id(scope_id);
+
+        while (true) {
+            const current_idx = current;
+
+            if (current_idx >= self->entries.len()) {
+                return .None;
+            }
+
+            const found = self->lookup_binding_in_single_scope(current_idx, name);
+
+            switch (found) {
+                case .Some(binding) => {
+                    return .Some(binding);
                 }
                 case .None => {
                     const entry = self->entries.get_const(current_idx).unwrap();
@@ -430,6 +812,20 @@ pub struct GlobalSymbolRegistry {
         }
     }
 
+    fn lookup_binding_in_single_scope(
+        self: const Self*,
+        index: usize,
+        name: const uint8*,
+    ) Option<const ScopeBinding*> {
+        const entry = self->entries.get_const(index).unwrap();
+
+        switch (entry->kind) {
+            case .Namespace(namespace) => return namespace.scope->lookup_binding(name);
+            case .Module(module) => return module.scope->lookup_binding(name);
+            else => return .None;
+        }
+    }
+
     pub fn lookup_symbol_as_decl_id(self: const Self*, symbol_id: cir::SymbolId) Option<cir::DeclId> {
         const concrete = self->resolve_concrete_symbol_id(symbol_id);
         const entry = self->entries.get_const(concrete);
@@ -472,6 +868,7 @@ pub struct GlobalSymbolRegistry {
             parent_scope_id: .Some(scope_id),
             vis_opt: .None,
             kind: .Poisoned,
+            availability: ProfileSet.all(),
             name: String.from_str(self->allocator, name),
             used: true,
         });

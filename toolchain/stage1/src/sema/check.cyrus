@@ -4624,31 +4624,55 @@ pub fn analyze_toplevel_headers(
     const count = tree->body_len();
 
     for (var i: usize = 0; i < count; i += 1) {
-        var stmt = tree->body_get(i);
-
-        switch (stmt->kind) {
-            case .Typedef(var typedef) => {
-                analyze_typedef(context, &typedef);
-                stmt->kind = .Typedef(typedef);
-            }
-            else => {}
-        }
+        analyze_toplevel_typedefs_in_stmt(context, tree->body_get(i));
     }
 
     for (var i: usize = 0; i < count; i += 1) {
-        var stmt = tree->body_get(i);
-
-        switch (stmt->kind) {
-            case .GlobalVar(var global_var) => {
-                analyze_global_var(context, &global_var);
-                stmt->kind = .GlobalVar(global_var);
-            }
-            else => {}
-        }
+        analyze_toplevel_global_vars_in_stmt(context, tree->body_get(i));
     }
 
     for (var i: usize = 0; i < count; i += 1) {
         analyze_toplevel_stmt(context, tree->body_get(i), i, .Some(staged));
+    }
+}
+
+fn analyze_toplevel_typedefs_in_stmt(
+    context: AnalyzerContext*,
+    stmt: cir::Stmt*
+) {
+    switch (stmt->kind) {
+        case .Typedef(var typedef) => {
+            analyze_typedef(context, &typedef);
+            stmt->kind = .Typedef(typedef);
+        }
+        case .Builtin(.BuiltinBlock(var block)) => {
+            for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
+                analyze_toplevel_typedefs_in_stmt(context, block.block->stmts.get(i).unwrap());
+            }
+
+            stmt->kind = .Builtin(.BuiltinBlock(block));
+        }
+        else => {}
+    }
+}
+
+fn analyze_toplevel_global_vars_in_stmt(
+    context: AnalyzerContext*,
+    stmt: cir::Stmt*
+) {
+    switch (stmt->kind) {
+        case .GlobalVar(var global_var) => {
+            analyze_global_var(context, &global_var);
+            stmt->kind = .GlobalVar(global_var);
+        }
+        case .Builtin(.BuiltinBlock(var block)) => {
+            for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
+                analyze_toplevel_global_vars_in_stmt(context, block.block->stmts.get(i).unwrap());
+            }
+
+            stmt->kind = .Builtin(.BuiltinBlock(block));
+        }
+        else => {}
     }
 }
 
@@ -4658,27 +4682,11 @@ fn analyze_toplevel_stmts_staged(
     staged: Option<StagedBodies>
 ) {
     for (var i: usize = 0; i < typed_stmts->len(); i += 1) {
-        var stmt = typed_stmts->get(i).unwrap();
-
-        switch (stmt->kind) {
-            case .Typedef(var typedef) => {
-                analyze_typedef(context, &typedef);
-                stmt->kind = .Typedef(typedef);
-            }
-            else => {}
-        }
+        analyze_toplevel_typedefs_in_stmt(context, typed_stmts->get(i).unwrap());
     }
 
     for (var i: usize = 0; i < typed_stmts->len(); i += 1) {
-        var stmt = typed_stmts->get(i).unwrap();
-
-        switch (stmt->kind) {
-            case .GlobalVar(var global_var) => {
-                analyze_global_var(context, &global_var);
-                stmt->kind = .GlobalVar(global_var);
-            }
-            else => {}
-        }
+        analyze_toplevel_global_vars_in_stmt(context, typed_stmts->get(i).unwrap());
     }
 
     for (var i: usize = 0; i < typed_stmts->len(); i += 1) {
@@ -4733,8 +4741,55 @@ fn analyze_toplevel_stmt(
             analyze_union_stmt(context, &union_);
             stmt->kind = .Union(union_);
         }
-        case .Builtin => {
+        case .Builtin(.BuiltinFunc) => {
             analyze_builtin(context, stmt, true);
+        }
+        case .Builtin(.BuiltinBlock(var builtin_block)) => {
+            switch (cir::lookup_builtin(
+                builtin_block.name.str.as_str_const()
+            )) {
+                case .Some(builtin_kind) => {
+                    const builtin_spec = cir::builtin_spec_of(builtin_kind);
+                    
+                    if (check_builtin_form(context, builtin_spec, .Stmt, builtin_block.span)) {
+                        builtin_block.is_toplevel = .Some(true);
+                        
+                        var has_work = false;
+                        
+                        for (var k: usize = 0; k < builtin_block.block->stmts.len(); k += 1) {
+                            var sub = builtin_block.block->stmts.get(k).unwrap();
+
+                            switch (staged) {
+                                case .Some(staged_bodies) => {
+                                    const before = staged_bodies.work->len();
+                                    analyze_toplevel_stmt(context, sub, index, staged);
+                                    if (staged_bodies.work->len() > before) {
+                                        if (has_work) {
+                                            // Keep only one work item 
+                                            // per top-level index
+                                            staged_bodies.work->pop();
+                                        }
+                                        has_work = true;
+                                    }
+                                }
+                                case .None => {
+                                    analyze_toplevel_stmt(context, sub, index, .None);
+                                }
+                            }
+                        }
+                    }
+                }
+                case .None => {
+                    diags::report_builtin_not_defined(
+                        context->dctx,
+                        context->allocator,
+                        builtin_block.span,
+                        builtin_block.name.str.as_str_const()
+                    );
+                }
+            }
+
+            stmt->kind = .Builtin(.BuiltinBlock(builtin_block));
         }
 
         // Skipped
@@ -4756,12 +4811,33 @@ pub fn analyze_toplevel_body_item(
     stmt_index: usize
 ) {
     var tree = context->trees.get(tree_index).unwrap();
-    var stmt = tree->body_get(stmt_index);
 
+    analyze_toplevel_body_in_stmt(
+        context, 
+        tree->body_get(stmt_index)
+    );
+}
+
+fn analyze_toplevel_body_in_stmt(
+    context: AnalyzerContext*,
+    stmt: cir::Stmt*
+) {
     switch (stmt->kind) {
         case .FuncDef(var func_def) => {
-            analyze_func_def_body(context, &func_def);
-            stmt->kind = .FuncDef(func_def);
+            if (!func_def.is_generic()) {
+                analyze_func_def_body(context, &func_def);
+                stmt->kind = .FuncDef(func_def);
+            }
+        }
+        case .Builtin(.BuiltinBlock(var block)) => {
+            for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
+                analyze_toplevel_body_in_stmt(
+                    context, 
+                    block.block->stmts.get(i).unwrap()
+                );
+            }
+
+            stmt->kind = .Builtin(.BuiltinBlock(block));
         }
         else => {}
     }
@@ -4891,6 +4967,15 @@ fn analyze_block_stmt(
     for (var i: usize = 0; i < total; i += 1) {
         var stmt = block->stmts.get(i).unwrap();
 
+        var is_inactive_builtin_block = false;
+
+        switch (stmt->kind) {
+            case .Builtin(.BuiltinBlock(bb)) => {
+                is_inactive_builtin_block = !bb.is_active;
+            }
+            else => {}
+        }
+
         const stmt_state = analyze_stmt(context, stmt);
 
         switch (stmt->kind) {
@@ -4916,6 +5001,11 @@ fn analyze_block_stmt(
                 );
             }
 
+            continue;
+        }
+
+        if (is_inactive_builtin_block) {
+            final_stmts.push(*stmt);
             continue;
         }
 
@@ -15699,4 +15789,204 @@ fn str_set_insert(values: Vec<String>*, name: String) bool {
 
     values->push(name);
     return true;
+}
+
+/* ************* Profile Symbol Pair Checking ************* */
+
+pub fn check_profile_symbol_pairs(context: AnalyzerContext*) {
+    for (var i: usize = 0; i < context->registry->profile_pairs.len(); i += 1) {
+        const pair = context->registry->profile_pairs.get_const(i).unwrap();
+
+        const debug_decl_opt = context->registry->lookup_symbol_as_decl_id(pair->debug_symbol_id);
+        const release_decl_opt = context->registry->lookup_symbol_as_decl_id(pair->release_symbol_id);
+
+        switch (debug_decl_opt) {
+            case .Some(debug_decl) => {
+                switch (release_decl_opt) {
+                    case .Some(release_decl) => {
+                        if (!are_profile_decls_compatible(context, debug_decl, release_decl, pair->span)) {
+                            diags::report_incompatible_profile_definitions(
+                                context->dctx,
+                                context->allocator,
+                                pair->span,
+                                pair->name.as_str_const()
+                            );
+                        }
+                    }
+                    case .None => {}
+                }
+            }
+            case .None => {}
+        }
+    }
+}
+
+fn are_profile_decls_compatible(
+    context: AnalyzerContext*,
+    debug_decl: cir::DeclId,
+    release_decl: cir::DeclId,
+    span: Span
+) bool {
+    switch (debug_decl) {
+        case .Func(d_id) => {
+            switch (release_decl) {
+                case .Func(r_id) => {
+                    const d_func = context->decl_tables->funcs.get_const(d_id).unwrap();
+                    const r_func = context->decl_tables->funcs.get_const(r_id).unwrap();
+
+                    if (d_func->generic_params.len() != r_func->generic_params.len()) {
+                        return false;
+                    }
+
+                    if (d_func->params.list.len() != r_func->params.list.len()) {
+                        return false;
+                    }
+
+                    if (d_func->params.variadic.is_some() != r_func->params.variadic.is_some()) {
+                        return false;
+                    }
+
+                    if (func_decl_contains_error(d_func) || func_decl_contains_error(r_func)) {
+                        return true;
+                    }
+
+                    for (var i: usize = 0; i < d_func->params.list.len(); i += 1) {
+                        const p1 = d_func->params.list.get_const(i).unwrap();
+                        const p2 = r_func->params.list.get_const(i).unwrap();
+                        const t1 = p1->ty();
+                        const t2 = p2->ty();
+
+                        if (!is_assignable_to(context, t1, t2, span) || !is_assignable_to(context, t2, t1, span)) {
+                            return false;
+                        }
+                    }
+
+                    return is_assignable_to(context, d_func->ret_type, r_func->ret_type, span) &&
+                           is_assignable_to(context, r_func->ret_type, d_func->ret_type, span);
+                }
+                else => return false;
+            }
+        }
+        case .GlobalVar(d_id) => {
+            switch (release_decl) {
+                case .GlobalVar(r_id) => {
+                    const d_var = context->decl_tables->global_vars.get_const(d_id).unwrap();
+                    const r_var = context->decl_tables->global_vars.get_const(r_id).unwrap();
+
+                    if (d_var->is_const != r_var->is_const) {
+                        return false;
+                    }
+
+                    switch (d_var->ty) {
+                        case .Some(t1) => {
+                            switch (r_var->ty) {
+                                case .Some(t2) => {
+                                    return is_assignable_to(context, t1, t2, span) &&
+                                           is_assignable_to(context, t2, t1, span);
+                                }
+                                case .None => return true;
+                            }
+                        }
+                        case .None => return true;
+                    }
+                }
+                else => return false;
+            }
+        }
+        case .Var(d_id) => {
+            switch (release_decl) {
+                case .Var(r_id) => {
+                    const d_var = context->decl_tables->vars.get_const(d_id).unwrap();
+                    const r_var = context->decl_tables->vars.get_const(r_id).unwrap();
+
+                    if (d_var->is_const != r_var->is_const) {
+                        return false;
+                    }
+
+                    switch (d_var->ty) {
+                        case .Some(t1) => {
+                            switch (r_var->ty) {
+                                case .Some(t2) => {
+                                    return is_assignable_to(context, t1, t2, span) &&
+                                           is_assignable_to(context, t2, t1, span);
+                                }
+                                case .None => return true;
+                            }
+                        }
+                        case .None => return true;
+                    }
+                }
+                else => return false;
+            }
+        }
+        case .Struct(d_id) => {
+            switch (release_decl) {
+                case .Struct(r_id) => {
+                    const t1: cir::SemaType = .Named(cir::NamedType {
+                        type_decl_id: .Struct(d_id),
+                        type_args: cir::TypeArgs.new(context->allocator),
+                    });
+                    const t2: cir::SemaType = .Named(cir::NamedType {
+                        type_decl_id: .Struct(r_id),
+                        type_args: cir::TypeArgs.new(context->allocator),
+                    });
+                    return is_assignable_to(context, t1, t2, span) &&
+                           is_assignable_to(context, t2, t1, span);
+                }
+                else => return false;
+            }
+        }
+        case .Enum(d_id) => {
+            switch (release_decl) {
+                case .Enum(r_id) => {
+                    const t1: cir::SemaType = .Named(cir::NamedType {
+                        type_decl_id: .Enum(d_id),
+                        type_args: cir::TypeArgs.new(context->allocator),
+                    });
+                    const t2: cir::SemaType = .Named(cir::NamedType {
+                        type_decl_id: .Enum(r_id),
+                        type_args: cir::TypeArgs.new(context->allocator),
+                    });
+                    return is_assignable_to(context, t1, t2, span) &&
+                           is_assignable_to(context, t2, t1, span);
+                }
+                else => return false;
+            }
+        }
+        case .Union(d_id) => {
+            switch (release_decl) {
+                case .Union(r_id) => {
+                    const t1: cir::SemaType = .Named(cir::NamedType {
+                        type_decl_id: .Union(d_id),
+                        type_args: cir::TypeArgs.new(context->allocator),
+                    });
+                    const t2: cir::SemaType = .Named(cir::NamedType {
+                        type_decl_id: .Union(r_id),
+                        type_args: cir::TypeArgs.new(context->allocator),
+                    });
+                    return is_assignable_to(context, t1, t2, span) &&
+                           is_assignable_to(context, t2, t1, span);
+                }
+                else => return false;
+            }
+        }
+        case .Typedef(d_id) => {
+            switch (release_decl) {
+                case .Typedef(r_id) => {
+                    const d_td = context->decl_tables->typedefs.get_const(d_id).unwrap();
+                    const r_td = context->decl_tables->typedefs.get_const(r_id).unwrap();
+                    return is_assignable_to(context, *d_td->ty, *r_td->ty, span) &&
+                           is_assignable_to(context, *r_td->ty, *d_td->ty, span);
+                }
+                else => return false;
+            }
+        }
+        case .Interface(d_id) => {
+            switch (release_decl) {
+                case .Interface(r_id) => return d_id == r_id;
+                else => return false;
+            }
+        }
+        case .Method => return true;
+    }
 }

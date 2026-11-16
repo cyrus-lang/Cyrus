@@ -1,0 +1,9 @@
+@debug()
+struct DebugState {
+    pub counter: int32,
+}
+
+fn consume(state: DebugState) { //~ ERROR profile-dependent reference is not available in all required profiles
+}
+
+pub fn main() {}

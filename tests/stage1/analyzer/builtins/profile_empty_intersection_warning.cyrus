@@ -1,0 +1,7 @@
+@debug()
+fn inspect() {
+    @release() { //~ WARNING profile block is inactive in every supported configuration
+    }
+}
+
+pub fn main() {}
