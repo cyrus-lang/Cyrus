@@ -8,6 +8,11 @@ fn produce() float64 { //~ ERROR profile-specific definitions of `produce` have 
     return 1.0;
 }
 
+@test()
+fn produce() int32 { //~ ERROR profile-specific definitions of `produce` have incompatible signatures or types across profiles
+    return 2;
+}
+
 pub fn main() {
     produce();
 }

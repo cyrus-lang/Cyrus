@@ -1,0 +1,48 @@
+fn add(left: int32, right: int32) int32 {
+    return left + right;
+}
+
+@test()
+fn test_only_helper() bool {
+    return true;
+}
+
+@debug()
+fn debug_only_helper() bool {
+    return true;
+}
+
+@release()
+fn release_only_helper() bool {
+    return true;
+}
+
+@test("addition and early exit") {
+    if (!test_only_helper()) {
+        return;
+    }
+
+    var values: int32[3] = int32[3]{ 10, 20, 30 };
+    var total: int32 = 0;
+
+    for (var i: usize = 0; i < 3; i += 1) {
+        total += values[i];
+    }
+
+    @assert(total == 60);
+    @assert(add(2, 3) == 5);
+}
+
+@debug("debug configuration checks") {
+    @assert(debug_only_helper());
+}
+
+@release("release configuration checks") {
+    @assert(release_only_helper());
+}
+
+pub fn main() {
+    @test() {
+        @assert(test_only_helper());
+    }
+}

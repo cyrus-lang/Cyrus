@@ -9,7 +9,7 @@ pub fn validate() {}
 pub fn main() {}
 
 /*@resolve
-tests/stage1/resolver/profile_overlapping.cyrus:7:8: error: overlapping definitions of `validate` in profile Debug
+tests/stage1/resolver/profile_overlapping.cyrus:7:8: error: overlapping definitions of `validate` in profile debug
       |
     7 ~ pub fn validate() {}
       |        ^^^^^^^^

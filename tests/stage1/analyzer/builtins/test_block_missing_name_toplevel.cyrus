@@ -1,0 +1,4 @@
+@test() { //~ ERROR top-level `@test` block requires a test case name
+}
+
+pub fn main() {}

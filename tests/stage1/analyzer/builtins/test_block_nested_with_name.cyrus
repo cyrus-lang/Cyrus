@@ -1,0 +1,5 @@
+pub fn main() {
+    @test("nested") { //~ ERROR nested `@test` block inside a function cannot take a test name argument
+        @assert(true);
+    }
+}

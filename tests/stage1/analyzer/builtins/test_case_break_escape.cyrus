@@ -1,0 +1,5 @@
+@test("break escaping") {
+    break; //~ ERROR invalid usage of the break statement
+}
+
+pub fn main() {}

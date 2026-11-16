@@ -13,10 +13,10 @@ tests/stage1/resolver/profile_unavailable.cyrus:7:5: error: profile-dependent re
     7 ~     only_in_debug();
       |     ^^^^^^^^^^^^^
       |
-      = note: reference is active in: Debug, Release
+      = note: reference is active in: debug, release, test
       |
-      = note: declaration `only_in_debug` is available in: Debug
+      = note: declaration `only_in_debug` is available in: debug
       |
-      = note: missing profiles: Release
+      = note: missing profiles: release, test
       |
 @resolve*/
