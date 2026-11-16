@@ -861,7 +861,12 @@ fn apply_profile_option(
         return true;
     }
 
-    compile_error("invalid profile (expected `debug` or `release`)");
+    if (value_str.as_str_const() == "test") {
+        opts->profile = .Test;
+        return true;
+    }
+
+    compile_error("invalid profile (expected `debug`, `release`, or `test`)");
     return false;
 }
 

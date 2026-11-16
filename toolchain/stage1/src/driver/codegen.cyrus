@@ -16,7 +16,7 @@ import codegen::c{CodegenC};
 import .::tcc;
 
 pub enum Backend {
-    LLVM
+    LLVM,
     C,
 
     pub fn from_str(name: const uint8*) Option<Self> {
@@ -65,7 +65,6 @@ pub struct CodegenContext {
         }
     }
 
-    /// Compiles emitted `source` into `output_path`.
     pub fn build(
         self: Self*,
         source: const uint8*,

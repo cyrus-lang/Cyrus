@@ -1,7 +1,13 @@
 // @stdout: (13) (Hello, Cyrus!)
 
 import std::libc::types{c_file};
-import std::libc{printf, fopen, fread, fclose, ferror};
+import std::libc{
+    printf, 
+    fopen, 
+    fread, 
+    fclose, 
+    ferror
+};
 
 pub fn main() {
     const file_name = "./tests/stage0/core/std/libc/example_content.txt";
@@ -12,6 +18,7 @@ pub fn main() {
     var total_bytes: usize;
 
     file = fopen(file_name, "r");
+
     if (file == null) {
         @panic("error opening file");
     }
