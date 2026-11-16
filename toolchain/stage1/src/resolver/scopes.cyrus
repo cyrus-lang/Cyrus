@@ -14,18 +14,26 @@ pub struct LocalBinding {
     pub symbol_id: cir::SymbolId,
     pub debug_symbol_id: Option<cir::SymbolId>,
     pub release_symbol_id: Option<cir::SymbolId>,
+    pub test_symbol_id: Option<cir::SymbolId>,
     pub availability: ProfileSet,
 
     pub fn symbol_for_profiles(self: const Self*, active: ProfileSet, target_profile: Profile) cir::SymbolId {
-        if (active.debug && !active.release) {
+        if (active.debug && !active.release && !active.test) {
             switch (self->debug_symbol_id) {
                 case .Some(id) => return id;
                 case .None => {}
             }
         }
 
-        if (active.release && !active.debug) {
+        if (active.release && !active.debug && !active.test) {
             switch (self->release_symbol_id) {
+                case .Some(id) => return id;
+                case .None => {}
+            }
+        }
+
+        if (active.test && !active.debug && !active.release) {
+            switch (self->test_symbol_id) {
                 case .Some(id) => return id;
                 case .None => {}
             }
@@ -40,6 +48,12 @@ pub struct LocalBinding {
             }
             case .Release => {
                 switch (self->release_symbol_id) {
+                    case .Some(id) => return id;
+                    case .None => {}
+                }
+            }
+            case .Test => {
+                switch (self->test_symbol_id) {
                     case .Some(id) => return id;
                     case .None => {}
                 }
@@ -82,6 +96,7 @@ pub struct LocalScope {
     ) {
         var debug_symbol_id: Option<cir::SymbolId> = .None;
         var release_symbol_id: Option<cir::SymbolId> = .None;
+        var test_symbol_id: Option<cir::SymbolId> = .None;
 
         if (profiles.debug) {
             debug_symbol_id = .Some(symbol_id);
@@ -89,6 +104,10 @@ pub struct LocalScope {
 
         if (profiles.release) {
             release_symbol_id = .Some(symbol_id);
+        }
+
+        if (profiles.test) {
+            test_symbol_id = .Some(symbol_id);
         }
 
         for (var i: usize = 0; i < self->symbols.len(); i += 1) {
@@ -101,6 +120,10 @@ pub struct LocalScope {
 
                 if (profiles.release) {
                     binding->release_symbol_id = .Some(symbol_id);
+                }
+
+                if (profiles.test) {
+                    binding->test_symbol_id = .Some(symbol_id);
                 }
 
                 binding->availability = binding->availability.union_with(profiles);
@@ -118,6 +141,7 @@ pub struct LocalScope {
             symbol_id,
             debug_symbol_id,
             release_symbol_id,
+            test_symbol_id,
             availability: profiles,
         });
     }

@@ -99,6 +99,33 @@ fn resolve_decl_names(
                                                         }
                                                         case .None => {}
                                                     }
+                                                    switch (updated->test_symbol_id) {
+                                                        case .Some(tid) => {
+                                                            registry->record_profile_pair(
+                                                                name, 
+                                                                did, 
+                                                                tid, 
+                                                                decl_name.span
+                                                            );
+                                                        }
+                                                        case .None => {}
+                                                    }
+                                                }
+                                                case .None => {}
+                                            }
+                                            switch (updated->release_symbol_id) {
+                                                case .Some(rid) => {
+                                                    switch (updated->test_symbol_id) {
+                                                        case .Some(tid) => {
+                                                            registry->record_profile_pair(
+                                                                name, 
+                                                                rid, 
+                                                                tid, 
+                                                                decl_name.span
+                                                            );
+                                                        }
+                                                        case .None => {}
+                                                    }
                                                 }
                                                 case .None => {}
                                             }
@@ -588,6 +615,7 @@ fn resolve_module_import(
                     }
                     case .None => {}
                 }
+
                 switch (next_binding->release_symbol_id) {
                     case .Some(id) => {
                         var already_checked = false;
@@ -595,6 +623,33 @@ fn resolve_module_import(
                         switch (next_binding->debug_symbol_id) {
                             case .Some(did) => {
                                 already_checked = did == id;
+                            }
+                            case .None => {}
+                        }
+                        
+                        if (!already_checked) {
+                            report_if_symbol_is_private(ctx, id, module_import->span);
+                        }
+                    }
+                    case .None => {}
+                }
+
+                switch (next_binding->test_symbol_id) {
+                    case .Some(id) => {
+                        var already_checked = false;
+
+                        switch (next_binding->debug_symbol_id) {
+                            case .Some(did) => {
+                                already_checked = did == id;
+                            }
+                            case .None => {}
+                        }
+
+                        switch (next_binding->release_symbol_id) {
+                            case .Some(rid) => {
+                                if (rid == id) {
+                                    already_checked = true;
+                                }
                             }
                             case .None => {}
                         }
@@ -1917,6 +1972,25 @@ fn insert_variable_symbol_to_current_scope(
                                 }
                                 case .None => {}
                             }
+
+                            switch (updated->test_symbol_id) {
+                                case .Some(t_id) => {
+                                    ctx->registry->record_profile_pair(name, d_id, t_id, span);
+                                }
+                                case .None => {}
+                            }
+                        }
+                        case .None => {}
+                    }
+
+                    switch (updated->release_symbol_id) {
+                        case .Some(r_id) => {
+                            switch (updated->test_symbol_id) {
+                                case .Some(t_id) => {
+                                    ctx->registry->record_profile_pair(name, r_id, t_id, span);
+                                }
+                                case .None => {}
+                            }
                         }
                         case .None => {}
                     }
@@ -2838,13 +2912,19 @@ fn resolve_builtin(
 
             var stmts: Vec<cir::Stmt> = Vec.new(ctx->allocator);
 
+            const is_test_case = builtin_block.is_toplevel && builtin_block.args.len() > 0;
+
+            if (is_test_case || !builtin_block.is_toplevel) {
+                ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+            }
+
             switch (*operand_node(program, builtin_block.block)) {
                 case .Block(block) => {
                     for (var i: usize = 0; i < block.stmts.len; i += 1) {
                         const node_id = program->children.get_owned(block.stmts.start + i).unwrap();
                         const node = program->nodes.get_const(node_id).unwrap();
 
-                        if (builtin_block.is_toplevel) {
+                        if (builtin_block.is_toplevel && !is_test_case) {
                             var resolved_stmts = resolve_toplevel_stmt(ctx, program, node);
 
                             for (var j: usize = 0; j < resolved_stmts.len(); j += 1) {
@@ -2863,6 +2943,10 @@ fn resolve_builtin(
                 else => {}
             }
 
+            if (is_test_case || !builtin_block.is_toplevel) {
+                ctx->exit_local_scope();
+            }
+
             ctx->active_profiles = prev_profiles;
 
             const block = alloc_init(ctx->allocator, cir::BlockStmt {
@@ -2875,8 +2959,8 @@ fn resolve_builtin(
                 name: builtin_block.name,
                 args,
                 block,
-                is_toplevel: .None,
-                is_active: inner_profiles.contains_profile(ctx->profile),
+                is_toplevel: .Some(builtin_block.is_toplevel),
+                is_active: !is_test_case && inner_profiles.contains_profile(ctx->profile),
                 span: builtin_block.span,
             }));
         }
@@ -4457,8 +4541,6 @@ fn resolve_enum_variants(
     return .Some(typed_variants);
 }
 
-// TODO (stage2): Temporary! Will be replaced with a multi stage 
-// comptime evaluation engine.
 fn resolve_builtin_decl_names(
     registry: GlobalSymbolRegistry*,
     dctx: DiagContext*,
@@ -4471,6 +4553,10 @@ fn resolve_builtin_decl_names(
 ) {
     switch (*builtin) {
         case .BuiltinBlock(builtin_block) => {
+            if (builtin_block.args.len() > 0) {
+                return;
+            }
+
             var inner_profiles = active_profiles;
 
             switch (builtin_profile_set(builtin_block.name.str.as_str_const())) {
@@ -4524,6 +4610,7 @@ fn builtin_profile_set(name: const uint8*) Option<ProfileSet> {
                 switch (builtin_spec.kind) {
                     case .Release => return .Some(ProfileSet.only_release());
                     case .Debug => return .Some(ProfileSet.only_debug());
+                    case .Test => return .Some(ProfileSet.only_test());
                     else => {}
                 }
             }

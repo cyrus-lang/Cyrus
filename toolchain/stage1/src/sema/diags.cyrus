@@ -2733,6 +2733,68 @@ pub fn report_incompatible_profile_definitions(
     mesg.free();
 }
 
+pub fn report_test_case_name_must_be_const_string_literal(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    const diag = Diag.new(
+        allocator,
+        .Error,
+        "test case name must be a constant string literal",
+        span
+    );
+    dctx->report(diag);
+}
+
+pub fn report_duplicate_test_case_name(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("duplicate test case `");
+    mesg.push_str(name);
+    mesg.push_str("` in this module");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_test_block_requires_name_at_toplevel(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    const diag = Diag.new(
+        allocator,
+        .Error,
+        "top-level `@test` block requires a test case name",
+        span
+    );
+    dctx->report(diag);
+}
+
+pub fn report_nested_profile_block_cannot_have_test_name(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    builtin_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("nested `@");
+    mesg.push_str(builtin_name);
+    mesg.push_str("` block inside a function cannot take a test name argument");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
 pub fn append_usize(out: String*, value: usize) {
     var writer: Writer = dynamic StringWriter.new(out);
     format_usize(writer, value);

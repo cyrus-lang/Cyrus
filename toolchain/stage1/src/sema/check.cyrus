@@ -2456,14 +2456,123 @@ fn analyze_builtin_block(
         return .Reachable;
     }
 
+    if (!check_builtin_arg_count(
+        context,
+        builtin_spec,
+        builtin_block->args.len(),
+        builtin_block->span
+    )) {
+        return .Reachable;
+    }
+
     builtin_block->is_toplevel = .Some(is_toplevel);
 
     if (is_toplevel) {
+        if (builtin_block->args.len() > 0) {
+            analyze_test_case_header(context, builtin_block, null);
+            analyze_test_case_body(context, builtin_block);
+            return .Reachable;
+        }
+
+        if (builtin_kind == .Test && builtin_block->block->stmts.len() == 0) {
+            diags::report_test_block_requires_name_at_toplevel(
+                context->dctx,
+                context->allocator,
+                builtin_block->span
+            );
+            return .Reachable;
+        }
+
         analyze_toplevel_stmts(context, &builtin_block->block->stmts);
         return .Reachable;
     } else {
+        if (builtin_block->args.len() > 0) {
+            diags::report_nested_profile_block_cannot_have_test_name(
+                context->dctx,
+                context->allocator,
+                builtin_block->span,
+                builtin_block->name.str.as_str_const()
+            );
+        }
         return analyze_block_stmt(context, builtin_block->block);
     }
+}
+
+fn analyze_test_case_header(
+    context: AnalyzerContext*,
+    builtin_block: cir::BuiltinBlock*,
+    seen_test_names: Vec<String>*
+) bool {
+    if (builtin_block->args.len() == 0) {
+        return false;
+    }
+
+    const name_arg = builtin_block->args.get(0).unwrap();
+    const expect = builtin_const_mesg_param_type(context);
+
+    analyze_expr_non_terminal(context, name_arg, .Some(expect));
+
+    switch (name_arg->literal_const_string_value()) {
+        case .Some(test_name) => {
+            if (seen_test_names != null) {
+                if (!str_set_insert(seen_test_names, String.from_str(context->allocator, test_name))) {
+                    diags::report_duplicate_test_case_name(
+                        context->dctx,
+                        context->allocator,
+                        name_arg->span,
+                        test_name
+                    );
+                }
+            }
+        }
+        case .None => {
+            diags::report_test_case_name_must_be_const_string_literal(
+                context->dctx,
+                context->allocator,
+                name_arg->span
+            );
+        }
+    }
+
+    return true;
+}
+
+fn analyze_test_case_body(
+    context: AnalyzerContext*,
+    builtin_block: cir::BuiltinBlock*
+) {
+    const void_ret: cir::SemaType = .Plain(.Void);
+    const func_type = cir::FuncType {
+        params: cir::FuncTypeParams {
+            list: Vec.new(context->allocator),
+            variadic: .None,
+        },
+        ret_type: alloc_init(context->allocator, void_ret),
+        vis: .Private,
+        callconv: .C,
+        span: builtin_block->span,
+    };
+
+    var test_name: const uint8* = "<test>";
+    if (builtin_block->args.len() > 0) {
+        const arg0 = builtin_block->args.get_const(0).unwrap();
+        switch (arg0->literal_const_string_value()) {
+            case .Some(s) => test_name = s;
+            case .None => {}
+        }
+    }
+
+    var func_env = create_func_def_env(
+        context,
+        test_name,
+        func_type,
+        .None
+    );
+    var saved_func_env = context->func_env;
+    context->func_env = func_env;
+    defer restore_func_env(context, &saved_func_env);
+
+    analyze_func_body(context, builtin_block->block, &void_ret);
 }
 
 fn analyze_builtin_func_semantics(
@@ -4623,6 +4732,9 @@ pub fn analyze_toplevel_headers(
     const staged = StagedBodies { work, tree: tree_index };
     const count = tree->body_len();
 
+    var seen_test_names: Vec<String> = Vec.new(context->allocator);
+    defer free_strings(&seen_test_names);
+
     for (var i: usize = 0; i < count; i += 1) {
         analyze_toplevel_typedefs_in_stmt(context, tree->body_get(i));
     }
@@ -4632,7 +4744,7 @@ pub fn analyze_toplevel_headers(
     }
 
     for (var i: usize = 0; i < count; i += 1) {
-        analyze_toplevel_stmt(context, tree->body_get(i), i, .Some(staged));
+        analyze_toplevel_stmt_with_tests(context, tree->body_get(i), i, .Some(staged), &seen_test_names);
     }
 }
 
@@ -4646,8 +4758,10 @@ fn analyze_toplevel_typedefs_in_stmt(
             stmt->kind = .Typedef(typedef);
         }
         case .Builtin(.BuiltinBlock(var block)) => {
-            for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
-                analyze_toplevel_typedefs_in_stmt(context, block.block->stmts.get(i).unwrap());
+            if (block.args.len() == 0) {
+                for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
+                    analyze_toplevel_typedefs_in_stmt(context, block.block->stmts.get(i).unwrap());
+                }
             }
 
             stmt->kind = .Builtin(.BuiltinBlock(block));
@@ -4666,8 +4780,10 @@ fn analyze_toplevel_global_vars_in_stmt(
             stmt->kind = .GlobalVar(global_var);
         }
         case .Builtin(.BuiltinBlock(var block)) => {
-            for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
-                analyze_toplevel_global_vars_in_stmt(context, block.block->stmts.get(i).unwrap());
+            if (block.args.len() == 0) {
+                for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
+                    analyze_toplevel_global_vars_in_stmt(context, block.block->stmts.get(i).unwrap());
+                }
             }
 
             stmt->kind = .Builtin(.BuiltinBlock(block));
@@ -4681,6 +4797,9 @@ fn analyze_toplevel_stmts_staged(
     typed_stmts: Vec<cir::Stmt>*,
     staged: Option<StagedBodies>
 ) {
+    var seen_test_names: Vec<String> = Vec.new(context->allocator);
+    defer free_strings(&seen_test_names);
+
     for (var i: usize = 0; i < typed_stmts->len(); i += 1) {
         analyze_toplevel_typedefs_in_stmt(context, typed_stmts->get(i).unwrap());
     }
@@ -4691,7 +4810,7 @@ fn analyze_toplevel_stmts_staged(
 
     for (var i: usize = 0; i < typed_stmts->len(); i += 1) {
         var stmt = typed_stmts->get(i).unwrap();
-        analyze_toplevel_stmt(context, stmt, i, staged);
+        analyze_toplevel_stmt_with_tests(context, stmt, i, staged, &seen_test_names);
     }
 }
 
@@ -4700,6 +4819,16 @@ fn analyze_toplevel_stmt(
     stmt: cir::Stmt*,
     index: usize,
     staged: Option<StagedBodies>
+) {
+    analyze_toplevel_stmt_with_tests(context, stmt, index, staged, null);
+}
+
+fn analyze_toplevel_stmt_with_tests(
+    context: AnalyzerContext*, 
+    stmt: cir::Stmt*,
+    index: usize,
+    staged: Option<StagedBodies>,
+    seen_test_names: Vec<String>*
 ) {
     switch (stmt->kind) {
         case .FuncDef(var func_def) => {
@@ -4751,29 +4880,56 @@ fn analyze_toplevel_stmt(
                 case .Some(builtin_kind) => {
                     const builtin_spec = cir::builtin_spec_of(builtin_kind);
                     
-                    if (check_builtin_form(context, builtin_spec, .Stmt, builtin_block.span)) {
+                    if (check_builtin_form(context, builtin_spec, .Stmt, builtin_block.span) &&
+                        check_builtin_arg_count(context, builtin_spec, builtin_block.args.len(), builtin_block.span))
+                    {
                         builtin_block.is_toplevel = .Some(true);
-                        
-                        var has_work = false;
-                        
-                        for (var k: usize = 0; k < builtin_block.block->stmts.len(); k += 1) {
-                            var sub = builtin_block.block->stmts.get(k).unwrap();
 
+                        if (builtin_block.args.len() > 0) {
+                            const needs_body = analyze_test_case_header(context, &builtin_block, seen_test_names);
                             switch (staged) {
                                 case .Some(staged_bodies) => {
-                                    const before = staged_bodies.work->len();
-                                    analyze_toplevel_stmt(context, sub, index, staged);
-                                    if (staged_bodies.work->len() > before) {
-                                        if (has_work) {
-                                            // Keep only one work item 
-                                            // per top-level index
-                                            staged_bodies.work->pop();
-                                        }
-                                        has_work = true;
+                                    if (needs_body) {
+                                        staged_bodies.work->push(BodyWorkItem {
+                                            tree: staged_bodies.tree,
+                                            stmt: index,
+                                        });
                                     }
                                 }
                                 case .None => {
-                                    analyze_toplevel_stmt(context, sub, index, .None);
+                                    if (needs_body) {
+                                        analyze_test_case_body(context, &builtin_block);
+                                    }
+                                }
+                            }
+                        } else if (builtin_kind == .Test && builtin_block.block->stmts.len() == 0) {
+                            diags::report_test_block_requires_name_at_toplevel(
+                                context->dctx,
+                                context->allocator,
+                                builtin_block.span
+                            );
+                        } else {
+                            var has_work = false;
+                            
+                            for (var k: usize = 0; k < builtin_block.block->stmts.len(); k += 1) {
+                                var sub = builtin_block.block->stmts.get(k).unwrap();
+
+                                switch (staged) {
+                                    case .Some(staged_bodies) => {
+                                        const before = staged_bodies.work->len();
+                                        analyze_toplevel_stmt_with_tests(context, sub, index, staged, seen_test_names);
+                                        if (staged_bodies.work->len() > before) {
+                                            if (has_work) {
+                                                // Keep only one work item 
+                                                // per top-level index
+                                                staged_bodies.work->pop();
+                                            }
+                                            has_work = true;
+                                        }
+                                    }
+                                    case .None => {
+                                        analyze_toplevel_stmt_with_tests(context, sub, index, .None, seen_test_names);
+                                    }
                                 }
                             }
                         }
@@ -4830,11 +4986,15 @@ fn analyze_toplevel_body_in_stmt(
             }
         }
         case .Builtin(.BuiltinBlock(var block)) => {
-            for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
-                analyze_toplevel_body_in_stmt(
-                    context, 
-                    block.block->stmts.get(i).unwrap()
-                );
+            if (block.args.len() > 0) {
+                analyze_test_case_body(context, &block);
+            } else {
+                for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
+                    analyze_toplevel_body_in_stmt(
+                        context, 
+                        block.block->stmts.get(i).unwrap()
+                    );
+                }
             }
 
             stmt->kind = .Builtin(.BuiltinBlock(block));
