@@ -612,6 +612,16 @@ pub struct Resolver {
                                         case .None => {}
                                     }
 
+                                    switch (source_binding->test_symbol_id) {
+                                        case .Some(tst_id) => {
+                                            switch (self->global_symbols.entries.get_const(tst_id).unwrap()->vis_opt) {
+                                                case .Some(.Private) => is_private = true;
+                                                else => {}
+                                            }
+                                        }
+                                        case .None => {}
+                                    }
+
                                     if (is_private) {
                                         diags::report_private_symbol(
                                             dctx, 

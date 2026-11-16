@@ -246,56 +246,56 @@ pub enum TokenKind : Format {
 
     pub fn lookup_keyword_hashed(ptr: const uint8*, len: usize, hash: uint64) Option<Self> {
         switch (hash) {
-            case 0x0000ad5be5850ff0 => if (len == 7 && memcmp(ptr, "dynamic",   7) == 0) { return .Some(.Dynamic); },
-            case 0x00000540f644da7d => if (len == 6 && memcmp(ptr, "static",    6) == 0) { return .Some(.Static); },
-            case 0x000000000ad5f5e0 => if (len == 3 && memcmp(ptr, "var",       3) == 0) { return .Some(.Var); },
-            case 0x000000000ad59823 => if (len == 3 && memcmp(ptr, "mod",       3) == 0) { return .Some(.Module); },
-            case 0x02b5cf7696d6c000 => if (len == 9 && memcmp(ptr, "interface", 9) == 0) { return .Some(.Interface); },
-            case 0x00000001506a219d => if (len == 4 && memcmp(ptr, "type",      4) == 0) { return .Some(.Type); },
-            case 0x0000000000540dcd => if (len == 2 && memcmp(ptr, "fn",        2) == 0) { return .Some(.Function); },
-            case 0x000000000ad5ef62 => if (len == 3 && memcmp(ptr, "pub",       3) == 0) { return .Some(.Public); },
-            case 0x0000002b5c553240 => if (len == 5 && memcmp(ptr, "const",     5) == 0) { return .Some(.Const); },
-            case 0x00000540dbee4975 => if (len == 6 && memcmp(ptr, "extern",    6) == 0) { return .Some(.Extern); },
-            case 0x00000540f670fa37 => if (len == 6 && memcmp(ptr, "switch",    6) == 0) { return .Some(.Switch); },
-            case 0x0000000150619f11 => if (len == 4 && memcmp(ptr, "case",      4) == 0) { return .Some(.Case); },
-            case 0x00000540f54e0b8f => if (len == 6 && memcmp(ptr, "return",    6) == 0) { return .Some(.Return); },
-            case 0x0000000000540c2a => if (len == 2 && memcmp(ptr, "if",        2) == 0) { return .Some(.If); },
-            case 0x000000015062b3da => if (len == 4 && memcmp(ptr, "else",      4) == 0) { return .Some(.Else); },
-            case 0x000000000ad5b43e => if (len == 3 && memcmp(ptr, "for",       3) == 0) { return .Some(.For); },
-            case 0x0000002b5d16b15a => if (len == 5 && memcmp(ptr, "while",     5) == 0) { return .Some(.While); },
-            case 0x0000002b5c4bebba => if (len == 5 && memcmp(ptr, "break",     5) == 0) { return .Some(.Break); },
-            case 0x0015061b1b653b24 => if (len == 8 && memcmp(ptr, "continue",  8) == 0) { return .Some(.Continue); },
-            case 0x000000015063b776 => if (len == 4 && memcmp(ptr, "goto",      4) == 0) { return .Some(.Goto); },
-            case 0x0000002b5c2039d5 => if (len == 5 && memcmp(ptr, "defer",     5) == 0) { return .Some(.Defer); },
-            case 0x00000001506a0d33 => if (len == 4 && memcmp(ptr, "true",      4) == 0) { return .Some(.True); },
-            case 0x0000002b5c020398 => if (len == 5 && memcmp(ptr, "false",     5) == 0) { return .Some(.False); },
-            case 0x000000015067795e => if (len == 4 && memcmp(ptr, "null",      4) == 0) { return .Some(.Null); },
-            case 0x0000ad5f859fe8f5 => if (len == 7 && memcmp(ptr, "uintptr",   7) == 0) { return .Some(.UIntPtr); },
-            case 0x00000540c24e1c20 => if (len == 6 && memcmp(ptr, "intptr",    6) == 0) { return .Some(.IntPtr); },
-            case 0x0000002b5d3b5cf5 => if (len == 5 && memcmp(ptr, "usize",     5) == 0) { return .Some(.USize); },
-            case 0x0000002b5cfb5ce9 => if (len == 5 && memcmp(ptr, "isize",     5) == 0) { return .Some(.ISize); },
-            case 0x0000000150648aee => if (len == 4 && memcmp(ptr, "int8",      4) == 0) { return .Some(.Int8); },
-            case 0x0000002b5cf5d631 => if (len == 5 && memcmp(ptr, "int16",     5) == 0) { return .Some(.Int16); },
-            case 0x0000002b5cf5d677 => if (len == 5 && memcmp(ptr, "int32",     5) == 0) { return .Some(.Int32); },
-            case 0x0000002b5cf5d6d4 => if (len == 5 && memcmp(ptr, "int64",     5) == 0) { return .Some(.Int64); },
-            case 0x00000540c24f10ad => if (len == 6 && memcmp(ptr, "int128",    6) == 0) { return .Some(.Int128); },
-            case 0x0000002b5d362a3b => if (len == 5 && memcmp(ptr, "uint8",     5) == 0) { return .Some(.UInt8); },
-            case 0x00000540fbf36c44 => if (len == 6 && memcmp(ptr, "uint16",    6) == 0) { return .Some(.UInt16); },
-            case 0x00000540fbf36c02 => if (len == 6 && memcmp(ptr, "uint32",    6) == 0) { return .Some(.UInt32); },
-            case 0x00000540fbf36ca1 => if (len == 6 && memcmp(ptr, "uint64",    6) == 0) { return .Some(.UInt64); },
-            case 0x0000ad5f859ee478 => if (len == 7 && memcmp(ptr, "uint128",   7) == 0) { return .Some(.UInt128); },
-            case 0x0000ad5b4ee56a52 => if (len == 7 && memcmp(ptr, "float16",   7) == 0) { return .Some(.Float16); },
-            case 0x0000ad5b4ee56a14 => if (len == 7 && memcmp(ptr, "float32",   7) == 0) { return .Some(.Float32); },
-            case 0x0000ad5b4ee56ab7 => if (len == 7 && memcmp(ptr, "float64",   7) == 0) { return .Some(.Float64); },
-            case 0x00150632924820ae => if (len == 8 && memcmp(ptr, "float128",  8) == 0) { return .Some(.Float128); },
-            case 0x00000001506120ab => if (len == 4 && memcmp(ptr, "bool",      4) == 0) { return .Some(.Bool); },
-            case 0x00000001506b72f1 => if (len == 4 && memcmp(ptr, "void",      4) == 0) { return .Some(.Void); },
-            case 0x000000015062bb16 => if (len == 4 && memcmp(ptr, "enum",      4) == 0) { return .Some(.Enum); },
-            case 0x0000002b5d35a9f6 => if (len == 5 && memcmp(ptr, "union",     5) == 0) { return .Some(.Union); },
-            case 0x00000540f64d1152 => if (len == 6 && memcmp(ptr, "struct",    6) == 0) { return .Some(.Struct); },
-            case 0x00000540c27c7078 => if (len == 6 && memcmp(ptr, "import",    6) == 0) { return .Some(.Import); },
+            case 0x0000ad5be5850ff0 => if (len == 7 && memcmp(ptr, "dynamic",   7) == 0) { return .Some(.Dynamic); }
+            case 0x00000540f644da7d => if (len == 6 && memcmp(ptr, "static",    6) == 0) { return .Some(.Static); }
+            case 0x000000000ad5f5e0 => if (len == 3 && memcmp(ptr, "var",       3) == 0) { return .Some(.Var); }
+            case 0x000000000ad59823 => if (len == 3 && memcmp(ptr, "mod",       3) == 0) { return .Some(.Module); }
+            case 0x02b5cf7696d6c000 => if (len == 9 && memcmp(ptr, "interface", 9) == 0) { return .Some(.Interface); }
+            case 0x00000001506a219d => if (len == 4 && memcmp(ptr, "type",      4) == 0) { return .Some(.Type); }
+            case 0x0000000000540dcd => if (len == 2 && memcmp(ptr, "fn",        2) == 0) { return .Some(.Function); }
+            case 0x000000000ad5ef62 => if (len == 3 && memcmp(ptr, "pub",       3) == 0) { return .Some(.Public); }
+            case 0x0000002b5c553240 => if (len == 5 && memcmp(ptr, "const",     5) == 0) { return .Some(.Const); }
+            case 0x00000540dbee4975 => if (len == 6 && memcmp(ptr, "extern",    6) == 0) { return .Some(.Extern); }
+            case 0x00000540f670fa37 => if (len == 6 && memcmp(ptr, "switch",    6) == 0) { return .Some(.Switch); }
+            case 0x0000000150619f11 => if (len == 4 && memcmp(ptr, "case",      4) == 0) { return .Some(.Case); }
+            case 0x00000540f54e0b8f => if (len == 6 && memcmp(ptr, "return",    6) == 0) { return .Some(.Return); }
+            case 0x0000000000540c2a => if (len == 2 && memcmp(ptr, "if",        2) == 0) { return .Some(.If); }
+            case 0x000000015062b3da => if (len == 4 && memcmp(ptr, "else",      4) == 0) { return .Some(.Else); }
+            case 0x000000000ad5b43e => if (len == 3 && memcmp(ptr, "for",       3) == 0) { return .Some(.For); }
+            case 0x0000002b5d16b15a => if (len == 5 && memcmp(ptr, "while",     5) == 0) { return .Some(.While); }
+            case 0x0000002b5c4bebba => if (len == 5 && memcmp(ptr, "break",     5) == 0) { return .Some(.Break); }
+            case 0x0015061b1b653b24 => if (len == 8 && memcmp(ptr, "continue",  8) == 0) { return .Some(.Continue); }
+            case 0x000000015063b776 => if (len == 4 && memcmp(ptr, "goto",      4) == 0) { return .Some(.Goto); }
+            case 0x0000002b5c2039d5 => if (len == 5 && memcmp(ptr, "defer",     5) == 0) { return .Some(.Defer); }
+            case 0x00000001506a0d33 => if (len == 4 && memcmp(ptr, "true",      4) == 0) { return .Some(.True); }
+            case 0x0000002b5c020398 => if (len == 5 && memcmp(ptr, "false",     5) == 0) { return .Some(.False); }
+            case 0x000000015067795e => if (len == 4 && memcmp(ptr, "null",      4) == 0) { return .Some(.Null); }
+            case 0x0000ad5f859fe8f5 => if (len == 7 && memcmp(ptr, "uintptr",   7) == 0) { return .Some(.UIntPtr); }
+            case 0x00000540c24e1c20 => if (len == 6 && memcmp(ptr, "intptr",    6) == 0) { return .Some(.IntPtr); }
+            case 0x0000002b5d3b5cf5 => if (len == 5 && memcmp(ptr, "usize",     5) == 0) { return .Some(.USize); }
+            case 0x0000002b5cfb5ce9 => if (len == 5 && memcmp(ptr, "isize",     5) == 0) { return .Some(.ISize); }
+            case 0x0000000150648aee => if (len == 4 && memcmp(ptr, "int8",      4) == 0) { return .Some(.Int8); }
+            case 0x0000002b5cf5d631 => if (len == 5 && memcmp(ptr, "int16",     5) == 0) { return .Some(.Int16); }
+            case 0x0000002b5cf5d677 => if (len == 5 && memcmp(ptr, "int32",     5) == 0) { return .Some(.Int32); }
+            case 0x0000002b5cf5d6d4 => if (len == 5 && memcmp(ptr, "int64",     5) == 0) { return .Some(.Int64); }
+            case 0x00000540c24f10ad => if (len == 6 && memcmp(ptr, "int128",    6) == 0) { return .Some(.Int128); }
+            case 0x0000002b5d362a3b => if (len == 5 && memcmp(ptr, "uint8",     5) == 0) { return .Some(.UInt8); }
+            case 0x00000540fbf36c44 => if (len == 6 && memcmp(ptr, "uint16",    6) == 0) { return .Some(.UInt16); }
+            case 0x00000540fbf36c02 => if (len == 6 && memcmp(ptr, "uint32",    6) == 0) { return .Some(.UInt32); }
+            case 0x00000540fbf36ca1 => if (len == 6 && memcmp(ptr, "uint64",    6) == 0) { return .Some(.UInt64); }
+            case 0x0000ad5f859ee478 => if (len == 7 && memcmp(ptr, "uint128",   7) == 0) { return .Some(.UInt128); }
+            case 0x0000ad5b4ee56a52 => if (len == 7 && memcmp(ptr, "float16",   7) == 0) { return .Some(.Float16); }
+            case 0x0000ad5b4ee56a14 => if (len == 7 && memcmp(ptr, "float32",   7) == 0) { return .Some(.Float32); }
+            case 0x0000ad5b4ee56ab7 => if (len == 7 && memcmp(ptr, "float64",   7) == 0) { return .Some(.Float64); }
+            case 0x00150632924820ae => if (len == 8 && memcmp(ptr, "float128",  8) == 0) { return .Some(.Float128); }
+            case 0x00000001506120ab => if (len == 4 && memcmp(ptr, "bool",      4) == 0) { return .Some(.Bool); }
+            case 0x00000001506b72f1 => if (len == 4 && memcmp(ptr, "void",      4) == 0) { return .Some(.Void); }
+            case 0x000000015062bb16 => if (len == 4 && memcmp(ptr, "enum",      4) == 0) { return .Some(.Enum); }
+            case 0x0000002b5d35a9f6 => if (len == 5 && memcmp(ptr, "union",     5) == 0) { return .Some(.Union); }
+            case 0x00000540f64d1152 => if (len == 6 && memcmp(ptr, "struct",    6) == 0) { return .Some(.Struct); }
+            case 0x00000540c27c7078 => if (len == 6 && memcmp(ptr, "import",    6) == 0) { return .Some(.Import); }
 
-            else => {},
+            else {}
         }
 
         return .None;

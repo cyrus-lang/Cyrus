@@ -335,6 +335,7 @@ pub enum BuiltinKind {
 
     Debug,
     Release,
+    Test,
     Unroll,
 }
 
@@ -370,6 +371,7 @@ pub fn lookup_builtin(name: const uint8*) Option<BuiltinKind> {
         case "assert" => return .Some(.Assert);
         case "panic" => return .Some(.Panic);
         case "debug" => return .Some(.Debug);
+        case "test" => return .Some(.Test);
         case "line" => return .Some(.Line);
         case "cast" => return .Some(.Cast);
         case "todo" => return .Some(.Todo);
@@ -585,7 +587,7 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
             form: .Stmt,
             unreachable: false,
             min_args: 0,
-            max_args: .Some(0),
+            max_args: .Some(1),
         };
         
         case .Release => return BuiltinSpec {
@@ -596,7 +598,18 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
             form: .Stmt,
             unreachable: false,
             min_args: 0,
-            max_args: .Some(0),
+            max_args: .Some(1),
+        };
+
+        case .Test => return BuiltinSpec {
+            kind,
+            name: "test",
+            family: .ConstEval,
+            phase: .Resolver,
+            form: .Stmt,
+            unreachable: false,
+            min_args: 0,
+            max_args: .Some(1),
         };
         
         case .Unroll => @panic("builtin spec missing");

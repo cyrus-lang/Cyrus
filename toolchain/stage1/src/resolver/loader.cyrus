@@ -35,30 +35,37 @@ const CYRUS_EXTENSION = ".cyrus";
 pub enum Profile {
     Debug,
     Release,
+    Test,
 }
 
 pub struct ProfileSet {
     pub debug: bool,
     pub release: bool,
+    pub test: bool,
 
     [[inline]]
     pub fn all() Self {
-        return Self { debug: true, release: true };
+        return Self { debug: true, release: true, test: true };
     }
 
     [[inline]]
     pub fn none() Self {
-        return Self { debug: false, release: false };
+        return Self { debug: false, release: false, test: false };
     }
 
     [[inline]]
     pub fn only_debug() Self {
-        return Self { debug: true, release: false };
+        return Self { debug: true, release: false, test: false };
     }
 
     [[inline]]
     pub fn only_release() Self {
-        return Self { debug: false, release: true };
+        return Self { debug: false, release: true, test: false };
+    }
+
+    [[inline]]
+    pub fn only_test() Self {
+        return Self { debug: false, release: false, test: true };
     }
 
     [[inline]]
@@ -66,6 +73,7 @@ pub struct ProfileSet {
         switch (profile) {
             case .Debug => return Self.only_debug();
             case .Release => return Self.only_release();
+            case .Test => return Self.only_test();
         }
     }
 
@@ -74,17 +82,18 @@ pub struct ProfileSet {
         switch (profile) {
             case .Debug => return self.debug;
             case .Release => return self.release;
+            case .Test => return self.test;
         }
     }
 
     [[inline]]
     pub fn is_empty(self: Self) bool {
-        return !self.debug && !self.release;
+        return !self.debug && !self.release && !self.test;
     }
 
     [[inline]]
     pub fn is_all(self: Self) bool {
-        return self.debug && self.release;
+        return self.debug && self.release && self.test;
     }
 
     [[inline]]
@@ -92,6 +101,7 @@ pub struct ProfileSet {
         return Self {
             debug: self.debug && other.debug,
             release: self.release && other.release,
+            test: self.test && other.test,
         };
     }
 
@@ -100,6 +110,7 @@ pub struct ProfileSet {
         return Self {
             debug: self.debug || other.debug,
             release: self.release || other.release,
+            test: self.test || other.test,
         };
     }
 
@@ -108,29 +119,45 @@ pub struct ProfileSet {
         return Self {
             debug: self.debug && !other.debug,
             release: self.release && !other.release,
+            test: self.test && !other.test,
         };
     }
 
     [[inline]]
     pub fn is_subset_of(self: Self, other: Self) bool {
         return (!self.debug || other.debug) &&
-            (!self.release || other.release);
+            (!self.release || other.release) &&
+            (!self.test || other.test);
     }
 
     [[inline]]
     pub fn overlaps(self: Self, other: Self) bool {
         return (self.debug && other.debug) ||
-            (self.release && other.release);
+            (self.release && other.release) ||
+            (self.test && other.test);
     }
 
     pub fn append_to(self: Self, out: String*) {
-        if (self.debug && self.release) {
-            out->push_str("debug, release");
-        } else if (self.debug) {
+        var added = false;
+        if (self.debug) {
             out->push_str("debug");
-        } else if (self.release) {
+            added = true;
+        }
+        if (self.release) {
+            if (added) {
+                out->push_str(", ");
+            }
             out->push_str("release");
-        } else {
+            added = true;
+        }
+        if (self.test) {
+            if (added) {
+                out->push_str(", ");
+            }
+            out->push_str("test");
+            added = true;
+        }
+        if (!added) {
             out->push_str("none");
         }
     }

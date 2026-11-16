@@ -26,6 +26,7 @@ pub struct ScopeBinding {
     pub symbol_id: cir::SymbolId,
     pub debug_symbol_id: Option<cir::SymbolId>,
     pub release_symbol_id: Option<cir::SymbolId>,
+    pub test_symbol_id: Option<cir::SymbolId>,
     pub availability: ProfileSet,
 
     pub fn symbol_for_profiles(
@@ -33,15 +34,22 @@ pub struct ScopeBinding {
         active: ProfileSet, 
         target_profile: Profile
     ) cir::SymbolId {
-        if (active.debug && !active.release) {
+        if (active.debug && !active.release && !active.test) {
             switch (self->debug_symbol_id) {
                 case .Some(id) => return id;
                 case .None => {}
             }
         }
 
-        if (active.release && !active.debug) {
+        if (active.release && !active.debug && !active.test) {
             switch (self->release_symbol_id) {
+                case .Some(id) => return id;
+                case .None => {}
+            }
+        }
+
+        if (active.test && !active.debug && !active.release) {
+            switch (self->test_symbol_id) {
                 case .Some(id) => return id;
                 case .None => {}
             }
@@ -56,6 +64,12 @@ pub struct ScopeBinding {
             }
             case .Release => {
                 switch (self->release_symbol_id) {
+                    case .Some(id) => return id;
+                    case .None => {}
+                }
+            }
+            case .Test => {
+                switch (self->test_symbol_id) {
                     case .Some(id) => return id;
                     case .None => {}
                 }
@@ -107,6 +121,7 @@ pub struct ScopeTable {
                 binding->symbol_id = symbol_id;
                 binding->debug_symbol_id = .Some(symbol_id);
                 binding->release_symbol_id = .Some(symbol_id);
+                binding->test_symbol_id = .Some(symbol_id);
                 binding->availability = ProfileSet.all();
                 return .Some(previous);
             }
@@ -117,6 +132,7 @@ pub struct ScopeTable {
             symbol_id,
             debug_symbol_id: .Some(symbol_id),
             release_symbol_id: .Some(symbol_id),
+            test_symbol_id: .Some(symbol_id),
             availability: ProfileSet.all(),
         });
 
@@ -132,6 +148,7 @@ pub struct ScopeTable {
     ) Option<cir::SymbolId> {
         var debug_symbol_id: Option<cir::SymbolId> = .None;
         var release_symbol_id: Option<cir::SymbolId> = .None;
+        var test_symbol_id: Option<cir::SymbolId> = .None;
 
         if (profiles.debug) {
             debug_symbol_id = .Some(symbol_id);
@@ -139,6 +156,10 @@ pub struct ScopeTable {
 
         if (profiles.release) {
             release_symbol_id = .Some(symbol_id);
+        }
+
+        if (profiles.test) {
+            test_symbol_id = .Some(symbol_id);
         }
 
         for (var i: usize = 0; i < self->bindings.len(); i += 1) {
@@ -153,6 +174,10 @@ pub struct ScopeTable {
 
                 if (profiles.release) {
                     binding->release_symbol_id = .Some(symbol_id);
+                }
+
+                if (profiles.test) {
+                    binding->test_symbol_id = .Some(symbol_id);
                 }
 
                 binding->availability = binding->availability.union_with(profiles);
@@ -170,6 +195,7 @@ pub struct ScopeTable {
             symbol_id,
             debug_symbol_id,
             release_symbol_id,
+            test_symbol_id,
             availability: profiles,
         });
 
@@ -297,6 +323,14 @@ pub struct GlobalSymbolRegistry {
     ) {
         if (debug_symbol_id == release_symbol_id) {
             return;
+        }
+
+        for (var i: usize = 0; i < self->profile_pairs.len(); i += 1) {
+            const existing = self->profile_pairs.get_const(i).unwrap();
+            if ((existing->debug_symbol_id == debug_symbol_id && existing->release_symbol_id == release_symbol_id) ||
+                (existing->debug_symbol_id == release_symbol_id && existing->release_symbol_id == debug_symbol_id)) {
+                return;
+            }
         }
 
         self->profile_pairs.push(ProfileSymbolPair {
@@ -526,7 +560,16 @@ pub struct GlobalSymbolRegistry {
                 switch (source_binding->release_symbol_id) {
                     case .Some(rel_target) => {
                         if (rel_target == dbg_target) {
-                            profiles = ProfileSet.all();
+                            profiles = profiles.union_with(ProfileSet.only_release());
+                        }
+                    }
+                    case .None => {}
+                }
+
+                switch (source_binding->test_symbol_id) {
+                    case .Some(tst_target) => {
+                        if (tst_target == dbg_target) {
+                            profiles = profiles.union_with(ProfileSet.only_test());
                         }
                     }
                     case .None => {}
@@ -569,9 +612,19 @@ pub struct GlobalSymbolRegistry {
 
                 if (!same_as_debug) {
                     var vis_opt: Option<ASTVisibility> = .None;
+                    var profiles = ProfileSet.only_release();
 
                     if (rel_target < self->entries.len()) {
                         vis_opt = self->entries.get_const(rel_target).unwrap()->vis_opt;
+                    }
+
+                    switch (source_binding->test_symbol_id) {
+                        case .Some(tst_target) => {
+                            if (tst_target == rel_target) {
+                                profiles = profiles.union_with(ProfileSet.only_test());
+                            }
+                        }
+                        case .None => {}
                     }
 
                     const rel_proxy = self->insert_symbol_entry(SymbolEntry {
@@ -581,7 +634,7 @@ pub struct GlobalSymbolRegistry {
                             scope_id: imported_scope_id,
                             symbol_id: rel_target,
                         },
-                        availability: ProfileSet.only_release(),
+                        availability: profiles,
                         used: false,
                         vis_opt,
                     });
@@ -590,7 +643,58 @@ pub struct GlobalSymbolRegistry {
                         current_scope_id,
                         rel_proxy,
                         name,
-                        ProfileSet.only_release(),
+                        profiles,
+                        target_profile
+                    );
+                }
+            }
+            case .None => {}
+        }
+
+        switch (source_binding->test_symbol_id) {
+            case .Some(tst_target) => {
+                var already_inserted = false;
+                switch (source_binding->debug_symbol_id) {
+                    case .Some(dbg_target) => {
+                        if (dbg_target == tst_target) {
+                            already_inserted = true;
+                        }
+                    }
+                    case .None => {}
+                }
+                switch (source_binding->release_symbol_id) {
+                    case .Some(rel_target) => {
+                        if (rel_target == tst_target) {
+                            already_inserted = true;
+                        }
+                    }
+                    case .None => {}
+                }
+
+                if (!already_inserted) {
+                    var vis_opt: Option<ASTVisibility> = .None;
+
+                    if (tst_target < self->entries.len()) {
+                        vis_opt = self->entries.get_const(tst_target).unwrap()->vis_opt;
+                    }
+
+                    const tst_proxy = self->insert_symbol_entry(SymbolEntry {
+                        name: String.from_str(self->allocator, name),
+                        parent_scope_id: .Some(current_scope_id),
+                        kind: .ProxiedSymbol {
+                            scope_id: imported_scope_id,
+                            symbol_id: tst_target,
+                        },
+                        availability: ProfileSet.only_test(),
+                        used: false,
+                        vis_opt,
+                    });
+
+                    self->insert_symbol_name_with_profiles(
+                        current_scope_id,
+                        tst_proxy,
+                        name,
+                        ProfileSet.only_test(),
                         target_profile
                     );
                 }
