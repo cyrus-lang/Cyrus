@@ -941,10 +941,16 @@ def ensure_tcc(cfg: Config) -> Path:
     env = os.environ.copy()
     machine = os.uname().machine
     multiarch_include = Path(f"/usr/include/{machine}-linux-gnu")
+    sysincludes = [
+        str(tcc_dir / "include"),
+        "{B}/include",
+        "/usr/include",
+    ]
     if multiarch_include.is_dir():
-        env["CONFIGURE_FLAGS"] = (
-            f"--sysincludepaths={{B}}/include:/usr/include:{multiarch_include}"
-        )
+        sysincludes.append(str(multiarch_include))
+    env["CONFIGURE_FLAGS"] = (
+        f"--tccdir={tcc_build_dir} --sysincludepaths={':'.join(sysincludes)}"
+    )
 
     run_cmd(["make"], cwd=tcc_dir, env=env, capture=False)
     
