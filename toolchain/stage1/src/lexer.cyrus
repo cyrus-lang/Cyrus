@@ -197,9 +197,11 @@ pub struct Lexer {
         }
 
         var str = String.with_capacity(self->allocator, len + 1);
+
         for (var i: usize = 0; i < len; i += 1) {
             str.push(ptr[i]);
         }
+        
         return self->init_ident(str);
     }
 
