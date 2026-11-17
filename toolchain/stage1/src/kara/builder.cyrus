@@ -1,0 +1,1095 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types{c_char, c_uint};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::option{Option};
+import std::slices{Slice};
+
+import .::basic_block{BasicBlock};
+import .::sys::core;
+import .::types{
+    assert_context,
+    FloatPredicate,
+    FunctionType,
+    IntPredicate,
+    bool_to_llvm,
+    PointerType,
+    StructType,
+    FloatType,
+    BasicType,
+    IntType,
+};
+import .::values{
+    InstructionValue,
+    PointerValue,
+    FloatValue,
+    BasicValue,
+    PhiValue,
+    IntValue,
+};
+
+pub struct Builder {
+    raw: core::LLVMBuilderRef,
+    is_disposed: bool,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMBuilderRef,
+        context_raw: core::LLVMContextRef,
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw,
+            is_disposed: false,
+            context_raw,
+            context_disposed,
+        };
+    }
+
+    pub fn dispose(
+        self: Self*
+    ) {
+        if (self->is_disposed || self->raw == null) {
+            return;
+        }
+
+        core::LLVMDisposeBuilder(
+            self->raw
+        );
+
+        self->raw = null;
+        self->is_disposed = true;
+    }
+
+    fn assert_alive(
+        self: const Self*
+    ) {
+        assert_context(
+            self->context_disposed
+        );
+
+        @assert(
+            !self->is_disposed && self->raw != null,
+            "kara: Builder used after dispose"
+        );
+    }
+
+    fn assert_ready_for_insert(
+        self: const Self*
+    ) {
+        self->assert_alive();
+
+        const basic_block = core::LLVMGetInsertBlock(
+            self->raw
+        );
+
+        @assert(
+            basic_block != null,
+            "kara: Builder has no insertion block set"
+        );
+
+        @assert(
+            core::LLVMGetBasicBlockTerminator(basic_block) == null,
+            "kara: cannot insert instruction after terminator"
+        );
+    }
+
+    pub fn position_at_end(
+        self: const Self*,
+        block: BasicBlock
+    ) {
+        self->assert_alive();
+
+        core::LLVMPositionBuilderAtEnd(
+            self->raw,
+            block.as_raw()
+        );
+    }
+
+    pub fn position_before(
+        self: const Self*,
+        inst: InstructionValue
+    ) {
+        self->assert_alive();
+
+        core::LLVMPositionBuilderBefore(
+            self->raw,
+            inst.as_raw()
+        );
+    }
+
+    pub fn get_insert_block(
+        self: const Self*
+    ) Option<BasicBlock> {
+        self->assert_alive();
+
+        const basic_block = core::LLVMGetInsertBlock(
+            self->raw
+        );
+
+        if (basic_block == null) {
+            return .None;
+        }
+
+        return .Some(
+            BasicBlock.new(
+                basic_block,
+                self->context_raw,
+                self->context_disposed
+            )
+        );
+    }
+
+    pub fn build_int_add(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildAdd(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_sub(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildSub(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_mul(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildMul(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_sdiv(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildSDiv(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_udiv(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildUDiv(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_srem(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildSRem(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_urem(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildURem(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_float_add(
+        self: const Self*,
+        lhs: FloatValue,
+        rhs: FloatValue,
+        name: const uint8*
+    ) FloatValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildFAdd(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return FloatValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_float_sub(
+        self: const Self*,
+        lhs: FloatValue,
+        rhs: FloatValue,
+        name: const uint8*
+    ) FloatValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildFSub(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return FloatValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_float_mul(
+        self: const Self*,
+        lhs: FloatValue,
+        rhs: FloatValue,
+        name: const uint8*
+    ) FloatValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildFMul(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return FloatValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_float_div(
+        self: const Self*,
+        lhs: FloatValue,
+        rhs: FloatValue,
+        name: const uint8*
+    ) FloatValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildFDiv(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return FloatValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_and(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildAnd(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_or(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildOr(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_xor(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildXor(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_shl(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildShl(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_lshr(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildLShr(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_ashr(
+        self: const Self*,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildAShr(
+            self->raw,
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_not(
+        self: const Self*,
+        val: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildNot(
+            self->raw,
+            val.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_neg(
+        self: const Self*,
+        val: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildNeg(
+            self->raw,
+            val.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_alloca(
+        self: const Self*,
+        ty: BasicType,
+        name: const uint8*
+    ) PointerValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildAlloca(
+            self->raw,
+            ty.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return PointerValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_load(
+        self: const Self*,
+        pointee_ty: BasicType,
+        ptr: PointerValue,
+        name: const uint8*
+    ) BasicValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildLoad2(
+            self->raw,
+            pointee_ty.as_raw(),
+            ptr.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return BasicValue.from_raw(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_store(
+        self: const Self*,
+        val: BasicValue,
+        ptr: PointerValue
+    ) InstructionValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildStore(
+            self->raw,
+            val.as_raw(),
+            ptr.as_raw()
+        );
+
+        return InstructionValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_gep(
+        self: const Self*,
+        pointee_ty: BasicType,
+        ptr: PointerValue,
+        indices: const Slice<IntValue>,
+        name: const uint8*
+    ) PointerValue {
+        self->assert_ready_for_insert();
+
+        const count = indices.len();
+
+        if (count == 0) {
+            var empty: core::LLVMValueRef = null;
+            const raw = core::LLVMBuildGEP2(
+                self->raw,
+                pointee_ty.as_raw(),
+                ptr.as_raw(),
+                &empty,
+                0,
+                @cast(const c_char*, name)
+            );
+
+            return PointerValue.new(
+                raw,
+                self->context_raw,
+                self->context_disposed
+            );
+        }
+
+        var allocator: Allocator = dynamic LibcAllocator.new();
+        var raw_indices: core::LLVMValueRef* = allocator.alloc(
+            count * @sizeof(core::LLVMValueRef)
+        );
+
+        defer allocator.free(
+            raw_indices
+        );
+
+        for (var i: usize = 0; i < count; i += 1) {
+            const idx = indices.get_const(i).unwrap();
+            raw_indices[i] = idx->as_raw();
+        }
+
+        const raw = core::LLVMBuildGEP2(
+            self->raw,
+            pointee_ty.as_raw(),
+            ptr.as_raw(),
+            raw_indices,
+            @cast(c_uint, count),
+            @cast(const c_char*, name)
+        );
+
+        return PointerValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_struct_gep(
+        self: const Self*,
+        struct_ty: StructType,
+        ptr: PointerValue,
+        field_index: uint32,
+        name: const uint8*
+    ) PointerValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildStructGEP2(
+            self->raw,
+            struct_ty.as_raw(),
+            ptr.as_raw(),
+            @cast(c_uint, field_index),
+            @cast(const c_char*, name)
+        );
+
+        return PointerValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_compare(
+        self: const Self*,
+        pred: IntPredicate,
+        lhs: IntValue,
+        rhs: IntValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildICmp(
+            self->raw,
+            pred.to_raw(),
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_float_compare(
+        self: const Self*,
+        pred: FloatPredicate,
+        lhs: FloatValue,
+        rhs: FloatValue,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildFCmp(
+            self->raw,
+            pred.to_raw(),
+            lhs.as_raw(),
+            rhs.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_cast(
+        self: const Self*,
+        val: IntValue,
+        dest_ty: IntType,
+        is_signed: bool,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildIntCast2(
+            self->raw,
+            val.as_raw(),
+            dest_ty.as_raw(),
+            bool_to_llvm(is_signed),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_bit_cast(
+        self: const Self*,
+        val: BasicValue,
+        dest_ty: BasicType,
+        name: const uint8*
+    ) BasicValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildBitCast(
+            self->raw,
+            val.as_raw(),
+            dest_ty.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return BasicValue.from_raw(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_ptr_to_int(
+        self: const Self*,
+        val: PointerValue,
+        dest_ty: IntType,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildPtrToInt(
+            self->raw,
+            val.as_raw(),
+            dest_ty.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_to_ptr(
+        self: const Self*,
+        val: IntValue,
+        dest_ty: PointerType,
+        name: const uint8*
+    ) PointerValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildIntToPtr(
+            self->raw,
+            val.as_raw(),
+            dest_ty.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return PointerValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_float_cast(
+        self: const Self*,
+        val: FloatValue,
+        dest_ty: FloatType,
+        name: const uint8*
+    ) FloatValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildFPCast(
+            self->raw,
+            val.as_raw(),
+            dest_ty.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return FloatValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_int_to_float(
+        self: const Self*,
+        val: IntValue,
+        dest_ty: FloatType,
+        is_signed: bool,
+        name: const uint8*
+    ) FloatValue {
+        self->assert_ready_for_insert();
+
+        var raw: core::LLVMValueRef = null;
+
+        if (is_signed) {
+            raw = core::LLVMBuildSIToFP(
+                self->raw,
+                val.as_raw(),
+                dest_ty.as_raw(),
+                @cast(const c_char*, name)
+            );
+        } else {
+            raw = core::LLVMBuildUIToFP(
+                self->raw,
+                val.as_raw(),
+                dest_ty.as_raw(),
+                @cast(const c_char*, name)
+            );
+        }
+
+        return FloatValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_float_to_int(
+        self: const Self*,
+        val: FloatValue,
+        dest_ty: IntType,
+        is_signed: bool,
+        name: const uint8*
+    ) IntValue {
+        self->assert_ready_for_insert();
+
+        var raw: core::LLVMValueRef = null;
+
+        if (is_signed) {
+            raw = core::LLVMBuildFPToSI(
+                self->raw,
+                val.as_raw(),
+                dest_ty.as_raw(),
+                @cast(const c_char*, name)
+            );
+        } else {
+            raw = core::LLVMBuildFPToUI(
+                self->raw,
+                val.as_raw(),
+                dest_ty.as_raw(),
+                @cast(const c_char*, name)
+            );
+        }
+
+        return IntValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_return(
+        self: const Self*,
+        val: Option<BasicValue>
+    ) InstructionValue {
+        self->assert_ready_for_insert();
+
+        switch (val) {
+            case .None => {
+                const raw = core::LLVMBuildRetVoid(
+                    self->raw
+                );
+
+                return InstructionValue.new(
+                    raw,
+                    self->context_raw,
+                    self->context_disposed
+                );
+            }
+            case .Some(v) => {
+                const raw = core::LLVMBuildRet(
+                    self->raw,
+                    v.as_raw()
+                );
+
+                return InstructionValue.new(
+                    raw,
+                    self->context_raw,
+                    self->context_disposed
+                );
+            }
+        }
+    }
+
+    pub fn build_br(
+        self: const Self*,
+        dest: BasicBlock
+    ) InstructionValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildBr(
+            self->raw,
+            dest.as_raw()
+        );
+
+        return InstructionValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_cond_br(
+        self: const Self*,
+        cond: IntValue,
+        then_bb: BasicBlock,
+        else_bb: BasicBlock
+    ) InstructionValue {
+        self->assert_ready_for_insert();
+
+        @assert(
+            cond.get_type().get_bit_width() == 1,
+            "kara: build_cond_br condition must be i1"
+        );
+
+        const raw = core::LLVMBuildCondBr(
+            self->raw,
+            cond.as_raw(),
+            then_bb.as_raw(),
+            else_bb.as_raw()
+        );
+
+        return InstructionValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn build_call(
+        self: const Self*,
+        fn_ty: FunctionType,
+        fn_ptr: PointerValue,
+        args: const Slice<BasicValue>,
+        name: const uint8*
+    ) Option<BasicValue> {
+        self->assert_ready_for_insert();
+
+        const count = args.len();
+        var raw_call: core::LLVMValueRef = null;
+
+        if (count == 0) {
+            var empty: core::LLVMValueRef = null;
+
+            raw_call = core::LLVMBuildCall2(
+                self->raw,
+                fn_ty.as_raw(),
+                fn_ptr.as_raw(),
+                &empty,
+                0,
+                @cast(const c_char*, name)
+            );
+        } else {
+            var allocator: Allocator = dynamic LibcAllocator.new();
+            var raw_args: core::LLVMValueRef* = allocator.alloc(
+                count * @sizeof(core::LLVMValueRef)
+            );
+
+            defer allocator.free(
+                raw_args
+            );
+
+            for (var i: usize = 0; i < count; i += 1) {
+                const arg = args.get_const(i).unwrap();
+                raw_args[i] = arg->as_raw();
+            }
+
+            raw_call = core::LLVMBuildCall2(
+                self->raw,
+                fn_ty.as_raw(),
+                fn_ptr.as_raw(),
+                raw_args,
+                @cast(c_uint, count),
+                @cast(const c_char*, name)
+            );
+        }
+
+        const ret_ty = core::LLVMTypeOf(
+            raw_call
+        );
+
+        if (core::LLVMGetTypeKind(ret_ty) == core::LLVM_VOID_TYPE_KIND) {
+            return .None;
+        }
+
+        return .Some(
+            BasicValue.from_raw(
+                raw_call,
+                self->context_raw,
+                self->context_disposed
+            )
+        );
+    }
+
+    pub fn build_phi(
+        self: const Self*,
+        ty: BasicType,
+        name: const uint8*
+    ) PhiValue {
+        self->assert_ready_for_insert();
+
+        const raw = core::LLVMBuildPhi(
+            self->raw,
+            ty.as_raw(),
+            @cast(const c_char*, name)
+        );
+
+        return PhiValue.new(
+            raw,
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+}

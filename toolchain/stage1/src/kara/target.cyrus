@@ -1,0 +1,245 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types{c_char, c_int};
+import std::errors{ErrorOr};
+import std::string{String};
+
+import .::module{Module};
+import .::sys::target;
+import .::sys::core;
+
+pub enum OptimizationLevel {
+    None,
+    Less,
+    Default,
+    Aggressive,
+
+    pub fn to_raw(self: const Self*) c_int {
+        switch (*self) {
+            case .Aggressive => return target::LLVM_CODE_GEN_LEVEL_AGGRESSIVE;
+            case .Default => return target::LLVM_CODE_GEN_LEVEL_DEFAULT;
+            case .None => return target::LLVM_CODE_GEN_LEVEL_NONE;
+            case .Less => return target::LLVM_CODE_GEN_LEVEL_LESS;
+        }
+    }
+}
+
+pub enum RelocMode {
+    Default,
+    Static,
+    PIC,
+    DynamicNoPic,
+
+    pub fn to_raw(self: const Self*) c_int {
+        switch (*self) {
+            case .DynamicNoPic => return target::LLVM_RELOC_DYNAMIC_NO_PIC;
+            case .Default => return target::LLVM_RELOC_DEFAULT;
+            case .Static => return target::LLVM_RELOC_STATIC;
+            case .PIC => return target::LLVM_RELOC_PIC;
+        }
+    }
+}
+
+pub enum CodeModel {
+    Default,
+    JITDefault,
+    Tiny,
+    Small,
+    Kernel,
+    Medium,
+    Large,
+
+    [[inline]]
+    pub fn to_raw(self: const Self*) c_int {
+        switch (*self) {
+            case .JITDefault => return target::LLVM_CODE_MODEL_JIT_DEFAULT;
+            case .Default => return target::LLVM_CODE_MODEL_DEFAULT;
+            case .Kernel => return target::LLVM_CODE_MODEL_KERNEL;
+            case .Medium => return target::LLVM_CODE_MODEL_MEDIUM;
+            case .Small => return target::LLVM_CODE_MODEL_SMALL;
+            case .Large => return target::LLVM_CODE_MODEL_LARGE;
+            case .Tiny => return target::LLVM_CODE_MODEL_TINY;
+        }
+    }
+}
+
+pub enum CodeGenFileType {
+    Assembly,
+    Object,
+
+    pub fn to_raw(self: const Self*) c_int {
+        switch (*self) {
+            case .Assembly => return target::LLVM_ASSEMBLY_FILE;
+            case .Object => return target::LLVM_OBJECT_FILE;
+        }
+    }
+}
+
+pub struct TargetData {
+    raw: target::LLVMTargetDataRef,
+    is_disposed: bool,
+
+    pub fn new(raw: target::LLVMTargetDataRef) Self {
+        return Self { raw, is_disposed: false };
+    }
+
+    pub fn to_string(self: const Self*) String {
+        @assert(
+            !self->is_disposed && self->raw != null, 
+            "kara: TargetData used after dispose"
+        );
+
+        const ptr = target::LLVMCopyStringRepOfTargetData(self->raw);
+        return core::llvm_mesg_to_string(ptr);
+    }
+
+    pub fn dispose(self: Self*) {
+        if (self->is_disposed || self->raw == null) {
+            return;
+        }
+
+        target::LLVMDisposeTargetData(self->raw);
+        self->raw = null;
+        self->is_disposed = true;
+    }
+}
+
+pub struct TargetMachine {
+    raw: target::LLVMTargetMachineRef,
+    is_disposed: bool,
+
+    pub fn new(raw: target::LLVMTargetMachineRef) Self {
+        return Self { raw, is_disposed: false };
+    }
+
+    pub fn dispose(self: Self*) {
+        if (self->is_disposed || self->raw == null) {
+            return;
+        }
+
+        target::LLVMDisposeTargetMachine(self->raw);
+        self->raw = null;
+        self->is_disposed = true;
+    }
+
+    pub fn as_raw(self: const Self*) target::LLVMTargetMachineRef {
+        @assert(
+            !self->is_disposed && self->raw != null, 
+            "kara: TargetMachine used after dispose"
+        );
+        return self->raw;
+    }
+
+    pub fn create_data_layout(self: const Self*) TargetData {
+        const raw_tm = self->as_raw();
+        return TargetData.new(target::LLVMCreateTargetDataLayout(raw_tm));
+    }
+
+    pub fn emit_to_file(
+        self: const Self*, 
+        module: const Module*, 
+        path: const uint8*, 
+        file_type: CodeGenFileType
+    ) ErrorOr<(), String> {
+        const raw_tm = self->as_raw();
+        const raw_mod = module->as_raw();
+        
+        var err: c_char*;
+        
+        const failed = target::LLVMTargetMachineEmitToFile(
+            raw_tm,
+            raw_mod,
+            @cast(const c_char*, path),
+            file_type.to_raw(),
+            &err
+        );
+        
+        if (failed != 0) {
+            return .Error(core::llvm_mesg_to_string(err));
+        }
+        
+        if (err != null) {
+            core::LLVMDisposeMessage(err);
+        }
+        
+        return .Value(());
+    }
+}
+
+pub struct Target {
+    raw: target::LLVMTargetRef,
+
+    pub fn initialize_native() {
+        target::LLVMInitializeX86TargetInfo();
+        target::LLVMInitializeX86Target();
+        target::LLVMInitializeX86TargetMC();
+    }
+
+    pub fn initialize_native_asm_printer() {
+        target::LLVMInitializeX86AsmPrinter();
+    }
+
+    pub fn default_triple() String {
+        const ptr = target::LLVMGetDefaultTargetTriple();
+        return core::llvm_mesg_to_string(ptr);
+    }
+
+    pub fn host_cpu_name() String {
+        const ptr = target::LLVMGetHostCPUName();
+        return core::llvm_mesg_to_string(ptr);
+    }
+
+    pub fn host_cpu_features() String {
+        const ptr = target::LLVMGetHostCPUFeatures();
+        return core::llvm_mesg_to_string(ptr);
+    }
+
+    pub fn from_triple(triple: const uint8*) ErrorOr<Target, String> {
+        var raw_target: target::LLVMTargetRef = null;
+        var err_ptr: c_char* = null;
+
+        const failed = target::LLVMGetTargetFromTriple(
+            @cast(const c_char*, triple), 
+            &raw_target, 
+            &err_ptr
+        );
+        
+        if (failed != 0) {
+            return .Error(core::llvm_mesg_to_string(err_ptr));
+        }
+        
+        if (err_ptr != null) {
+            core::LLVMDisposeMessage(err_ptr);
+        }
+        
+        return .Value(Target { raw: raw_target });
+    }
+
+    pub fn create_target_machine(
+        self: const Self*,
+        triple: const uint8*,
+        cpu: const uint8*,
+        features: const uint8*,
+        opt_level: OptimizationLevel,
+        reloc_mode: RelocMode,
+        code_model: CodeModel
+    ) TargetMachine {
+        const target_machine_raw = target::LLVMCreateTargetMachine(
+            self->raw,
+            @cast(const c_char*, triple),
+            @cast(const c_char*, cpu),
+            @cast(const c_char*, features),
+            opt_level.to_raw(),
+            reloc_mode.to_raw(),
+            code_model.to_raw()
+        );
+
+        @assert(
+            target_machine_raw != null,
+            "kara: failed to create TargetMachine"
+        );
+
+        return TargetMachine.new(target_machine_raw);
+    }
+}

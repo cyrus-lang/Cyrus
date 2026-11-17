@@ -1,0 +1,652 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::string{String};
+import std::libc::types{
+    c_unsigned_long_long, 
+    c_long_long, 
+    c_double,
+    c_uint, 
+    c_char, 
+    c_int, 
+};
+
+pub struct LLVMOpaqueError { _unused: uint8 }
+pub type LLVMErrorRef = LLVMOpaqueError*;
+
+pub struct LLVMOpaqueContext { _unused: uint8 }
+pub type LLVMContextRef = LLVMOpaqueContext*;
+
+pub struct LLVMOpaqueModule { _unused: uint8 }
+pub type LLVMModuleRef = LLVMOpaqueModule*;
+
+pub struct LLVMOpaqueType { _unused: uint8 }
+pub type LLVMTypeRef = LLVMOpaqueType*;
+
+pub struct LLVMOpaqueValue { _unused: uint8 }
+pub type LLVMValueRef = LLVMOpaqueValue*;
+
+pub struct LLVMOpaqueBasicBlock { _unused: uint8 }
+pub type LLVMBasicBlockRef = LLVMOpaqueBasicBlock*;
+
+pub struct LLVMOpaqueBuilder { _unused: uint8 }
+pub type LLVMBuilderRef = LLVMOpaqueBuilder*;
+
+pub struct LLVMOpaqueMemoryBuffer { _unused: uint8 }
+pub type LLVMMemoryBufferRef = LLVMOpaqueMemoryBuffer*;
+
+pub type LLVMBool = c_int;
+
+pub const LLVM_VOID_TYPE_KIND: c_int = 0;
+pub const LLVM_HALF_TYPE_KIND: c_int = 1;
+pub const LLVM_FLOAT_TYPE_KIND: c_int = 2;
+pub const LLVM_DOUBLE_TYPE_KIND: c_int = 3;
+pub const LLVM_X86_FP80_TYPE_KIND: c_int = 4;
+pub const LLVM_FP128_TYPE_KIND: c_int = 5;
+pub const LLVM_PPC_FP128_TYPE_KIND: c_int = 6;
+pub const LLVM_LABEL_TYPE_KIND: c_int = 7;
+pub const LLVM_INTEGER_TYPE_KIND: c_int = 8;
+pub const LLVM_FUNCTION_TYPE_KIND: c_int = 9;
+pub const LLVM_STRUCT_TYPE_KIND: c_int = 10;
+pub const LLVM_ARRAY_TYPE_KIND: c_int = 11;
+pub const LLVM_POINTER_TYPE_KIND: c_int = 12;
+pub const LLVM_VECTOR_TYPE_KIND: c_int = 13;
+pub const LLVM_BFLOAT_TYPE_KIND: c_int = 18;
+
+pub const LLVM_INT_EQ: c_int = 32;
+pub const LLVM_INT_NE: c_int = 33;
+pub const LLVM_INT_UGT: c_int = 34;
+pub const LLVM_INT_UGE: c_int = 35;
+pub const LLVM_INT_ULT: c_int = 36;
+pub const LLVM_INT_ULE: c_int = 37;
+pub const LLVM_INT_SGT: c_int = 38;
+pub const LLVM_INT_SGE: c_int = 39;
+pub const LLVM_INT_SLT: c_int = 40;
+pub const LLVM_INT_SLE: c_int = 41;
+
+pub const LLVM_REAL_PREDICATE_FALSE: c_int = 0;
+pub const LLVM_REAL_OEQ: c_int = 1;
+pub const LLVM_REAL_OGT: c_int = 2;
+pub const LLVM_REAL_OGE: c_int = 3;
+pub const LLVM_REAL_OLT: c_int = 4;
+pub const LLVM_REAL_OLE: c_int = 5;
+pub const LLVM_REAL_ONE: c_int = 6;
+pub const LLVM_REAL_ORD: c_int = 7;
+pub const LLVM_REAL_UNO: c_int = 8;
+pub const LLVM_REAL_UEQ: c_int = 9;
+pub const LLVM_REAL_UGT: c_int = 10;
+pub const LLVM_REAL_UGE: c_int = 11;
+pub const LLVM_REAL_ULT: c_int = 12;
+pub const LLVM_REAL_ULE: c_int = 13;
+pub const LLVM_REAL_UNE: c_int = 14;
+pub const LLVM_REAL_PREDICATE_TRUE: c_int = 15;
+
+pub extern "C" {
+    fn LLVMGetErrorMessage(Err: LLVMErrorRef) c_char*;
+    fn LLVMDisposeErrorMessage(ErrMsg: c_char*) void;
+    fn LLVMConsumeError(Err: LLVMErrorRef) void;
+    
+    fn LLVMDisposeMessage(
+        Message: c_char*
+    ) void;
+
+    fn LLVMContextCreate(
+    ) LLVMContextRef;
+
+    fn LLVMContextDispose(
+        C: LLVMContextRef
+    ) void;
+
+    fn LLVMModuleCreateWithNameInContext(
+        ModuleID: const c_char*, 
+        C: LLVMContextRef
+    ) LLVMModuleRef;
+
+    fn LLVMSetDataLayout(
+        M: LLVMModuleRef, 
+        DataLayoutStr: const c_char*
+    ) void;
+
+    fn LLVMSetTarget(
+        M: LLVMModuleRef, 
+        Triple: const c_char*
+    ) void;
+
+    fn LLVMPrintModuleToString(
+        M: LLVMModuleRef
+    ) c_char*;
+
+    fn LLVMDisposeModule(
+        M: LLVMModuleRef
+    ) void;
+
+    fn LLVMAddFunction(
+        M: LLVMModuleRef, 
+        Name: const c_char*, 
+        FunctionTy: LLVMTypeRef
+    ) LLVMValueRef;
+
+    fn LLVMAddGlobal(
+        M: LLVMModuleRef, 
+        Ty: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMSetInitializer(
+        GlobalVar: LLVMValueRef, 
+        ConstantVal: LLVMValueRef
+    ) void;
+
+    fn LLVMSetGlobalConstant(
+        GlobalVar: LLVMValueRef, 
+        IsConstant: LLVMBool
+    ) void;
+
+    fn LLVMGetNamedFunction(
+        M: LLVMModuleRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMGetNamedGlobal(
+        M: LLVMModuleRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMCountParams(
+        Fn: LLVMValueRef
+    ) c_uint;
+
+    fn LLVMGetParam(
+        Fn: LLVMValueRef, 
+        Index: c_uint
+    ) LLVMValueRef;
+
+    fn LLVMAppendBasicBlockInContext(
+        C: LLVMContextRef, 
+        Fn: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMBasicBlockRef;
+
+    fn LLVMGetBasicBlockTerminator(
+        BB: LLVMBasicBlockRef
+    ) LLVMValueRef;
+
+    fn LLVMGetBasicBlockParent(
+        BB: LLVMBasicBlockRef
+    ) LLVMValueRef;
+
+    fn LLVMGetFirstInstruction(
+        BB: LLVMBasicBlockRef
+    ) LLVMValueRef;
+
+    fn LLVMGetLastInstruction(
+        BB: LLVMBasicBlockRef
+    ) LLVMValueRef;
+
+    fn LLVMPositionBuilderAtEnd(
+        Builder: LLVMBuilderRef, 
+        Block: LLVMBasicBlockRef
+    ) void;
+
+    fn LLVMPositionBuilderBefore(
+        Builder: LLVMBuilderRef, 
+        Instr: LLVMValueRef
+    ) void;
+
+    fn LLVMGetInsertBlock(
+        Builder: LLVMBuilderRef
+    ) LLVMBasicBlockRef;
+
+    fn LLVMCreateBuilderInContext(
+        C: LLVMContextRef
+    ) LLVMBuilderRef;
+
+    fn LLVMDisposeBuilder(
+        Builder: LLVMBuilderRef
+    ) void;
+
+    fn LLVMArrayType2(
+        ElementType: LLVMTypeRef, 
+        ElementCount: c_unsigned_long_long
+    ) LLVMTypeRef;
+
+    fn LLVMPointerTypeInContext(
+        C: LLVMContextRef, 
+        AddressSpace: c_uint
+    ) LLVMTypeRef;
+
+    fn LLVMIntTypeInContext(
+        C: LLVMContextRef, 
+        NumBits: c_uint
+    ) LLVMTypeRef;
+
+    fn LLVMDoubleTypeInContext(
+        C: LLVMContextRef
+    ) LLVMTypeRef;
+
+    fn LLVMInt128TypeInContext(
+        C: LLVMContextRef
+    ) LLVMTypeRef;
+
+    fn LLVMInt16TypeInContext(
+        C: LLVMContextRef
+    ) LLVMTypeRef;
+
+    fn LLVMFloatTypeInContext(
+        C: LLVMContextRef
+    ) LLVMTypeRef;
+
+    fn LLVMInt32TypeInContext(
+        C: LLVMContextRef
+    ) LLVMTypeRef;
+
+    fn LLVMInt64TypeInContext(
+        C: LLVMContextRef
+    ) LLVMTypeRef;
+
+    fn LLVMVoidTypeInContext(
+        C: LLVMContextRef
+    ) LLVMTypeRef;
+
+    fn LLVMInt1TypeInContext(
+        C: LLVMContextRef
+    ) LLVMTypeRef;
+
+    fn LLVMInt8TypeInContext(
+        C: LLVMContextRef
+    ) LLVMTypeRef;
+    
+    fn LLVMStructTypeInContext(
+        C: LLVMContextRef, 
+        ElementTypes: LLVMTypeRef*, 
+        ElementCount: c_uint, 
+        Packed: LLVMBool
+    ) LLVMTypeRef;
+
+    fn LLVMStructSetBody(
+        StructTy: LLVMTypeRef, 
+        ElementTypes: LLVMTypeRef*, 
+        ElementCount: c_uint, 
+        Packed: LLVMBool
+    ) void;
+    
+    fn LLVMFunctionType(
+        ReturnType: LLVMTypeRef, 
+        ParamTypes: LLVMTypeRef*, 
+        ParamCount: c_uint, 
+        IsVarArg: LLVMBool
+    ) LLVMTypeRef;
+
+    fn LLVMStructCreateNamed(
+        C: LLVMContextRef, 
+        Name: const c_char*
+    ) LLVMTypeRef;
+
+    fn LLVMGetIntTypeWidth(
+        IntegerTy: LLVMTypeRef
+    ) c_uint;
+
+    fn LLVMGetTypeKind(
+        Ty: LLVMTypeRef
+    ) c_int;
+
+    fn LLVMTypeOf(
+        Val: LLVMValueRef
+    ) LLVMTypeRef;
+
+    fn LLVMConstInt(
+        IntTy: LLVMTypeRef, 
+        N: c_unsigned_long_long, 
+        SignExtend: LLVMBool
+    ) LLVMValueRef;
+    
+    fn LLVMConstStructInContext(
+        C: LLVMContextRef, 
+        ConstantVals: LLVMValueRef*, 
+        Count: c_uint, 
+        Packed: LLVMBool
+    ) LLVMValueRef;
+    
+    fn LLVMConstArray2(
+        ElementTy: LLVMTypeRef, 
+        ConstantVals: LLVMValueRef*, 
+        Length: c_unsigned_long_long
+    ) LLVMValueRef;
+
+    fn LLVMConstReal(
+        RealTy: LLVMTypeRef, 
+        N: c_double
+    ) LLVMValueRef;
+
+    fn LLVMConstPointerNull(
+        Ty: LLVMTypeRef
+    ) LLVMValueRef;
+
+    fn LLVMConstNull(
+        Ty: LLVMTypeRef
+    ) LLVMValueRef;
+
+    fn LLVMBuildAdd(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildSub(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildMul(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildSDiv(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildUDiv(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildSRem(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildURem(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildFAdd(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildFSub(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildFMul(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildFDiv(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildAnd(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildOr(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildXor(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildShl(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildLShr(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildAShr(
+        B: LLVMBuilderRef, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildNot(
+        B: LLVMBuilderRef, 
+        V: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildNeg(
+        B: LLVMBuilderRef, 
+        V: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildLoad2(
+        B: LLVMBuilderRef, 
+        Ty: LLVMTypeRef, 
+        PointerVal: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildAlloca(
+        B: LLVMBuilderRef, 
+        Ty: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildStore(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        Ptr: LLVMValueRef
+    ) LLVMValueRef;
+    
+    fn LLVMBuildGEP2(
+        B: LLVMBuilderRef, 
+        Ty: LLVMTypeRef, 
+        Pointer: LLVMValueRef, 
+        Indices: LLVMValueRef*, 
+        NumIndices: c_uint, 
+        Name: const c_char*
+    ) LLVMValueRef;
+    
+    fn LLVMBuildStructGEP2(
+        B: LLVMBuilderRef, 
+        Ty: LLVMTypeRef, 
+        Pointer: LLVMValueRef, 
+        Idx: c_uint, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildICmp(
+        B: LLVMBuilderRef, 
+        Op: c_int, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildFCmp(
+        B: LLVMBuilderRef, 
+        Op: c_int, 
+        LHS: LLVMValueRef, 
+        RHS: LLVMValueRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildIntCast2(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        DestTy: LLVMTypeRef, 
+        IsSigned: LLVMBool, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildBitCast(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        DestTy: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildPtrToInt(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        DestTy: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildIntToPtr(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        DestTy: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildFPCast(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        DestTy: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildSIToFP(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        DestTy: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildUIToFP(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        DestTy: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildFPToSI(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        DestTy: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildFPToUI(
+        B: LLVMBuilderRef, 
+        Val: LLVMValueRef, 
+        DestTy: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildCall2(
+        B: LLVMBuilderRef, 
+        Ty: LLVMTypeRef, 
+        Fn: LLVMValueRef, 
+        Args: LLVMValueRef*, 
+        NumArgs: c_uint, 
+        Name: const c_char*
+    ) LLVMValueRef;
+    
+    fn LLVMAddIncoming(
+        PhiNode: LLVMValueRef, 
+        IncomingValues: LLVMValueRef*, 
+        IncomingBlocks: LLVMBasicBlockRef*, 
+        Count: c_uint
+    ) void;
+
+    fn LLVMBuildCondBr(
+        B: LLVMBuilderRef, 
+        If: LLVMValueRef, 
+        Then: LLVMBasicBlockRef, 
+        Else: LLVMBasicBlockRef
+    ) LLVMValueRef;
+
+    fn LLVMBuildPhi(
+        B: LLVMBuilderRef, 
+        Ty: LLVMTypeRef, 
+        Name: const c_char*
+    ) LLVMValueRef;
+
+    fn LLVMBuildBr(
+        B: LLVMBuilderRef, 
+        Dest: LLVMBasicBlockRef
+    ) LLVMValueRef;
+
+    fn LLVMBuildRet(
+        B: LLVMBuilderRef, 
+        V: LLVMValueRef
+    ) LLVMValueRef;
+
+    fn LLVMBuildRetVoid(
+        B: LLVMBuilderRef
+    ) LLVMValueRef;
+}
+
+pub fn llvm_mesg_to_string(
+    ptr: c_char*
+) String {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+
+    if (ptr == null) {
+        return String.new(allocator);
+    }
+    
+    const result = String.from_str(allocator, ptr);
+    LLVMDisposeMessage(ptr);
+    return result;
+}
+
+pub fn llvm_error_to_string(err: LLVMErrorRef) String {
+    var allocator: Allocator = dynamic LibcAllocator.new();
+    
+    if (err == null) {
+        return String.new(allocator);
+    }
+    
+    const mesg_ptr = LLVMGetErrorMessage(err);
+    
+    if (mesg_ptr == null) {
+        return String.new(allocator);
+    }
+    
+    const result = String.from_str(allocator, mesg_ptr);
+    LLVMDisposeErrorMessage(mesg_ptr);
+    return result;
+}

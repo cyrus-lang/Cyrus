@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types{c_char, c_int};
+
+import .::core{
+    LLVMMemoryBufferRef,
+    LLVMModuleRef, 
+};
+
+pub extern "C" {
+    fn LLVMWriteBitcodeToFile(M: LLVMModuleRef, Path: const c_char*) c_int;
+    fn LLVMWriteBitcodeToMemoryBuffer(M: LLVMModuleRef) LLVMMemoryBufferRef;
+}

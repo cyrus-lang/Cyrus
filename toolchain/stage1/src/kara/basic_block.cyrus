@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import .::types{assert_context};
+import .::sys::core;
+
+pub struct BasicBlock {
+    raw: core::LLVMBasicBlockRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMBasicBlockRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw, 
+            context_raw, 
+            context_disposed
+        };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMBasicBlockRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn has_terminator(self: const Self*) bool {
+        assert_context(self->context_disposed);
+        return core::LLVMGetBasicBlockTerminator(self->raw) != null;
+    }
+
+    pub fn is_empty(self: const Self*) bool {
+        assert_context(self->context_disposed);
+        return core::LLVMGetFirstInstruction(self->raw) == null;
+    }
+}

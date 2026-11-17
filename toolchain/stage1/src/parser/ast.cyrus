@@ -130,10 +130,10 @@ fn free_node(node: ASTNode*) {
         }
 
         case .Union(var n) => {
-            n.fields.free();
-            free_generic_params(&n.generic_params);
             n.impls.free();
+            n.fields.free();
             n.methods.free();
+            free_generic_params(&n.generic_params);
             free_opt_repr_attr(&n.modifiers.repr_attr);
         }
         else => {}
