@@ -10,10 +10,10 @@ import .::state{ParserState};
 import tokens{SourceTokens};
 import diags{DiagContext};
 import .::ast{
-    NodeId, 
-    ASTProgram, 
     ASTNodeList, 
-    free_attrs
+    ASTProgram, 
+    free_attrs,
+    NodeId, 
 };
 
 pub struct Parser {
@@ -31,7 +31,7 @@ pub struct Parser {
         
         stmts.parse_toplevels();
 
-        // Dangling attributes are dropped.
+        // Dangling attributes are dropped
         free_attrs(&stmts.pending_attrs);
 
         // Drain pending statements

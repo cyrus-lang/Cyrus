@@ -989,7 +989,7 @@ pub struct ParserStmts {
             return false;
         }
 
-        var modifiers = make_global_modifiers(self->allocator, is_pub, extern_);
+        var modifiers = create_global_modifiers(self->allocator, is_pub, extern_);
         apply_global_attrs(self->allocator, self->state->dctx, &modifiers, attrs);
 
         const node = ast::ASTGlobalVar {
@@ -1343,7 +1343,7 @@ pub struct ParserStmts {
             ret_type = .Some(self->program->create_node(.Type(ty)));
         }
 
-        var modifiers = make_func_modifiers(self->allocator, is_pub, extern_);
+        var modifiers = create_func_modifiers(self->allocator, is_pub, extern_);
 
         // Function declaration
         if (self->state->is(.Semicolon)) {
@@ -2785,7 +2785,7 @@ pub struct ParserStmts {
             return false;
         }
 
-        var modifiers = make_struct_modifiers(self->allocator, is_pub);
+        var modifiers = create_struct_modifiers(self->allocator, is_pub);
 
         apply_object_attrs(
             self->allocator,
@@ -3103,7 +3103,7 @@ pub struct ParserStmts {
             return false;
         }
 
-        var modifiers = make_enum_modifiers(self->allocator, is_pub);
+        var modifiers = create_enum_modifiers(self->allocator, is_pub);
 
         apply_object_attrs(
             self->allocator,
@@ -3329,7 +3329,7 @@ pub struct ParserStmts {
             return false;
         }
 
-        var modifiers = make_union_modifiers(self->allocator, is_pub);
+        var modifiers = create_union_modifiers(self->allocator, is_pub);
 
         apply_object_attrs(
             self->allocator,
@@ -3927,7 +3927,10 @@ pub struct ParserStmts {
 }
 
 /// Builds the default set of modifiers for a parsed struct.
-fn make_struct_modifiers(allocator: Allocator, is_pub: bool) ast::ASTStructModifiers {
+fn create_struct_modifiers(
+    allocator: Allocator, 
+    is_pub: bool
+) ast::ASTStructModifiers {
     var vis = ast::ASTVisibility.Private;
     if (is_pub) {
         vis = .Public;
@@ -3939,7 +3942,10 @@ fn make_struct_modifiers(allocator: Allocator, is_pub: bool) ast::ASTStructModif
     };
 }
 
-fn make_enum_modifiers(allocator: Allocator, is_pub: bool) ast::ASTEnumModifiers {
+fn create_enum_modifiers(
+    allocator: Allocator, 
+    is_pub: bool
+) ast::ASTEnumModifiers {
     var vis = ast::ASTVisibility.Private;
     if (is_pub) {
         vis = .Public;
@@ -3951,7 +3957,10 @@ fn make_enum_modifiers(allocator: Allocator, is_pub: bool) ast::ASTEnumModifiers
     };
 }
 
-fn make_union_modifiers(allocator: Allocator, is_pub: bool) ast::ASTUnionModifiers {
+fn create_union_modifiers(
+    allocator: Allocator, 
+    is_pub: bool
+) ast::ASTUnionModifiers {
     var vis = ast::ASTVisibility.Private;
     if (is_pub) {
         vis = .Public;
@@ -3963,7 +3972,7 @@ fn make_union_modifiers(allocator: Allocator, is_pub: bool) ast::ASTUnionModifie
     };
 }
 
-fn make_global_modifiers(
+fn create_global_modifiers(
     allocator: Allocator,
     is_pub: bool,
     extern_: Option<ast::ASTExtern>
@@ -3985,7 +3994,7 @@ fn make_global_modifiers(
     };
 }
 
-fn make_func_modifiers(
+fn create_func_modifiers(
     allocator: Allocator, 
     is_pub: bool, 
     extern_: Option<ast::ASTExtern>

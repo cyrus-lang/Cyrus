@@ -1,0 +1,38 @@
+// @parse
+
+pub fn main() {
+    var token: const uint8*
+
+    switch (true) {
+        case true => token = null;
+        else => return;
+    }
+
+    var next: int32 = 1
+    if (true) {
+        next = 2;
+    }
+
+    var last: int32 = 3
+    return;
+}
+
+/*@parse
+tests/stage1/parser/stmts/failures/missing_semicolon_before_switch.cyrus:4:27: error: expected `;` but got `switch`
+      |
+    4 ~     var token: const uint8*
+      |                           ^
+      |
+
+tests/stage1/parser/stmts/failures/missing_semicolon_before_switch.cyrus:11:23: error: expected `;` but got `if`
+      |
+   11 ~     var next: int32 = 1
+      |                       ^
+      |
+
+tests/stage1/parser/stmts/failures/missing_semicolon_before_switch.cyrus:16:23: error: expected `;` but got `return`
+      |
+   16 ~     var last: int32 = 3
+      |                       ^
+      |
+@parse*/
