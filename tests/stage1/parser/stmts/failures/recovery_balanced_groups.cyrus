@@ -1,0 +1,57 @@
+// @parse
+
+fn first() {
+    var broken = / (call(1));
+    var missing: int32 = 1
+    return;
+}
+
+fn second() {
+    var broken = / [items[0]];
+    var missing: int32 = 2
+    return;
+}
+
+fn third() {
+    var broken = / { { call(); } }
+    var missing: int32 = 3
+    return;
+}
+
+/*@parse
+tests/stage1/parser/stmts/failures/recovery_balanced_groups.cyrus:4:18: error: expected expression
+      |
+    4 ~     var broken = / (call(1));
+      |                  ^
+      |
+
+tests/stage1/parser/stmts/failures/recovery_balanced_groups.cyrus:5:26: error: expected `;` but got `return`
+      |
+    5 ~     var missing: int32 = 1
+      |                          ^
+      |
+
+tests/stage1/parser/stmts/failures/recovery_balanced_groups.cyrus:10:18: error: expected expression
+      |
+   10 ~     var broken = / [items[0]];
+      |                  ^
+      |
+
+tests/stage1/parser/stmts/failures/recovery_balanced_groups.cyrus:11:26: error: expected `;` but got `return`
+      |
+   11 ~     var missing: int32 = 2
+      |                          ^
+      |
+
+tests/stage1/parser/stmts/failures/recovery_balanced_groups.cyrus:16:18: error: expected expression
+      |
+   16 ~     var broken = / { { call(); } }
+      |                  ^
+      |
+
+tests/stage1/parser/stmts/failures/recovery_balanced_groups.cyrus:17:26: error: expected `;` but got `return`
+      |
+   17 ~     var missing: int32 = 3
+      |                          ^
+      |
+@parse*/

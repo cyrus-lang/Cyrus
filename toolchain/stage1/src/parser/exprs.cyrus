@@ -6,18 +6,18 @@ import std::option{Option};
 import std::string{String};
 
 import .::diags{
-    report_expected_ident, 
+    report_expected_unsuffixed_integer,
     report_unexpected_token,
     report_invalid_operator,
-    report_expected_unsuffixed_integer
+    report_expected_ident, 
 };
 import diags{Diag};
 import tokens{
-    Token, 
-    TokenKind, 
     SourceTokens, 
+    TokenKind, 
+    Literal,
+    Token, 
     Span, 
-    Literal
 };
 import .::state{ParserState};
 import .::ast;
@@ -55,23 +55,22 @@ pub struct ParserExprs {
     }
 
     pub fn parse_expr_with_precedence(self: Self*, minimum_precedence: Prec) Option<ast::NodeId> {
-        switch (self->parse_prefix()) case .Some(first) else {
+        switch (self->parse_prefix()) case .Some(var lhs) else {
             return .None;
         }
 
-        var lhs = first;
-
         while (true) {
-            // The prefix parser consumed the operand, so the current token
-            // is the operator that may continue this expression.
+            // The prefix parser consumed the operand, 
+            // so the current token is the operator 
+            // that may continue this expression
             const operator_token = self->state->current();
 
-            var operator_precedence: Prec = undefined;
+            var operator_precedence: Prec;
             var has_precedence = false;
 
             switch (self->precedence_of_operator(operator_token)) {
-                case .Some(prec) => {
-                    operator_precedence = prec;
+                case .Some(precedence) => {
+                    operator_precedence = precedence;
                     has_precedence = true;
                 }
                 else => {}
@@ -85,8 +84,11 @@ pub struct ParserExprs {
                 break;
             }
 
-            switch (self->parse_infix(lhs, operator_token, operator_precedence)) 
-            case .Some(next) else {
+            switch (self->parse_infix(
+                lhs, 
+                operator_token, 
+                operator_precedence
+            )) case .Some(next) else {
                 return .None;
             }
 
@@ -117,16 +119,6 @@ pub struct ParserExprs {
         const start = self->state->current_span();
 
         switch (*self->state->current()->kind) {
-            case .Struct => return self->parse_unnamed_struct_value(start);
-
-            case .Union => return self->parse_unnamed_union_value(start);
-
-            case .Function => return self->parse_lambda_expr(start);
-
-            case .Dynamic => return self->parse_dynamic_expr(start);
-
-            case .Dot => return self->parse_unnamed_enum_value(start);
-
             case .Ident(str) => {
                 const ident = ast::ASTIdent { str, span: start };
                 self->state->next();
@@ -222,6 +214,16 @@ pub struct ParserExprs {
                 return .Some(self->create_expr(.Literal(token)));
             }
 
+            case .Struct => return self->parse_unnamed_struct_value(start);
+
+            case .Union => return self->parse_unnamed_union_value(start);
+
+            case .Dot => return self->parse_unnamed_enum_value(start);
+
+            case .Dynamic => return self->parse_dynamic_expr(start);
+
+            case .Function => return self->parse_lambda_expr(start);
+
             case .At => return self->parse_builtin_or_inline_asm();
 
             else => {
@@ -248,12 +250,12 @@ pub struct ParserExprs {
                                     start
                                 ));
 
-                                // REVIEW: Maybe we should make a Error expression
+                                // FIXME: Maybe we should make a Error expression
                                 // so in such cases we fallback to that instead of 
                                 // assuming array capacity dynamic.
                                 // 
                                 // Parse the literal anyway so the rest
-                                // of the declaration does not cascade.
+                                // of the declaration does not cascade
                                 return self->parse_array_literal(
                                     self->program->create_node(.Type(ty)),
                                     .Dynamic,
@@ -284,18 +286,17 @@ pub struct ParserExprs {
     /// turns a following `{` into a struct initialization.
     fn finish_path_expr(
         self: Self*,
-        base: ast::ASTType,
+        var base: ast::ASTType,
         start: Span
     ) Option<ast::NodeId> {
         if (self->state->is(.Asterisk) && self->pointer_suffix_ahead()) {
-            var curr_type = base;
             while (self->state->is(.Asterisk)) {
                 self->state->next();
-                const node_id = self->program->create_node(.Type(curr_type));
-                curr_type = .Pointer(node_id);
+                const node_id = self->program->create_node(.Type(base));
+                base = .Pointer(node_id);
             }
-            const ty = curr_type;
-            const operand = self->create_expr(.Type(ty));
+
+            const operand = self->create_expr(.Type(base));
 
             if (self->state->is(.LeftBrace)) {
                 return self->parse_struct_init(operand, start);
@@ -327,11 +328,13 @@ pub struct ParserExprs {
             }
 
             const base_id = self->program->create_node(.Type(base));
+
             const ty = ast::ASTType.GenericInst(ast::ASTGenericInst {
                 base: base_id,
                 type_args,
                 span: start.merge(self->state->last_parsed_span()),
             });
+
             const operand = self->create_expr(.Type(ty));
 
             if (self->state->is(.LeftBrace)) {
@@ -342,7 +345,10 @@ pub struct ParserExprs {
         }
 
         if (self->state->is(.LeftBrace)) {
-            return self->parse_struct_init(self->type_as_path_expr(base), start);
+            return self->parse_struct_init(
+                self->type_as_path_expr(base), 
+                start
+            );
         }
 
         return .Some(self->type_as_path_expr(base));
@@ -376,6 +382,7 @@ pub struct ParserExprs {
             field_inits,
             span: start.merge(self->state->last_parsed_span()),
         };
+
         return .Some(self->create_expr(.StructInit(node)));
     }
 
@@ -399,10 +406,11 @@ pub struct ParserExprs {
                 return .None;
             }
 
-            switch (self->parse_expr()) case .Some(parsed) else {
+            switch (self->parse_expr()) case .Some(expr) else {
                 return .None;
             }
-            value = parsed;
+
+            value = expr;
         }
 
         return .Some(ast::ASTFieldInit {
@@ -439,6 +447,7 @@ pub struct ParserExprs {
                 field_inits.free();
                 return .None;
             }
+
             field_inits.push(entry);
 
             if (self->state->is(.RightBrace)) {
@@ -518,7 +527,9 @@ pub struct ParserExprs {
             }
 
             switch (self->parse_unsuffixed_integer_value()) {
-                case .Some(value) => align = .Some(value);
+                case .Some(value) => {
+                    align = .Some(value);
+                }
                 else => {
                     report_expected_unsuffixed_integer(
                         self->state->allocator,
@@ -539,21 +550,22 @@ pub struct ParserExprs {
             return .None;
         }
 
-        switch (self->parse_field_inits()) case .Some(parsed) else {
+        switch (self->parse_field_inits()) case .Some(var field_inits) else {
             return .None;
         }
 
-        var field_inits = parsed;
         var fields: Vec<ast::ASTUnnamedStructValueField> = Vec.new(self->state->allocator);
 
         for (var i: usize = 0; i < field_inits.len(); i += 1) {
             const field = field_inits.get_const(i).unwrap();
+
             fields.push(ast::ASTUnnamedStructValueField {
                 name: field->ident,
                 value: field->value,
                 span: field->span,
             });
         }
+
         field_inits.free();
 
         const node = ast::ASTUnnamedStructValue {
@@ -562,6 +574,7 @@ pub struct ParserExprs {
             align,
             span: start.merge(self->state->last_parsed_span()),
         };
+
         return .Some(self->create_expr(.UnnamedStructValue(node)));
     }
 
@@ -581,18 +594,21 @@ pub struct ParserExprs {
 
         for (var i: usize = 0; i < field_inits.len(); i += 1) {
             const field = field_inits.get_const(i).unwrap();
+
             fields.push(ast::ASTUnnamedUnionValueField {
                 name: field->ident,
                 value: field->value,
                 span: field->span,
             });
         }
+
         field_inits.free();
 
         const node = ast::ASTUnnamedUnionValue {
             fields,
             span: start.merge(self->state->last_parsed_span()),
         };
+
         return .Some(self->create_expr(.UnnamedUnionValue(node)));
     }
 
@@ -616,6 +632,7 @@ pub struct ParserExprs {
                 kind: .Tuple(values),
                 span: start.merge(self->state->last_parsed_span()),
             };
+
             return .Some(self->create_expr(.UnnamedEnumValue(node)));
         }
 
@@ -631,6 +648,7 @@ pub struct ParserExprs {
                 kind: .Struct(field_inits),
                 span: start.merge(self->state->last_parsed_span()),
             };
+
             return .Some(self->create_expr(.UnnamedEnumValue(node)));
         }
 
@@ -639,6 +657,7 @@ pub struct ParserExprs {
             kind: .Plain,
             span: start.merge(self->state->last_parsed_span()),
         };
+
         return .Some(self->create_expr(.UnnamedEnumValue(node)));
     }
 
@@ -654,6 +673,7 @@ pub struct ParserExprs {
             operand,
             span: start.merge(self->state->last_parsed_span()),
         };
+
         return .Some(self->create_expr(.Dynamic(node)));
     }
 
@@ -693,6 +713,7 @@ pub struct ParserExprs {
             ret_type: ret_node,
             span: start.merge(self->state->last_parsed_span()),
         };
+
         return .Some(self->create_expr(.Lambda(node)));
     }
 
@@ -717,6 +738,7 @@ pub struct ParserExprs {
             elements,
             span: start.merge(self->state->last_parsed_span()),
         };
+
         return .Some(self->create_expr(.Array(node)));
     }
 
@@ -850,9 +872,10 @@ pub struct ParserExprs {
         var depth: isize = 0;
 
         while (true) {
-            var token: const Token* = undefined;
+            var token: const Token*;
+
             switch (self->state->peek_n(i)) {
-                case .Some(t) => token = t;
+                case .Some(token_) => token = token_;
                 else => return false;
             }
 
@@ -865,8 +888,9 @@ pub struct ParserExprs {
                     var j = i + 1;
 
                     while (true) {
-                        var inner: const Token* = undefined;
+                        var inner: const Token*;
                         var have_inner = true;
+
                         switch (self->state->peek_n(j)) {
                             case .Some(t) => inner = t;
                             else => have_inner = false;
@@ -887,14 +911,16 @@ pub struct ParserExprs {
                         j += 1;
                     }
                 }
+
                 case .GreaterThan => {
                     depth -= 1;
 
                     if (depth == 0) {
-                        var after: const Token* = undefined;
+                        var after: const Token*;
                         var have_after = true;
+
                         switch (self->state->peek_n(i + 1)) {
-                            case .Some(t) => after = t;
+                            case .Some(token_) => after = token_;
                             else => have_after = false;
                         }
 
@@ -919,7 +945,9 @@ pub struct ParserExprs {
                         return true;
                     }
                 }
+
                 case .Semicolon | .EOF => return false;
+
                 else => {}
             }
 
@@ -931,6 +959,7 @@ pub struct ParserExprs {
 
     fn pointer_suffix_ahead(self: Self*) bool {
         var i: usize = 1;
+
         while (true) {
             switch (self->state->peek_n(i)) {
                 case .Some(token) => {
@@ -938,7 +967,13 @@ pub struct ParserExprs {
                         case .Asterisk => {
                             i += 1;
                         }
-                        case .Comma | .RightParen | .RightBracket | .RightBrace | .Semicolon | .Colon | .GreaterThan => {
+                        case .Comma 
+                        | .RightParen 
+                        | .RightBracket 
+                        | .RightBrace 
+                        | .Semicolon 
+                        | .Colon 
+                        | .GreaterThan => {
                             return true;
                         }
                         else => {
@@ -953,6 +988,7 @@ pub struct ParserExprs {
         }
         return true;
     }
+
     /// preceding `<` was a comparison operator.
     fn token_disqualifies_type_arg(self: Self*, kind: TokenKind) bool {
         switch (kind) {
@@ -1044,8 +1080,8 @@ pub struct ParserExprs {
     /// True when `GenericType<T>[ ... ]` is an array initializer rather
     /// than a type with an array type argument.
     fn check_for_array_init_after_generic(self: Self*, start: usize) bool {
-        var i = start;
         var bracket_depth: isize = 0;
+        var i = start;
 
         while (true) {
             var token: const Token* = undefined;
@@ -1064,8 +1100,9 @@ pub struct ParserExprs {
                     i += 1;
 
                     if (bracket_depth == 0) {
-                        var next: const Token* = undefined;
+                        var next: const Token*;
                         var have_next = true;
+
                         switch (self->state->peek_n(i)) {
                             case .Some(t) => next = t;
                             else => have_next = false;
@@ -1085,16 +1122,17 @@ pub struct ParserExprs {
         return false;
     }
 
-    /// True when the `[ ... ]` chain starting at the cursor is closed by
-    /// an initializer block: `T[2][3]{ ... }`.
+    /// True when the `[ ... ]` chain starting at the cursor
+    /// is closed by an initializer block: `T[2][3]{ ... }`.
     fn is_array_literal_ahead(self: Self*) bool {
-        var i: usize = 0;
         var depth: isize = 0;
+        var i: usize = 0;
 
         while (true) {
-            var token: const Token* = undefined;
+            var token: const Token*;
+
             switch (self->state->peek_n(i)) {
-                case .Some(t) => token = t;
+                case .Some(token_) => token = token_;
                 else => return false;
             }
 
@@ -1108,10 +1146,11 @@ pub struct ParserExprs {
                     i += 1;
 
                     if (depth <= 0) {
-                        var next: const Token* = undefined;
+                        var next: const Token*;
                         var have_next = true;
+
                         switch (self->state->peek_n(i)) {
-                            case .Some(t) => next = t;
+                            case .Some(token_) => next = token_;
                             else => have_next = false;
                         }
 
@@ -1129,8 +1168,9 @@ pub struct ParserExprs {
         return false;
     }
 
-    /// A bracket chain closed by an initializer block is an array literal,
-    /// otherwise it is an index expression.
+    /// A bracket chain closed by an initializer block
+    /// is an array literal, otherwise it is
+    //  an index expression.
     fn parse_index_or_array_literal(
         self: Self*,
         lhs: ast::NodeId,
@@ -1180,19 +1220,19 @@ pub struct ParserExprs {
                 case .Expr(.Ident(ident)) => *slot = .Type(.Ident(ident));
                 case .Expr(.Type(var ty)) => *slot = .Type(ty);
                 else => {
-                    indices.free();
                     self->state->dctx->report(Diag.new(
                         self->state->allocator,
                         .Error,
                         "invalid element type for array initializer",
                         start
                     ));
+                    indices.free();
                     return .None;
                 }
             }
 
             // The first dimension is the outermost one,
-            // matching the size carried by an array type.
+            // matching the size carried by an array type
             var capacity: ast::ASTArrayCapacity = .Dynamic;
 
             if (indices.len() > 0) {
@@ -1212,6 +1252,7 @@ pub struct ParserExprs {
                 index: indices.get_owned(i).unwrap(),
                 span: start.merge(self->state->last_parsed_span()),
             };
+
             operand = self->create_expr(.ArrayIndex(next));
         }
 
@@ -1254,7 +1295,10 @@ pub struct ParserExprs {
             args,
             span: start.merge(self->state->current_span()),
         };
-        return .Some(self->create_expr(.Builtin(ast::ASTBuiltin.BuiltinFunc(node))));
+
+        return .Some(self->create_expr(.Builtin(
+            ast::ASTBuiltin.BuiltinFunc(node)
+        )));
     }
 
     /// Grammar: @ asm volatile? ( String, ... (: Operand, ... )? (: Operand, ... )? (: Clobber, ... )? )
@@ -1527,6 +1571,7 @@ pub struct ParserExprs {
             elements,
             span: start.merge(self->state->current_span()),
         };
+
         return .Some(self->create_expr(.Tuple(node)));
     }
 
@@ -1588,6 +1633,7 @@ pub struct ParserExprs {
             self->state->next();
 
             const next_ident = self->state->expect_ident();
+            
             var valid = false;
 
             switch (next_ident) {
@@ -1636,6 +1682,7 @@ pub struct ParserExprs {
                     },
                     span: start.merge(self->state->current_span()),
                 };
+
                 return .Some(self->create_expr(.FuncCall(node)));
             }
 
@@ -1651,6 +1698,7 @@ pub struct ParserExprs {
 
                 return self->parse_field_access(lhs, is_thin_arrow);
             }
+
             else => {}
         }
 
@@ -1681,6 +1729,7 @@ pub struct ParserExprs {
                     kind: .Default,
                     span: start.merge(self->state->current_span()),
                 };
+
                 return .Some(self->create_expr(.Assign(node)));
             }
             else => {}
@@ -1716,6 +1765,7 @@ pub struct ParserExprs {
                 kind,
                 span: start.merge(self->state->current_span()),
             };
+
             return .Some(self->create_expr(.Assign(node)));
         }
 
@@ -1740,6 +1790,7 @@ pub struct ParserExprs {
             rhs,
             span: start.merge(self->state->current_span()),
         };
+
         return .Some(self->create_expr(.Infix(node)));
     }
 
@@ -1797,6 +1848,7 @@ pub struct ParserExprs {
                 index: tuple_index,
                 span: start.merge(self->state->current_span()),
             };
+
             return .Some(self->create_expr(.TupleAccess(node)));
         }
 
@@ -1809,7 +1861,7 @@ pub struct ParserExprs {
         // Only treat `<` as generic arguments when the tokens
         // through the matching `>` and the token after it look
         // like a generic instantiation, so ordinary `a < b` 
-        // comparisons are unaffected
+        // comparisons are unaffected!
         var type_args: ast::ASTTypeArgs;
         var has_type_args = false;
 
@@ -1847,6 +1899,7 @@ pub struct ParserExprs {
                 is_thin_arrow,
                 span: start.merge(self->state->current_span()),
             };
+
             return .Some(self->create_expr(.MethodCall(node)));
         }
 
@@ -1869,6 +1922,7 @@ pub struct ParserExprs {
                 field_inits,
                 span: start.merge(self->state->last_parsed_span()),
             };
+
             return .Some(self->create_expr(.EnumStructVariantInit(node)));
         }
 
@@ -1878,6 +1932,7 @@ pub struct ParserExprs {
             field_name: name,
             span: start.merge(name.span),
         };
+
         return .Some(self->create_expr(.FieldAccess(node)));
     }
 
@@ -2615,7 +2670,10 @@ pub struct ParserExprs {
             } 
             // Array Type
             else if (allow_arrays && self->state->is(.LeftBracket)) {
-                switch (self->parse_array_suffix(base_type, start)) case .Some(array_type) else {
+                switch (self->parse_array_suffix(
+                    base_type, 
+                    start
+                )) case .Some(array_type) else {
                     return .None;
                 }
 
@@ -2623,7 +2681,10 @@ pub struct ParserExprs {
             } 
             // Generic Type
             else if (self->state->is(.LessThan)) {
-                switch (self->parse_generic_suffix(base_type, start)) case .Some(generic_type) else {
+                switch (self->parse_generic_suffix(
+                    base_type, 
+                    start
+                )) case .Some(generic_type) else {
                     return .None;
                 }
 
