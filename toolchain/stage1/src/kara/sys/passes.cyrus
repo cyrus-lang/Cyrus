@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types{c_char, c_int};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::string{String};
+
+import .::target{LLVMTargetMachineRef};
+import .::core{
+    LLVMModuleRef, 
+    LLVMValueRef, 
+    LLVMErrorRef,
+    LLVMBool, 
+};
+
+pub struct LLVMOpaquePassBuilderOptions { _unused: uint8 }
+pub type LLVMPassBuilderOptionsRef = LLVMOpaquePassBuilderOptions*;
+
+pub extern "C" {
+    fn LLVMCreatePassBuilderOptions() LLVMPassBuilderOptionsRef;
+    fn LLVMDisposePassBuilderOptions(Options: LLVMPassBuilderOptionsRef) void;
+
+    fn LLVMPassBuilderOptionsSetLoopVectorization(
+        Options: LLVMPassBuilderOptionsRef,
+        LoopVectorization: LLVMBool
+    ) void;
+
+    fn LLVMPassBuilderOptionsSetSLPVectorization(
+        Options: LLVMPassBuilderOptionsRef,
+        SLPVectorization: LLVMBool
+    ) void;
+
+    fn LLVMPassBuilderOptionsSetLoopInterleaving(
+        Options: LLVMPassBuilderOptionsRef,
+        LoopInterleaving: LLVMBool
+    ) void;
+
+    fn LLVMPassBuilderOptionsSetLoopUnrolling(
+        Options: LLVMPassBuilderOptionsRef,
+        LoopUnrolling: LLVMBool
+    ) void;
+
+    fn LLVMPassBuilderOptionsSetDebugLogging(
+        Options: LLVMPassBuilderOptionsRef,
+        DebugLogging: LLVMBool
+    ) void;
+
+    fn LLVMPassBuilderOptionsSetVerifyEach(
+        Options: LLVMPassBuilderOptionsRef,
+        VerifyEach: LLVMBool
+    ) void;
+
+    fn LLVMRunPasses(
+        M: LLVMModuleRef,
+        Passes: const c_char*,
+        TM: LLVMTargetMachineRef,
+        Options: LLVMPassBuilderOptionsRef
+    ) LLVMErrorRef;
+
+    fn LLVMRunPassesOnFunction(
+        F: LLVMValueRef,
+        Passes: const c_char*,
+        TM: LLVMTargetMachineRef,
+        Options: LLVMPassBuilderOptionsRef
+    ) LLVMErrorRef;
+}

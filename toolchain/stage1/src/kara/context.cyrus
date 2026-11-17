@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types{c_char, c_uint};
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::slices{Slice};
+
+import .::builder{Builder};
+import .::module{Module};
+import .::sys::core;
+import .::types{
+    VoidType,
+    IntType,
+    FloatType,
+    PointerType,
+    StructType,
+    BasicType,
+    bool_to_llvm
+};
+
+pub struct Context {
+    raw: core::LLVMContextRef,
+    is_disposed: bool,
+
+    pub fn new() Self {
+        const raw = core::LLVMContextCreate();
+        @assert(raw != null, "kara: failed to create LLVMContext");
+        return Self { raw, is_disposed: false };
+    }
+
+    pub fn dispose(self: Self*) {
+        if (self->is_disposed || self->raw == null) {
+            return;
+        }
+        core::LLVMContextDispose(self->raw);
+        self->raw = null;
+        self->is_disposed = true;
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMContextRef {
+        @assert(!self->is_disposed && self->raw != null, "kara: Context used after dispose");
+        return self->raw;
+    }
+
+    pub fn create_module(self: const Self*, name: const uint8*) Module {
+        const raw_ctx = self->as_raw();
+        const mod_raw = core::LLVMModuleCreateWithNameInContext(@cast(const c_char*, name), raw_ctx);
+        return Module.new(mod_raw, raw_ctx, &self->is_disposed);
+    }
+
+    pub fn create_builder(self: const Self*) Builder {
+        const raw_ctx = self->as_raw();
+        const builder_raw = core::LLVMCreateBuilderInContext(raw_ctx);
+        return Builder.new(builder_raw, raw_ctx, &self->is_disposed);
+    }
+
+    pub fn void_type(self: const Self*) VoidType {
+        const raw_ctx = self->as_raw();
+        return VoidType.new(core::LLVMVoidTypeInContext(raw_ctx), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn i1_type(self: const Self*) IntType {
+        const raw_ctx = self->as_raw();
+        return IntType.new(core::LLVMInt1TypeInContext(raw_ctx), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn i8_type(self: const Self*) IntType {
+        const raw_ctx = self->as_raw();
+        return IntType.new(core::LLVMInt8TypeInContext(raw_ctx), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn i16_type(self: const Self*) IntType {
+        const raw_ctx = self->as_raw();
+        return IntType.new(core::LLVMInt16TypeInContext(raw_ctx), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn i32_type(self: const Self*) IntType {
+        const raw_ctx = self->as_raw();
+        return IntType.new(core::LLVMInt32TypeInContext(raw_ctx), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn i64_type(self: const Self*) IntType {
+        const raw_ctx = self->as_raw();
+        return IntType.new(core::LLVMInt64TypeInContext(raw_ctx), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn i128_type(self: const Self*) IntType {
+        const raw_ctx = self->as_raw();
+        return IntType.new(core::LLVMInt128TypeInContext(raw_ctx), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn int_type(self: const Self*, bits: uint32) IntType {
+        const raw_ctx = self->as_raw();
+        return IntType.new(core::LLVMIntTypeInContext(raw_ctx, @cast(c_uint, bits)), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn f32_type(self: const Self*) FloatType {
+        const raw_ctx = self->as_raw();
+        return FloatType.new(core::LLVMFloatTypeInContext(raw_ctx), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn f64_type(self: const Self*) FloatType {
+        const raw_ctx = self->as_raw();
+        return FloatType.new(core::LLVMDoubleTypeInContext(raw_ctx), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn ptr_type(self: const Self*) PointerType {
+        return self->ptr_type_in_addr_space(0);
+    }
+
+    pub fn ptr_type_in_addr_space(self: const Self*, space: uint32) PointerType {
+        const raw_ctx = self->as_raw();
+        return PointerType.new(core::LLVMPointerTypeInContext(raw_ctx, @cast(c_uint, space)), raw_ctx, &self->is_disposed);
+    }
+
+    pub fn struct_type(self: const Self*, fields: const Slice<BasicType>, packed: bool) StructType {
+        const raw_ctx = self->as_raw();
+        const count = fields.len();
+        if (count == 0) {
+            var empty: core::LLVMTypeRef = null;
+            const raw = core::LLVMStructTypeInContext(raw_ctx, &empty, 0, bool_to_llvm(packed));
+            return StructType.new(raw, raw_ctx, &self->is_disposed);
+        }
+        var allocator: Allocator = dynamic LibcAllocator.new();
+        var raw_fields: core::LLVMTypeRef* = allocator.alloc(count * @sizeof(core::LLVMTypeRef));
+        defer allocator.free(raw_fields);
+        for (var i: usize = 0; i < count; i += 1) {
+            const field = fields.get_const(i).unwrap();
+            raw_fields[i] = field->as_raw();
+        }
+        const raw = core::LLVMStructTypeInContext(raw_ctx, raw_fields, @cast(c_uint, count), bool_to_llvm(packed));
+        return StructType.new(raw, raw_ctx, &self->is_disposed);
+    }
+
+    pub fn opaque_struct_type(self: const Self*, name: const uint8*) StructType {
+        const raw_ctx = self->as_raw();
+        const raw = core::LLVMStructCreateNamed(raw_ctx, @cast(const c_char*, name));
+        return StructType.new(raw, raw_ctx, &self->is_disposed);
+    }
+}

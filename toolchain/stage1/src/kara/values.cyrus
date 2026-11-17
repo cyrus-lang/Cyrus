@@ -1,0 +1,526 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::option{Option};
+import std::libc::types{
+    c_unsigned_long_long,
+    c_double, 
+    c_char, 
+    c_uint, 
+};
+
+import .::basic_block{BasicBlock};
+import .::sys::core;
+import .::types{
+    assert_context,
+    bool_to_llvm,
+    PointerType,
+    StructType,
+    ArrayType,
+    FloatType,
+    IntType,
+};
+
+pub enum BasicValue {
+    Pointer(PointerValue),
+    Struct(StructValue),
+    Float(FloatValue),
+    Array(ArrayValue),
+    Int(IntValue),
+
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        switch (*self) {
+            case .Int(v) => return v.as_raw();
+            case .Float(v) => return v.as_raw();
+            case .Pointer(v) => return v.as_raw();
+            case .Struct(v) => return v.as_raw();
+            case .Array(v) => return v.as_raw();
+        }
+    }
+
+    pub fn into_int(self: const Self*) IntValue {
+        switch (*self) {
+            case .Int(v) => return v;
+            else => @panic("kara: expected IntValue in BasicValue");
+        }
+    }
+
+    pub fn into_float(self: const Self*) FloatValue {
+        switch (*self) {
+            case .Float(v) => return v;
+            else => @panic("kara: expected FloatValue in BasicValue");
+        }
+    }
+
+    pub fn into_pointer(self: const Self*) PointerValue {
+        switch (*self) {
+            case .Pointer(v) => return v;
+            else => @panic("kara: expected PointerValue in BasicValue");
+        }
+    }
+
+    pub fn into_struct(self: const Self*) StructValue {
+        switch (*self) {
+            case .Struct(v) => return v;
+            else => @panic("kara: expected StructValue in BasicValue");
+        }
+    }
+
+    pub fn into_array(self: const Self*) ArrayValue {
+        switch (*self) {
+            case .Array(v) => return v;
+            else => @panic("kara: expected ArrayValue in BasicValue");
+        }
+    }
+
+    pub fn from_raw(
+        raw: core::LLVMValueRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        assert_context(context_disposed);
+
+        const ty = core::LLVMTypeOf(raw);
+        const kind = core::LLVMGetTypeKind(ty);
+        
+        if (kind == core::LLVM_INTEGER_TYPE_KIND) {
+            return .Int(IntValue.new(
+                raw, 
+                context_raw, 
+                context_disposed
+            ));
+        }
+        
+        if (kind == core::LLVM_FLOAT_TYPE_KIND    || 
+            kind == core::LLVM_DOUBLE_TYPE_KIND   ||
+            kind == core::LLVM_HALF_TYPE_KIND     || 
+            kind == core::LLVM_BFLOAT_TYPE_KIND   || 
+            kind == core::LLVM_X86_FP80_TYPE_KIND || 
+            kind == core::LLVM_FP128_TYPE_KIND)
+        {
+            return .Float(FloatValue.new(raw, context_raw, context_disposed));
+        }
+
+        if (kind == core::LLVM_POINTER_TYPE_KIND) {
+            return .Pointer(PointerValue.new(raw, context_raw, context_disposed));
+        }
+
+        if (kind == core::LLVM_STRUCT_TYPE_KIND) {
+            return .Struct(StructValue.new(raw, context_raw, context_disposed));
+        }
+        
+        if (kind == core::LLVM_ARRAY_TYPE_KIND) {
+            return .Array(ArrayValue.new(raw, context_raw, context_disposed));
+        }
+        
+        @panic("kara: unsupported LLVMTypeKind for BasicValue");
+    }
+}
+
+pub struct InstructionValue {
+    raw: core::LLVMValueRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMValueRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw,
+            context_raw,
+            context_disposed
+        };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+}
+
+pub struct IntValue {
+    raw: core::LLVMValueRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMValueRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw,
+            context_raw,
+            context_disposed
+        };
+    }
+
+    pub fn const_int(ty: IntType, value: uint64, sign_extend: bool) Self {
+        const raw = core::LLVMConstInt(
+            ty.as_raw(), 
+            @cast(c_unsigned_long_long, value), 
+            bool_to_llvm(sign_extend)
+        );
+
+        return IntValue.new(
+            raw, 
+            ty.context_raw, 
+            ty.context_disposed
+        );
+    }
+
+    pub fn const_zero(ty: IntType) Self {
+        return IntValue.const_int(ty, 0, false);
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn get_type(self: const Self*) IntType {
+        assert_context(self->context_disposed);
+        
+        return IntType.new(
+            core::LLVMTypeOf(self->raw), 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+
+    pub fn as_basic_value(self: const Self*) BasicValue {
+        assert_context(self->context_disposed);
+        return .Int(*self);
+    }
+}
+
+pub struct FloatValue {
+    raw: core::LLVMValueRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMValueRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw, 
+            context_raw, 
+            context_disposed 
+        };
+    }
+
+    pub fn const_float(ty: FloatType, value: float64) Self {
+        const raw = core::LLVMConstReal(
+            ty.as_raw(), 
+            @cast(c_double, value)
+        );
+
+        return FloatValue.new(
+            raw, 
+            ty.context_raw, 
+            ty.context_disposed
+        );
+    }
+
+    [[inline]]
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn get_type(self: const Self*) FloatType {
+        assert_context(self->context_disposed);
+
+        return FloatType.new(
+            core::LLVMTypeOf(self->raw), 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+
+    [[inline]]
+    pub fn as_basic_value(self: const Self*) BasicValue {
+        assert_context(self->context_disposed);
+        return .Float(*self);
+    }
+}
+
+pub struct PointerValue {
+    raw: core::LLVMValueRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMValueRef,
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw, 
+            context_raw, 
+            context_disposed
+        };
+    } 
+
+    pub fn const_null(ty: PointerType) Self {
+        const raw = core::LLVMConstPointerNull(ty.as_raw());
+        return PointerValue.new(raw, ty.context_raw, ty.context_disposed);
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn get_type(self: const Self*) PointerType {
+        assert_context(self->context_disposed);
+
+        return PointerType.new(
+            core::LLVMTypeOf(self->raw), 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+
+    pub fn as_basic_value(self: const Self*) BasicValue {
+        assert_context(self->context_disposed);
+        return .Pointer(*self);
+    }
+}
+
+pub struct StructValue {
+    raw: core::LLVMValueRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMValueRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw, 
+            context_raw, 
+            context_disposed
+        };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn get_type(self: const Self*) StructType {
+        assert_context(self->context_disposed);
+
+        return StructType.new(
+            core::LLVMTypeOf(self->raw), 
+            self->context_raw,
+            self->context_disposed
+        );
+    }
+
+    pub fn as_basic_value(self: const Self*) BasicValue {
+        assert_context(self->context_disposed);
+        return .Struct(*self);
+    }
+}
+
+pub struct ArrayValue {
+    raw: core::LLVMValueRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMValueRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw,
+            context_raw,
+            context_disposed
+        };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn get_type(self: const Self*) ArrayType {
+        assert_context(self->context_disposed);
+
+        return ArrayType.new(
+            core::LLVMTypeOf(self->raw), 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+
+    pub fn as_basic_value(self: const Self*) BasicValue {
+        assert_context(self->context_disposed);
+        return .Array(*self);
+    }
+}
+
+pub struct PhiValue {
+    raw: core::LLVMValueRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMValueRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw,
+            context_raw,
+            context_disposed
+        };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn add_incoming(self: const Self*, value: BasicValue, block: BasicBlock) {
+        assert_context(self->context_disposed);
+        var value_raw = value.as_raw();
+        var basic_block_raw = block.as_raw();
+        core::LLVMAddIncoming(self->raw, &value_raw, &basic_block_raw, 1);
+    }
+
+    pub fn as_basic_value(self: const Self*) BasicValue {
+        assert_context(self->context_disposed);
+
+        return BasicValue.from_raw(
+            self->raw, 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+}
+
+pub struct GlobalValue {
+    raw: core::LLVMValueRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMValueRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw,
+            context_raw,
+            context_disposed
+        };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn set_initializer(self: const Self*, value: BasicValue) {
+        assert_context(self->context_disposed);
+        core::LLVMSetInitializer(self->raw, value.as_raw());
+    }
+
+    pub fn set_constant(self: const Self*, is_constant: bool) {
+        assert_context(self->context_disposed);
+        core::LLVMSetGlobalConstant(self->raw, bool_to_llvm(is_constant));
+    }
+
+    pub fn as_pointer_value(self: const Self*) PointerValue {
+        assert_context(self->context_disposed);
+
+        return PointerValue.new(
+            self->raw, 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+}
+
+pub struct FunctionValue {
+    raw: core::LLVMValueRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMValueRef,
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw,
+            context_raw,
+            context_disposed
+        };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMValueRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn count_params(self: const Self*) uint32 {
+        assert_context(self->context_disposed);
+        return @cast(uint32, core::LLVMCountParams(self->raw));
+    }
+
+    pub fn get_param(self: const Self*, index: uint32) Option<BasicValue> {
+        assert_context(self->context_disposed);
+        const count = self->count_params();
+        
+        if (index >= count) {
+            return .None;
+        }
+
+        const param_raw = core::LLVMGetParam(
+            self->raw, 
+            @cast(c_uint, index)
+        );
+        
+        return .Some(BasicValue.from_raw(
+            param_raw, 
+            self->context_raw, 
+            self->context_disposed
+        ));
+    }
+
+    pub fn append_basic_block(self: const Self*, name: const uint8*) BasicBlock {
+        assert_context(self->context_disposed);
+
+        const basic_block_raw = core::LLVMAppendBasicBlockInContext(
+            self->context_raw,
+            self->raw,
+            @cast(const c_char*, name)
+        );
+        
+        return BasicBlock.new(
+            basic_block_raw, 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+
+    pub fn as_pointer_value(self: const Self*) PointerValue {
+        assert_context(self->context_disposed);
+
+        return PointerValue.new(
+            self->raw, 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+}

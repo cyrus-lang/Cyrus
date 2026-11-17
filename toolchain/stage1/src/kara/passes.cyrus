@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types{c_char};
+import std::errors{ErrorOr};
+import std::string{String};
+
+import .::target{TargetMachine};
+import .::types{bool_to_llvm};
+import .::module{Module};
+import .::sys::passes;
+import .::sys::core;
+
+pub struct PassOptions {
+    raw: passes::LLVMPassBuilderOptionsRef,
+    is_disposed: bool,
+
+    pub fn new() Self {
+        const raw = passes::LLVMCreatePassBuilderOptions();
+
+        return Self {
+            raw, 
+            is_disposed: false
+        };
+    }
+
+    pub fn dispose(
+        self: Self*
+    ) {
+        if (self->is_disposed || self->raw == null) {
+            return;
+        }
+
+        passes::LLVMDisposePassBuilderOptions(
+            self->raw
+        );
+
+        self->raw = null;
+        self->is_disposed = true;
+    }
+
+    pub fn as_raw(
+        self: const Self*
+    ) passes::LLVMPassBuilderOptionsRef {
+        @assert(
+            !self->is_disposed && self->raw != null, 
+            "kara: PassOptions used after dispose"
+        );
+
+        return self->raw;
+    }
+
+    pub fn set_verify_each(self: const Self*, enabled: bool) {
+        passes::LLVMPassBuilderOptionsSetVerifyEach(
+            self->as_raw(), 
+            bool_to_llvm(enabled)
+        );
+    }
+
+    pub fn set_debug_logging(self: const Self*, enabled: bool) {
+        passes::LLVMPassBuilderOptionsSetDebugLogging(
+            self->as_raw(), 
+            bool_to_llvm(enabled)
+        );
+    }
+
+    pub fn set_loop_interleaving(self: const Self*, enabled: bool) {
+        passes::LLVMPassBuilderOptionsSetLoopInterleaving(
+            self->as_raw(), 
+            bool_to_llvm(enabled)
+        );
+    }
+
+    pub fn set_loop_vectorization(self: const Self*, enabled: bool) {
+        passes::LLVMPassBuilderOptionsSetLoopVectorization(
+            self->as_raw(), 
+            bool_to_llvm(enabled)
+        );
+    }
+
+    pub fn set_slp_vectorization(self: const Self*, enabled: bool) {
+        passes::LLVMPassBuilderOptionsSetSLPVectorization(
+            self->as_raw(), 
+            bool_to_llvm(enabled)
+        );
+    }
+
+    pub fn set_loop_unrolling(self: const Self*, enabled: bool) {
+        passes::LLVMPassBuilderOptionsSetLoopUnrolling(
+            self->as_raw(), 
+            bool_to_llvm(enabled)
+        );
+    }
+}
+
+pub fn run_passes(
+    module: const Module*, 
+    pipeline: const uint8*, 
+    target_machine: const TargetMachine*
+) ErrorOr<(), String> {
+    var options = PassOptions.new();
+    defer options.dispose();
+
+    return run_passes_with_options(
+        module, 
+        pipeline, 
+        target_machine, 
+        &options
+    );
+}
+
+pub fn run_passes_with_options(
+    module: const Module*,
+    pipeline: const uint8*,
+    target_machine: const TargetMachine*,
+    options: const PassOptions*
+) ErrorOr<(), String> {
+    const err = passes::LLVMRunPasses(
+        module->as_raw(),
+        @cast(const c_char*, pipeline),
+        target_machine->as_raw(),
+        options->as_raw()
+    );
+
+    if (err != null) {
+        return .Error(
+            core::llvm_error_to_string(err)
+        );
+    }
+
+    return .Value(());
+}

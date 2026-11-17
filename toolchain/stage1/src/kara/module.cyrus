@@ -1,0 +1,239 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem::libc{LibcAllocator};
+import std::libc::types{c_char};
+import std::errors{ErrorOr};
+import std::mem{Allocator};
+import std::option{Option};
+import std::string{String};
+
+import .::values{FunctionValue, GlobalValue};
+import .::sys::bitwriter;
+import .::sys::analysis;
+import .::sys::core;
+import .::types{
+    assert_context,
+    FunctionType,
+    BasicType,
+};
+
+pub struct Module {
+    raw: core::LLVMModuleRef,
+    is_disposed: bool,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(
+        raw: core::LLVMModuleRef, 
+        context_raw: core::LLVMContextRef, 
+        context_disposed: const bool*
+    ) Self {
+        return Self {
+            raw,
+            context_raw,
+            context_disposed,
+            is_disposed: false,
+        };
+    }
+
+    pub fn dispose(
+        self: Self*
+    ) {
+        if (self->is_disposed || self->raw == null) {
+            return;
+        }
+
+        core::LLVMDisposeModule(
+            self->raw
+        );
+
+        self->raw = null;
+        self->is_disposed = true;
+    }
+
+    pub fn as_raw(
+        self: const Self*
+    ) core::LLVMModuleRef {
+        assert_context(
+            self->context_disposed
+        );
+
+        @assert(
+            !self->is_disposed && self->raw != null, 
+            "kara: Module used after dispose"
+        );
+
+        return self->raw;
+    }
+
+    pub fn add_function(
+        self: const Self*, 
+        name: const uint8*, 
+        fn_type: FunctionType
+    ) FunctionValue {
+        const module_raw = self->as_raw();
+
+        const fn_raw = core::LLVMAddFunction(
+            module_raw, 
+            @cast(const c_char*, name), 
+            fn_type.as_raw()
+        );
+
+        return FunctionValue.new(
+            fn_raw, 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+
+    pub fn get_function(
+        self: const Self*, 
+        name: const uint8*
+    ) Option<FunctionValue> {
+        const module_raw = self->as_raw();
+
+        const fn_raw = core::LLVMGetNamedFunction(
+            module_raw, 
+            @cast(const c_char*, name)
+        );
+
+        if (fn_raw == null) {
+            return .None;
+        }
+
+        return .Some(
+            FunctionValue.new(
+                fn_raw, 
+                self->context_raw, 
+                self->context_disposed
+            )
+        );
+    }
+
+    pub fn add_global(
+        self: const Self*, 
+        ty: BasicType, 
+        name: const uint8*
+    ) GlobalValue {
+        const module_raw = self->as_raw();
+
+        const global_value_raw = core::LLVMAddGlobal(
+            module_raw, 
+            ty.as_raw(), 
+            @cast(const c_char*, name)
+        );
+
+        return GlobalValue.new(
+            global_value_raw, 
+            self->context_raw, 
+            self->context_disposed
+        );
+    }
+
+    pub fn get_global(
+        self: const Self*, 
+        name: const uint8*
+    ) Option<GlobalValue> {
+        const module_raw = self->as_raw();
+
+        const global_value_raw = core::LLVMGetNamedGlobal(
+            module_raw, 
+            @cast(const c_char*, name)
+        );
+
+        if (global_value_raw == null) {
+            return .None;
+        }
+
+        return .Some(
+            GlobalValue.new(
+                global_value_raw, 
+                self->context_raw, 
+                self->context_disposed
+            )
+        );
+    }
+
+    pub fn set_target(
+        self: const Self*, 
+        triple: const uint8*
+    ) {
+        const module_raw = self->as_raw();
+
+        core::LLVMSetTarget(
+            module_raw, 
+            @cast(const c_char*, triple)
+        );
+    }
+
+    pub fn set_data_layout(
+        self: const Self*, 
+        layout: const uint8*
+    ) {
+        const module_raw = self->as_raw();
+
+        core::LLVMSetDataLayout(
+            module_raw, 
+            @cast(const c_char*, layout)
+        );
+    }
+
+    pub fn verify(
+        self: const Self*
+    ) ErrorOr<(), String> {
+        const module_raw = self->as_raw();
+        
+        var err: c_char*;
+        
+        const fail = analysis::LLVMVerifyModule(
+            module_raw, 
+            analysis::LLVM_RETURN_STATUS_ACTION, 
+            &err
+        );
+
+        if (fail != 0) {
+            return .Error(
+                core::llvm_mesg_to_string(err)
+            );
+        }
+
+        if (err != null) {
+            core::LLVMDisposeMessage(err);
+        }
+
+        return .Value(());
+    }
+
+    pub fn print_to_string(
+        self: const Self*
+    ) String {
+        const module_raw = self->as_raw();
+        const ir_ptr = core::LLVMPrintModuleToString(module_raw);
+        return core::llvm_mesg_to_string(ir_ptr);
+    }
+
+    pub fn write_bitcode_to_file(
+        self: const Self*, 
+        path: const uint8*
+    ) ErrorOr<(), String> {
+        const module_raw = self->as_raw();
+        const rc = bitwriter::LLVMWriteBitcodeToFile(
+            module_raw, 
+            @cast(const c_char*, path)
+        );
+
+        if (rc != 0) {
+            const allocator: Allocator = dynamic LibcAllocator.new();
+
+            return .Error(
+                String.from_str(
+                    allocator, 
+                    "fail to write bitcode to file"
+                )
+            );
+        }
+
+        return .Value(());
+    }
+}

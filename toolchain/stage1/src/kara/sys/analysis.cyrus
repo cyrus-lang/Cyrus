@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types{c_char, c_int};
+
+import .::core{
+    LLVMModuleRef, 
+    LLVMValueRef, 
+    LLVMBool
+};
+
+pub const LLVM_ABORT_PROCESS_ACTION: c_int = 0;
+pub const LLVM_PRINT_MESSAGE_ACTION: c_int = 1;
+pub const LLVM_RETURN_STATUS_ACTION: c_int = 2;
+
+pub extern "C" {
+    fn LLVMVerifyModule(M: LLVMModuleRef, Action: c_int, OutMessage: c_char**) LLVMBool;
+    fn LLVMVerifyFunction(Fn: LLVMValueRef, Action: c_int) LLVMBool;
+}

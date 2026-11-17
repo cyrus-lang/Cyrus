@@ -16,19 +16,19 @@ pub fn report_module_not_found(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("module `");
-    msg.push_str(name);
-    msg.push_str("` not found");
+    var mesg = String.new(allocator);
+    mesg.push_str("module `");
+    mesg.push_str(name);
+    mesg.push_str("` not found");
 
     var help = String.new(allocator);
     help.push_str("check that it exists under one of the configured source directories");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help(help.as_str_const());
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
     help.free();
 }
 
@@ -37,15 +37,15 @@ pub fn report_stdlib_not_found(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "standard library not found");
+    var mesg = String.from_str(allocator, "standard library not found");
     var help = String.new(allocator);
     help.push_str("set it with `CYRUS_STDLIB_PATH` environment variable or `--stdlib` command line argument");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help(help.as_str_const());
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
     help.free();
 }
 
@@ -55,10 +55,10 @@ pub fn report_duplicate_module(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("module `");
-    msg.push_str(name);
-    msg.push_str("` is both a file and a directory");
+    var mesg = String.new(allocator);
+    mesg.push_str("module `");
+    mesg.push_str(name);
+    mesg.push_str("` is both a file and a directory");
 
     var help = String.new(allocator);
     help.push_str("keep only one of `");
@@ -67,11 +67,11 @@ pub fn report_duplicate_module(
     help.push_str(name);
     help.push_str("/` directory");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help(help.as_str_const());
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
     help.free();
 }
 
@@ -80,13 +80,13 @@ pub fn report_module_cannot_import_itself(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "module cannot import itself");
+    var mesg = String.from_str(allocator, "module cannot import itself");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("remove this import statement");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_relative_import_escapes_project_root(
@@ -94,13 +94,13 @@ pub fn report_relative_import_escapes_project_root(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "relative import navigates above the project root directory");
+    var mesg = String.from_str(allocator, "relative import navigates above the project root directory");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("use a path that stays under the project base directory");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_import_cycle(
@@ -109,8 +109,8 @@ pub fn report_import_cycle(
     span: Span,
     active: const Vec<String>*,
 ) {
-    var msg = String.from_str(allocator, "import cycle detected");
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    var mesg = String.from_str(allocator, "import cycle detected");
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("break the cycle by removing one import");
 
     for (var i: usize = 0; i < active->len(); i += 1) {
@@ -119,7 +119,7 @@ pub fn report_import_cycle(
     }
 
     dctx->report(diag);
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_import_twice(
@@ -128,16 +128,16 @@ pub fn report_import_twice(
     span: Span,
     module_name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("module `");
-    msg.push_str(module_name);
-    msg.push_str("` imported twice");
+    var mesg = String.new(allocator);
+    mesg.push_str("module `");
+    mesg.push_str(module_name);
+    mesg.push_str("` imported twice");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("consider removing the previous declaration");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_symbol_not_found(
@@ -146,16 +146,16 @@ pub fn report_symbol_not_found(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("symbol `");
-    msg.push_str(name);
-    msg.push_str("` not found");
+    var mesg = String.new(allocator);
+    mesg.push_str("symbol `");
+    mesg.push_str(name);
+    mesg.push_str("` not found");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("declare or import it before use");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_namespace_segment_not_found(
@@ -164,21 +164,21 @@ pub fn report_namespace_segment_not_found(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("symbol `");
-    msg.push_str(name);
-    msg.push_str("` not found");
+    var mesg = String.new(allocator);
+    mesg.push_str("symbol `");
+    mesg.push_str(name);
+    mesg.push_str("` not found");
 
     var help = String.new(allocator);
     help.push_str("declare it with `mod ");
     help.push_str(name);
     help.push_str(" { ... }` inside that module or import the correct path");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help(help.as_str_const());
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
     help.free();
 }
 
@@ -188,19 +188,19 @@ pub fn report_namespace_as_single(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("namespace `");
-    msg.push_str(name);
-    msg.push_str("` cannot be imported as a single item");
+    var mesg = String.new(allocator);
+    mesg.push_str("namespace `");
+    mesg.push_str(name);
+    mesg.push_str("` cannot be imported as a single item");
 
     var help = String.new(allocator);
     help.push_str("import it as a path segment instead");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help(help.as_str_const());
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
     help.free();
 }
 
@@ -209,14 +209,14 @@ pub fn report_expected_ident_in_import(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("expected an ident in module import path");
+    var mesg = String.new(allocator);
+    mesg.push_str("expected an ident in module import path");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("import path segments must be idents");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_symbol_not_defined_in_module(
@@ -226,18 +226,18 @@ pub fn report_symbol_not_defined_in_module(
     symbol_name: const uint8*,
     module_name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("symbol `");
-    msg.push_str(symbol_name);
-    msg.push_str("` is not defined in module `");
-    msg.push_str(module_name);
-    msg.push('`');
+    var mesg = String.new(allocator);
+    mesg.push_str("symbol `");
+    mesg.push_str(symbol_name);
+    mesg.push_str("` is not defined in module `");
+    mesg.push_str(module_name);
+    mesg.push('`');
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("declare it in that module or import it from the correct path");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_private_symbol(
@@ -246,16 +246,16 @@ pub fn report_private_symbol(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("symbol `");
-    msg.push_str(name);
-    msg.push_str("` is private");
+    var mesg = String.new(allocator);
+    mesg.push_str("symbol `");
+    mesg.push_str(name);
+    mesg.push_str("` is private");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("declare it as `pub` to make it importable");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_duplicate_symbol(
@@ -264,16 +264,16 @@ pub fn report_duplicate_symbol(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("symbol `");
-    msg.push_str(name);
-    msg.push_str("` is already declared");
+    var mesg = String.new(allocator);
+    mesg.push_str("symbol `");
+    mesg.push_str(name);
+    mesg.push_str("` is already declared");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("remove or rename the duplicate declaration");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_label_already_defined(
@@ -282,16 +282,16 @@ pub fn report_label_already_defined(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("label `");
-    msg.push_str(name);
-    msg.push_str("` already defined in this scope");
+    var mesg = String.new(allocator);
+    mesg.push_str("label `");
+    mesg.push_str(name);
+    mesg.push_str("` already defined in this scope");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("remove or rename the duplicate label");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_label_not_defined(
@@ -300,16 +300,16 @@ pub fn report_label_not_defined(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("label `");
-    msg.push_str(name);
-    msg.push_str("` not defined in this scope");
+    var mesg = String.new(allocator);
+    mesg.push_str("label `");
+    mesg.push_str(name);
+    mesg.push_str("` not defined in this scope");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("declare the label before jumping to it");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_type_does_not_accept_type_args(
@@ -318,16 +318,16 @@ pub fn report_type_does_not_accept_type_args(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("type `");
-    msg.push_str(name);
-    msg.push_str("` does not accept any type arguments");
+    var mesg = String.new(allocator);
+    mesg.push_str("type `");
+    mesg.push_str(name);
+    mesg.push_str("` does not accept any type arguments");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("remove the type arguments");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_self_type_does_not_accept_type_args(
@@ -335,13 +335,13 @@ pub fn report_self_type_does_not_accept_type_args(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "self type does not accept any type arguments");
+    var mesg = String.from_str(allocator, "self type does not accept any type arguments");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("remove the type arguments");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_invalid_literal_suffix(
@@ -349,12 +349,12 @@ pub fn report_invalid_literal_suffix(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "invalid literal suffix");
+    var mesg = String.from_str(allocator, "invalid literal suffix");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_type_not_found(
@@ -363,16 +363,16 @@ pub fn report_type_not_found(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("type `");
-    msg.push_str(name);
-    msg.push_str("` not found");
+    var mesg = String.new(allocator);
+    mesg.push_str("type `");
+    mesg.push_str(name);
+    mesg.push_str("` not found");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("declare or import it before use");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_invalid_top_level_statement(
@@ -380,13 +380,13 @@ pub fn report_invalid_top_level_statement(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "invalid top-level statement");
+    var mesg = String.from_str(allocator, "invalid top-level statement");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("only declarations are allowed at file scope");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_invalid_statement(
@@ -394,12 +394,12 @@ pub fn report_invalid_statement(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "invalid statement");
+    var mesg = String.from_str(allocator, "invalid statement");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_invalid_untyped_func_param(
@@ -407,13 +407,13 @@ pub fn report_invalid_untyped_func_param(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "function parameter must have a type");
+    var mesg = String.from_str(allocator, "function parameter must have a type");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("add an explicit type annotation to the parameter");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_duplicate_generic_param(
@@ -422,16 +422,16 @@ pub fn report_duplicate_generic_param(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("generic parameter `");
-    msg.push_str(name);
-    msg.push_str("` is declared more than once");
+    var mesg = String.new(allocator);
+    mesg.push_str("generic parameter `");
+    mesg.push_str(name);
+    mesg.push_str("` is declared more than once");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("rename the duplicate generic parameter");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_duplicate_symbol_in_this_scope(
@@ -440,16 +440,16 @@ pub fn report_duplicate_symbol_in_this_scope(
     span: Span,
     name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("symbol `");
-    msg.push_str(name);
-    msg.push_str("` cannot be declared again");
+    var mesg = String.new(allocator);
+    mesg.push_str("symbol `");
+    mesg.push_str(name);
+    mesg.push_str("` cannot be declared again");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("remove or rename the duplicate declaration");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_duplicate_method_name(
@@ -459,21 +459,21 @@ pub fn report_duplicate_method_name(
     struct_name: const uint8*,
     method_name: const uint8*,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("duplicate declaration of method `");
-    msg.push_str(method_name);
-    msg.push_str("` in `");
-    msg.push_str(struct_name);
-    msg.push_str("`");
+    var mesg = String.new(allocator);
+    mesg.push_str("duplicate declaration of method `");
+    mesg.push_str(method_name);
+    mesg.push_str("` in `");
+    mesg.push_str(struct_name);
+    mesg.push_str("`");
 
     var help = String.new(allocator);
     help.push_str("consider renaming the method to a different name");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help(help.as_str_const());
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
     help.free();
 }
 
@@ -523,16 +523,16 @@ pub fn report_invalid_struct_init_operand(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "struct initializer operand must be a type or path");
+    var mesg = String.from_str(allocator, "struct initializer operand must be a type or path");
 
     var help = String.new(allocator);
     help.push_str("use a type name, identifier, or module path");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help(help.as_str_const());
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
     help.free();
 }
 
@@ -541,12 +541,12 @@ pub fn report_builtin_block_as_type(
     allocator: Allocator,
     span: Span,
 ) {
-    var msg = String.from_str(allocator, "builtin block cannot be used as a type");
+    var mesg = String.from_str(allocator, "builtin block cannot be used as a type");
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_profile_unavailable_reference(
@@ -593,17 +593,17 @@ pub fn report_overlapping_profile_definitions(
     name: const uint8*,
     overlap: ProfileSet,
 ) {
-    var msg = String.new(allocator);
-    msg.push_str("overlapping definitions of `");
-    msg.push_str(name);
-    msg.push_str("` in profile ");
-    overlap.append_to(&msg);
+    var mesg = String.new(allocator);
+    mesg.push_str("overlapping definitions of `");
+    mesg.push_str(name);
+    mesg.push_str("` in profile ");
+    overlap.append_to(&mesg);
 
-    const diag = Diag.new(allocator, .Error, msg.as_str_const(), span);
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     diag->help("each profile may have at most one definition of a symbol");
     dctx->report(diag);
 
-    msg.free();
+    mesg.free();
 }
 
 pub fn report_inactive_profile_block(

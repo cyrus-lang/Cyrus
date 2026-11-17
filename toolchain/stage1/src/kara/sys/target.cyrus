@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::libc::types{c_char, c_int};
+
+import .::core{
+    LLVMMemoryBufferRef, 
+    LLVMModuleRef, 
+    LLVMBool,
+};
+
+pub struct LLVMOpaqueTarget { _unused: uint8 }
+pub type LLVMTargetRef = LLVMOpaqueTarget*;
+
+pub struct LLVMOpaqueTargetMachine { _unused: uint8 }
+pub type LLVMTargetMachineRef = LLVMOpaqueTargetMachine*;
+
+pub struct LLVMOpaqueTargetData { _unused: uint8 }
+pub type LLVMTargetDataRef = LLVMOpaqueTargetData*;
+
+pub const LLVM_CODE_GEN_LEVEL_NONE: c_int = 0;
+pub const LLVM_CODE_GEN_LEVEL_LESS: c_int = 1;
+pub const LLVM_CODE_GEN_LEVEL_DEFAULT: c_int = 2;
+pub const LLVM_CODE_GEN_LEVEL_AGGRESSIVE: c_int = 3;
+
+pub const LLVM_RELOC_DEFAULT: c_int = 0;
+pub const LLVM_RELOC_STATIC: c_int = 1;
+pub const LLVM_RELOC_PIC: c_int = 2;
+pub const LLVM_RELOC_DYNAMIC_NO_PIC: c_int = 3;
+
+pub const LLVM_CODE_MODEL_DEFAULT: c_int = 0;
+pub const LLVM_CODE_MODEL_JIT_DEFAULT: c_int = 1;
+pub const LLVM_CODE_MODEL_TINY: c_int = 2;
+pub const LLVM_CODE_MODEL_SMALL: c_int = 3;
+pub const LLVM_CODE_MODEL_KERNEL: c_int = 4;
+pub const LLVM_CODE_MODEL_MEDIUM: c_int = 5;
+pub const LLVM_CODE_MODEL_LARGE: c_int = 6;
+
+pub const LLVM_ASSEMBLY_FILE: c_int = 0;
+pub const LLVM_OBJECT_FILE: c_int = 1;
+
+pub extern "C" {
+    fn LLVMInitializeX86TargetInfo() void;
+    fn LLVMInitializeX86AsmPrinter() void;
+    fn LLVMInitializeX86TargetMC() void;
+    fn LLVMInitializeX86Target() void;
+
+    fn LLVMInitializeAArch64TargetInfo() void;
+    fn LLVMInitializeAArch64AsmPrinter() void;
+    fn LLVMInitializeAArch64TargetMC() void;
+    fn LLVMInitializeAArch64Target() void;
+
+    fn LLVMNormalizeTargetTriple(triple: const c_char*) c_char*;
+    fn LLVMGetDefaultTargetTriple() c_char*;
+    fn LLVMGetHostCPUFeatures() c_char*;
+    fn LLVMGetHostCPUName() c_char*;
+
+    fn LLVMGetTargetFromTriple(
+        Triple: const c_char*, 
+        T: LLVMTargetRef*, 
+        ErrorMessage: c_char**
+    ) LLVMBool;
+
+    fn LLVMGetTargetFromName(Name: const c_char*) LLVMTargetRef;
+    fn LLVMGetTargetDescription(T: LLVMTargetRef) const c_char*;
+    fn LLVMGetTargetName(T: LLVMTargetRef) const c_char*;
+
+    fn LLVMCreateTargetMachine(
+        T: LLVMTargetRef,
+        Triple: const c_char*,
+        CPU: const c_char*,
+        Features: const c_char*,
+        Level: c_int,
+        Reloc: c_int,
+        CodeModel: c_int
+    ) LLVMTargetMachineRef;
+
+    fn LLVMDisposeTargetMachine(T: LLVMTargetMachineRef) void;
+
+    fn LLVMCreateTargetDataLayout(T: LLVMTargetMachineRef) LLVMTargetDataRef;
+    fn LLVMCopyStringRepOfTargetData(TD: LLVMTargetDataRef) c_char*;
+    fn LLVMDisposeTargetData(TD: LLVMTargetDataRef) void;
+
+    fn LLVMTargetMachineEmitToFile(
+        T: LLVMTargetMachineRef,
+        M: LLVMModuleRef,
+        Filename: const c_char*,
+        codegen: c_int,
+        ErrorMessage: c_char**
+    ) LLVMBool;
+}

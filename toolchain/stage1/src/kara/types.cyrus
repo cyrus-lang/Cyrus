@@ -1,0 +1,433 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem::libc{LibcAllocator};
+import std::mem{Allocator};
+import std::slices{Slice};
+import std::libc::types{
+    c_unsigned_long_long,
+    c_uint, 
+    c_int, 
+};
+
+import .::sys::core;
+
+pub enum IntPredicate {
+    EQ,
+    NE,
+    UGT,
+    UGE,
+    ULT,
+    ULE,
+    SGT,
+    SGE,
+    SLT,
+    SLE,
+
+    pub fn to_raw(self: const Self*) c_int {
+        switch (*self) {
+            case .EQ => return core::LLVM_INT_EQ;
+            case .NE => return core::LLVM_INT_NE;
+            case .UGT => return core::LLVM_INT_UGT;
+            case .UGE => return core::LLVM_INT_UGE;
+            case .ULT => return core::LLVM_INT_ULT;
+            case .ULE => return core::LLVM_INT_ULE;
+            case .SGT => return core::LLVM_INT_SGT;
+            case .SGE => return core::LLVM_INT_SGE;
+            case .SLT => return core::LLVM_INT_SLT;
+            case .SLE => return core::LLVM_INT_SLE;
+        }
+    }
+}
+
+pub enum FloatPredicate {
+    False,
+    OEQ,
+    OGT,
+    OGE,
+    OLT,
+    OLE,
+    ONE,
+    ORD,
+    UNO,
+    UEQ,
+    UGT,
+    UGE,
+    ULT,
+    ULE,
+    UNE,
+    True,
+
+    pub fn to_raw(self: const Self*) c_int {
+        switch (*self) {
+            case .False => return core::LLVM_REAL_PREDICATE_FALSE;
+            case .OEQ => return core::LLVM_REAL_OEQ;
+            case .OGT => return core::LLVM_REAL_OGT;
+            case .OGE => return core::LLVM_REAL_OGE;
+            case .OLT => return core::LLVM_REAL_OLT;
+            case .OLE => return core::LLVM_REAL_OLE;
+            case .ONE => return core::LLVM_REAL_ONE;
+            case .ORD => return core::LLVM_REAL_ORD;
+            case .UNO => return core::LLVM_REAL_UNO;
+            case .UEQ => return core::LLVM_REAL_UEQ;
+            case .UGT => return core::LLVM_REAL_UGT;
+            case .UGE => return core::LLVM_REAL_UGE;
+            case .ULT => return core::LLVM_REAL_ULT;
+            case .ULE => return core::LLVM_REAL_ULE;
+            case .UNE => return core::LLVM_REAL_UNE;
+            case .True => return core::LLVM_REAL_PREDICATE_TRUE;
+        }
+    }
+}
+
+pub struct VoidType {
+    raw: core::LLVMTypeRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(raw: core::LLVMTypeRef, context_raw: core::LLVMContextRef, context_disposed: const bool*) Self {
+        return Self { raw, context_raw, context_disposed };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMTypeRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn fn_type(self: const Self*, param_types: const Slice<BasicType>, is_var_arg: bool) FunctionType {
+        assert_context(self->context_disposed);
+        return make_fn_type(self->raw, self->context_raw, self->context_disposed, param_types, is_var_arg);
+    }
+}
+
+pub struct IntType {
+    raw: core::LLVMTypeRef,
+    pub context_raw: core::LLVMContextRef,
+    pub context_disposed: const bool*,
+
+    pub fn new(raw: core::LLVMTypeRef, context_raw: core::LLVMContextRef, context_disposed: const bool*) Self {
+        return Self { raw, context_raw, context_disposed };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMTypeRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn get_bit_width(self: const Self*) uint32 {
+        assert_context(self->context_disposed);
+        return @cast(uint32, core::LLVMGetIntTypeWidth(self->raw));
+    }
+
+    pub fn as_basic_type(self: const Self*) BasicType {
+        assert_context(self->context_disposed);
+        return .Int(*self);
+    }
+
+    pub fn array_type(self: const Self*, count: uint64) ArrayType {
+        assert_context(self->context_disposed);
+        const raw = core::LLVMArrayType2(self->raw, @cast(c_unsigned_long_long, count));
+        return ArrayType.new(raw, self->context_raw, self->context_disposed);
+    }
+
+    pub fn fn_type(self: const Self*, param_types: const Slice<BasicType>, is_var_arg: bool) FunctionType {
+        assert_context(self->context_disposed);
+        return make_fn_type(self->raw, self->context_raw, self->context_disposed, param_types, is_var_arg);
+    }
+}
+
+pub struct FloatType {
+    raw: core::LLVMTypeRef,
+    pub context_raw: core::LLVMContextRef,
+    pub context_disposed: const bool*,
+
+    pub fn new(raw: core::LLVMTypeRef, context_raw: core::LLVMContextRef, context_disposed: const bool*) Self {
+        return Self { raw, context_raw, context_disposed };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMTypeRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn as_basic_type(self: const Self*) BasicType {
+        assert_context(self->context_disposed);
+        return .Float(*self);
+    }
+
+    pub fn array_type(self: const Self*, count: uint64) ArrayType {
+        assert_context(self->context_disposed);
+        const raw = core::LLVMArrayType2(self->raw, @cast(c_unsigned_long_long, count));
+        return ArrayType.new(raw, self->context_raw, self->context_disposed);
+    }
+
+    pub fn fn_type(self: const Self*, param_types: const Slice<BasicType>, is_var_arg: bool) FunctionType {
+        assert_context(self->context_disposed);
+        return make_fn_type(self->raw, self->context_raw, self->context_disposed, param_types, is_var_arg);
+    }
+}
+
+pub struct PointerType {
+    raw: core::LLVMTypeRef,
+    pub context_raw: core::LLVMContextRef,
+    pub context_disposed: const bool*,
+
+    pub fn new(raw: core::LLVMTypeRef, context_raw: core::LLVMContextRef, context_disposed: const bool*) Self {
+        return Self { raw, context_raw, context_disposed };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMTypeRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn as_basic_type(self: const Self*) BasicType {
+        assert_context(self->context_disposed);
+        return .Pointer(*self);
+    }
+
+    pub fn array_type(self: const Self*, count: uint64) ArrayType {
+        assert_context(self->context_disposed);
+        const raw = core::LLVMArrayType2(self->raw, @cast(c_unsigned_long_long, count));
+        return ArrayType.new(raw, self->context_raw, self->context_disposed);
+    }
+
+    pub fn fn_type(self: const Self*, param_types: const Slice<BasicType>, is_var_arg: bool) FunctionType {
+        assert_context(self->context_disposed);
+        return make_fn_type(self->raw, self->context_raw, self->context_disposed, param_types, is_var_arg);
+    }
+}
+
+pub struct StructType {
+    raw: core::LLVMTypeRef,
+    pub context_raw: core::LLVMContextRef,
+    pub context_disposed: const bool*,
+
+    pub fn new(raw: core::LLVMTypeRef, context_raw: core::LLVMContextRef, context_disposed: const bool*) Self {
+        return Self { raw, context_raw, context_disposed };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMTypeRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn as_basic_type(self: const Self*) BasicType {
+        assert_context(self->context_disposed);
+        return .Struct(*self);
+    }
+
+    pub fn set_body(self: const Self*, fields: const Slice<BasicType>, packed: bool) {
+        assert_context(self->context_disposed);
+        const count = fields.len();
+        if (count == 0) {
+            var empty: core::LLVMTypeRef = null;
+            core::LLVMStructSetBody(self->raw, &empty, 0, bool_to_llvm(packed));
+            return;
+        }
+        var allocator: Allocator = dynamic LibcAllocator.new();
+        var raw_fields: core::LLVMTypeRef* = allocator.alloc(count * @sizeof(core::LLVMTypeRef));
+        defer allocator.free(raw_fields);
+        for (var i: usize = 0; i < count; i += 1) {
+            const field = fields.get_const(i).unwrap();
+            raw_fields[i] = field->as_raw();
+        }
+        core::LLVMStructSetBody(self->raw, raw_fields, @cast(c_uint, count), bool_to_llvm(packed));
+    }
+
+    pub fn array_type(self: const Self*, count: uint64) ArrayType {
+        assert_context(self->context_disposed);
+        const raw = core::LLVMArrayType2(self->raw, @cast(c_unsigned_long_long, count));
+        return ArrayType.new(raw, self->context_raw, self->context_disposed);
+    }
+
+    pub fn fn_type(self: const Self*, param_types: const Slice<BasicType>, is_var_arg: bool) FunctionType {
+        assert_context(self->context_disposed);
+        return make_fn_type(self->raw, self->context_raw, self->context_disposed, param_types, is_var_arg);
+    }
+}
+
+pub struct ArrayType {
+    raw: core::LLVMTypeRef,
+    pub context_raw: core::LLVMContextRef,
+    pub context_disposed: const bool*,
+
+    pub fn new(raw: core::LLVMTypeRef, context_raw: core::LLVMContextRef, context_disposed: const bool*) Self {
+        return Self { raw, context_raw, context_disposed };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMTypeRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+
+    pub fn as_basic_type(self: const Self*) BasicType {
+        assert_context(self->context_disposed);
+        return .Array(*self);
+    }
+
+    pub fn array_type(self: const Self*, count: uint64) ArrayType {
+        assert_context(self->context_disposed);
+        const raw = core::LLVMArrayType2(self->raw, @cast(c_unsigned_long_long, count));
+        return ArrayType.new(raw, self->context_raw, self->context_disposed);
+    }
+
+    pub fn fn_type(self: const Self*, param_types: const Slice<BasicType>, is_var_arg: bool) FunctionType {
+        assert_context(self->context_disposed);
+        return make_fn_type(self->raw, self->context_raw, self->context_disposed, param_types, is_var_arg);
+    }
+}
+
+pub struct FunctionType {
+    raw: core::LLVMTypeRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+
+    pub fn new(raw: core::LLVMTypeRef, context_raw: core::LLVMContextRef, context_disposed: const bool*) Self {
+        return Self { raw, context_raw, context_disposed };
+    }
+
+    pub fn as_raw(self: const Self*) core::LLVMTypeRef {
+        assert_context(self->context_disposed);
+        return self->raw;
+    }
+}
+
+pub enum BasicType {
+    Int(IntType),
+    Float(FloatType),
+    Pointer(PointerType),
+    Struct(StructType),
+    Array(ArrayType),
+
+    pub fn as_raw(self: const Self*) core::LLVMTypeRef {
+        switch (*self) {
+            case .Int(t) => return t.as_raw();
+            case .Float(t) => return t.as_raw();
+            case .Pointer(t) => return t.as_raw();
+            case .Struct(t) => return t.as_raw();
+            case .Array(t) => return t.as_raw();
+        }
+    }
+
+    pub fn context_raw_handle(self: const Self*) core::LLVMContextRef {
+        switch (*self) {
+            case .Int(t) => return t.context_raw;
+            case .Float(t) => return t.context_raw;
+            case .Pointer(t) => return t.context_raw;
+            case .Struct(t) => return t.context_raw;
+            case .Array(t) => return t.context_raw;
+        }
+    }
+
+    pub fn context_disposed_ptr(self: const Self*) const bool* {
+        switch (*self) {
+            case .Int(t) => return t.context_disposed;
+            case .Float(t) => return t.context_disposed;
+            case .Pointer(t) => return t.context_disposed;
+            case .Struct(t) => return t.context_disposed;
+            case .Array(t) => return t.context_disposed;
+        }
+    }
+
+    pub fn array_type(self: const Self*, count: uint64) ArrayType {
+        const disposed = self->context_disposed_ptr();
+        assert_context(disposed);
+        const raw = core::LLVMArrayType2(self->as_raw(), @cast(c_unsigned_long_long, count));
+        return ArrayType.new(raw, self->context_raw_handle(), disposed);
+    }
+
+    pub fn fn_type(self: const Self*, param_types: const Slice<BasicType>, is_var_arg: bool) FunctionType {
+        const disposed = self->context_disposed_ptr();
+        assert_context(disposed);
+        return make_fn_type(self->as_raw(), self->context_raw_handle(), disposed, param_types, is_var_arg);
+    }
+
+    pub fn from_raw(raw: core::LLVMTypeRef, context_raw: core::LLVMContextRef, context_disposed: const bool*) Self {
+        assert_context(context_disposed);
+        const kind = core::LLVMGetTypeKind(raw);
+        if (kind == core::LLVM_INTEGER_TYPE_KIND) {
+            return .Int(IntType.new(raw, context_raw, context_disposed));
+        }
+        if (kind == core::LLVM_FLOAT_TYPE_KIND || kind == core::LLVM_DOUBLE_TYPE_KIND || kind == core::LLVM_HALF_TYPE_KIND || kind == core::LLVM_BFLOAT_TYPE_KIND || kind == core::LLVM_X86_FP80_TYPE_KIND || kind == core::LLVM_FP128_TYPE_KIND) {
+            return .Float(FloatType.new(raw, context_raw, context_disposed));
+        }
+        if (kind == core::LLVM_POINTER_TYPE_KIND) {
+            return .Pointer(PointerType.new(raw, context_raw, context_disposed));
+        }
+        if (kind == core::LLVM_STRUCT_TYPE_KIND) {
+            return .Struct(StructType.new(raw, context_raw, context_disposed));
+        }
+        if (kind == core::LLVM_ARRAY_TYPE_KIND) {
+            return .Array(ArrayType.new(raw, context_raw, context_disposed));
+        }
+        @panic("kara: unsupported LLVMTypeKind for BasicType");
+    }
+}
+
+[[inline]]
+pub fn bool_to_llvm(value: bool) core::LLVMBool {
+    if (value) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+fn make_fn_type(
+    ret_raw: core::LLVMTypeRef,
+    context_raw: core::LLVMContextRef,
+    context_disposed: const bool*,
+    param_types: const Slice<BasicType>,
+    is_var_arg: bool
+) FunctionType {
+    const count = param_types.len();
+
+    if (count == 0) {
+        var empty: core::LLVMTypeRef;
+        
+        const raw = core::LLVMFunctionType(
+            ret_raw, 
+            &empty, 
+            0, 
+            bool_to_llvm(is_var_arg)
+        );
+
+        return FunctionType.new(
+            raw, 
+            context_raw, 
+            context_disposed
+        );
+    }
+    
+    const allocator: Allocator = dynamic LibcAllocator.new();
+    
+    var raw_params: core::LLVMTypeRef* = allocator.alloc(
+        count * @sizeof(core::LLVMTypeRef)
+    );
+    defer allocator.free(raw_params);
+    
+    for (var i: usize = 0; i < count; i += 1) {
+        const param = param_types.get_const(i).unwrap();
+        raw_params[i] = param->as_raw();
+    }
+    
+    const raw = core::LLVMFunctionType(
+        ret_raw, 
+        raw_params, 
+        @cast(c_uint, count), 
+        bool_to_llvm(is_var_arg)
+    );
+
+    return FunctionType.new(
+        raw, 
+        context_raw, 
+        context_disposed
+    );
+}
+
+[[inline]]
+pub fn assert_context(disposed: const bool*) {
+    @assert(disposed != null, "kara: invalid null context state");
+    @assert(!(*disposed), "kara: handle used after Context was disposed");
+}
