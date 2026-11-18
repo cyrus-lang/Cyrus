@@ -51,8 +51,8 @@ pub fn substitute_type(
     }
 
     switch (context->func_env.infer) {
-        case .Some(infer_ctx) => {
-            result = infer_ctx->resolve(&result);
+        case .Some(infer_context) => {
+            result = infer_context->resolve(&result);
         }
         else => {}
     }

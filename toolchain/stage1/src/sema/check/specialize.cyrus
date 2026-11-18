@@ -1,0 +1,2386 @@
+import std::collections::hash_map{HashMap};
+import std::mem{Allocator, alloc_init};
+import std::hash{hash_usize, eq_usize};
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+
+import sema::monomorph{MonomorphTemplateId};
+import sema::context{AnalyzerContext};
+import .::types{
+    normalize_and_check_type_formation,
+    implement_interfaces_of_named_type,
+    check_type_correctness,
+    is_assignable_to,
+    check_type_arity,
+};
+import .::normalizer{
+    normalize_sema_type,
+    analyze_symbol_expr,
+};
+import sema::generics;
+import tokens{Span};
+import sema::format;
+import sema::diags;
+import sema::infer;
+import cir::tables;
+import cir::clone;
+import sema::env;
+import cir;
+
+fn instantiate_and_specialize_func_params(
+    context: AnalyzerContext*,
+    params: cir::FuncParams*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    for (var i: usize = 0; i < params->list.len(); i += 1) {
+        const param_kind = params->list.get(i).unwrap();
+
+        switch (*param_kind) {
+            case .FuncParam(var func_param) => {
+                switch (func_param.var_decl_id) {
+                    case .Some(var_decl_id) => {
+                        switch (context->decl_tables->vars.get_const(var_decl_id)) {
+                            case .Some(var existing) => {
+                                var template_var_decl = *existing;
+                                
+                                template_var_decl.ty = .Some(func_param.ty);
+                                
+                                instantiate_fresh_var_decl(context,
+                                    var_decl_id, 
+                                    &template_var_decl,
+                                    decl_map
+                                );
+                            }
+                            else => {}
+                        }
+
+                        switch (decl_map->get(var_decl_id)) {
+                            case .Some(new_var_decl_id) => {
+                                func_param.var_decl_id = .Some(*new_var_decl_id);
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
+                *param_kind = .FuncParam(func_param);
+            }
+            case .SelfModifier(var self_modifier) => {
+                switch (self_modifier.var_decl_id) {
+                    case .Some(var_decl_id) => {
+                        switch (context->decl_tables->vars.get_const(var_decl_id)) {
+                            case .Some(var existing) => {
+                                var template_var_decl = *existing;
+                                
+                                template_var_decl.ty = .Some(self_modifier.ty);
+
+                                instantiate_fresh_var_decl(context,
+                                    var_decl_id, 
+                                    &template_var_decl, 
+                                    decl_map
+                                );
+                            }
+                            else => {}
+                        }
+
+                        switch (decl_map->get(var_decl_id)) {
+                            case .Some(new_var_decl_id) => {
+                                self_modifier.var_decl_id = .Some(*new_var_decl_id);
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
+                *param_kind = .SelfModifier(self_modifier);
+            }
+        }
+    }
+}
+
+pub fn instantiate_enum_decl_with_type_args(
+    allocator: Allocator,
+    enum_decl: const cir::EnumDecl*,
+    type_args: const cir::TypeArgs*
+) cir::EnumDecl {
+    var variants: Vec<cir::EnumVariant> = Vec.new(allocator);
+
+    for (var i: usize = 0; i < enum_decl->variants.len(); i += 1) {
+        const variant = enum_decl->variants.get_const(i).unwrap();
+
+        switch (*variant) {
+            case .Unit(ident) => {
+                variants.push(.Unit(ident));
+            }
+            case .Valued { ident, value } => {
+                variants.push(.Valued { ident, value });
+            }
+            case .Tuple { ident, fields } => {
+                var new_fields: Vec<cir::EnumVariantTupleField> = Vec.new(allocator);
+
+                for (var j: usize = 0; j < fields.len(); j += 1) {
+                    const field = fields.get_const(j).unwrap();
+
+                    new_fields.push(cir::EnumVariantTupleField {
+                        ty: cir::substitute_sema_type_with_type_args(
+                            allocator,
+                            &field->ty,
+                            &enum_decl->generic_params,
+                            type_args
+                        ),
+                        span: field->span,
+                    });
+                }
+
+                variants.push(.Tuple { ident, fields: new_fields });
+            }
+            case .Struct { ident, fields } => {
+                var new_fields: Vec<cir::EnumVariantStructField> = Vec.new(allocator);
+
+                for (var j: usize = 0; j < fields.len(); j += 1) {
+                    const field = fields.get_const(j).unwrap();
+
+                    new_fields.push(cir::EnumVariantStructField {
+                        name: field->name,
+                        ty: cir::substitute_sema_type_with_type_args(
+                            allocator,
+                            &field->ty,
+                            &enum_decl->generic_params,
+                            type_args
+                        ),
+                        span: field->span,
+                    });
+                }
+
+                variants.push(.Struct { ident, fields: new_fields });
+            }
+        }
+    }
+
+    return cir::EnumDecl {
+        name: enum_decl->name,
+        methods: enum_decl->methods,
+        variants,
+        impls: enum_decl->impls,
+        generic_params: enum_decl->generic_params,
+        modifiers: enum_decl->modifiers,
+        tag_type: enum_decl->tag_type,
+        align: enum_decl->align,
+        is_normalized: enum_decl->is_normalized,
+        span: enum_decl->span,
+    };
+}
+
+fn instantiate_fresh_var_stmt(
+    context: AnalyzerContext*,
+    var_stmt: const cir::VarStmt*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    const template_var_decl = cir::VarDecl {
+        name: var_stmt->name,
+        ty: var_stmt->ty,
+        rhs: var_stmt->rhs,
+        is_const: var_stmt->is_const,
+        analyzed: false,
+        span: var_stmt->span,
+    };
+
+    instantiate_fresh_var_decl(context,
+        var_stmt->var_decl_id, 
+        &template_var_decl, 
+        decl_map
+    );
+}
+
+fn instantiate_fresh_var_decl(
+    context: AnalyzerContext*,
+    var_decl_id: cir::VarDeclId,
+    template_var_decl: const cir::VarDecl*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    if (decl_map->get(var_decl_id).is_some()) {
+        return;
+    }
+
+    var var_decl = *template_var_decl;
+
+    switch (var_decl.ty) {
+        case .Some(ty) => {
+            var subst = generics::substitute_type(context, &ty);
+
+            switch (context->func_env.infer) {
+                case .Some(infer_context) => subst = infer_context->resolve(&subst);
+                else => {}
+            }
+
+            var_decl.ty = .Some(subst);
+        }
+        else => {}
+    }
+
+    var_decl.analyzed = false;
+    
+    const new_var_decl_id = context->decl_tables->insert_var(var_decl);
+    decl_map->insert(var_decl_id, new_var_decl_id);
+}
+
+fn instantiate_fresh_var_decl_from_tables(
+    context: AnalyzerContext*,
+    var_decl_id: cir::VarDeclId,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (context->decl_tables->vars.get_const(var_decl_id)) {
+        case .Some(var_decl) => {
+            instantiate_fresh_var_decl(
+                context, 
+                var_decl_id, 
+                var_decl, 
+                decl_map
+            );
+        }
+        else => {}
+    }
+}
+
+fn specialize_func_body(
+    context: AnalyzerContext*,
+    template_body: const cir::BlockStmt*,
+    params: cir::FuncParams*
+) cir::BlockStmt {
+    var body = cir::clone::clone_typed_block(context->allocator, template_body);
+
+    var decl_map: HashMap<usize, cir::VarDeclId> = HashMap.with_hasher(
+        context->allocator,
+        64,
+        hash_usize,
+        eq_usize
+    );
+
+    instantiate_and_specialize_func_params(context, params, &decl_map);
+
+    for (var i: usize = 0; i < body.stmts.len(); i += 1) {
+        const stmt = body.stmts.get_const(i).unwrap();
+        collect_and_instantiate_fresh_var_decls(context, &stmt->kind, &decl_map);
+    }
+
+    for (var i: usize = 0; i < body.defers.len(); i += 1) {
+        const defer_stmt = body.defers.get_const(i).unwrap();
+        
+        collect_and_instantiate_fresh_var_decls(
+            context, 
+            &defer_stmt->operand->kind, 
+            &decl_map
+        );
+    }
+
+    specialize_block(context, &body, &decl_map);
+
+    return body;
+}
+
+fn specialize_block(
+    context: AnalyzerContext*,
+    body: cir::BlockStmt*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    for (var i: usize = 0; i < body->stmts.len(); i += 1) {
+        const stmt = body->stmts.get(i).unwrap();
+        specialize_stmt(context, &stmt->kind, decl_map);
+    }
+
+    for (var i: usize = 0; i < body->defers.len(); i += 1) {
+        const defer_stmt = body->defers.get(i).unwrap();
+        specialize_stmt(context, &defer_stmt->operand->kind, decl_map);
+    }
+}
+
+fn specialize_stmt(
+    context: AnalyzerContext*,
+    kind: cir::StmtKind*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (*kind) {
+        case .TupleExport(var tuple_export) => {
+            specialize_tuple_export_pattern(
+                context, 
+                &tuple_export.pattern, 
+                decl_map
+            );
+
+            switch (tuple_export.rhs) {
+                case .Some(var rhs) => {
+                    specialize_expr(context, &rhs, decl_map);
+                    tuple_export.rhs = .Some(rhs);
+                }
+                else => {}
+            }
+
+            *kind = .TupleExport(tuple_export);
+        }
+        case .For(var for_stmt) => {
+            switch (for_stmt.initializer) {
+                case .Some(var initializer) => {
+                    specialize_var_stmt(context, &initializer, decl_map);
+                    for_stmt.initializer = .Some(initializer);
+                }
+                else => {}
+            }
+
+            switch (for_stmt.cond) {
+                case .Some(var cond) => {
+                    specialize_expr(context, &cond, decl_map);
+                    for_stmt.cond = .Some(cond);
+                }
+                else => {}
+            }
+
+            switch (for_stmt.increment) {
+                case .Some(var increment) => {
+                    specialize_expr(context, &increment, decl_map);
+                    for_stmt.increment = .Some(increment);
+                }
+                else => {}
+            }
+
+            specialize_block(context, for_stmt.body, decl_map);
+            *kind = .For(for_stmt);
+        }
+        case .Switch(var switch_stmt) => {
+            specialize_expr(context, &switch_stmt.operand, decl_map);
+
+            for (var i: usize = 0; i < switch_stmt.cases.len(); i += 1) {
+                const case_item = switch_stmt.cases.get(i).unwrap();
+
+                for (var j: usize = 0; j < case_item->patterns.len(); j += 1) {
+                    const pattern = case_item->patterns.get(j).unwrap();
+                    specialize_switch_pattern(context, pattern, decl_map);
+                }
+
+                specialize_block(context, case_item->body, decl_map);
+            }
+
+            switch (switch_stmt.else_case) {
+                case .Some(var else_case) => {
+                    specialize_block(context, &else_case, decl_map);
+                    switch_stmt.else_case = .Some(else_case);
+                }
+                else => {}
+            }
+
+            *kind = .Switch(switch_stmt);
+        }
+        case .Return(var return_stmt) => {
+            switch (return_stmt.arg) {
+                case .Some(var arg) => {
+                    specialize_expr(context, &arg, decl_map);
+                    return_stmt.arg = .Some(arg);
+                }
+                else => {}
+            }
+
+            *kind = .Return(return_stmt);
+        }
+        case .InlineAsm(var asm) => {
+            for (var i: usize = 0; i < asm.outputs.len(); i += 1) {
+                const operand = asm.outputs.get(i).unwrap();
+                specialize_expr(context, operand->expr, decl_map);
+            }
+
+            for (var i: usize = 0; i < asm.inputs.len(); i += 1) {
+                const operand = asm.inputs.get(i).unwrap();
+                specialize_expr(context, operand->expr, decl_map);
+            }
+
+            *kind = .InlineAsm(asm);
+        }
+        case .BlockStmt(var block) => {
+            specialize_block(context, &block, decl_map);
+            *kind = .BlockStmt(block);
+        }
+        case .If(var if_) => {
+            specialize_if_stmt(context, &if_, decl_map);
+            *kind = .If(if_);
+        }
+        case .While(var while_stmt) => {
+            specialize_expr(context, &while_stmt.cond, decl_map);
+            specialize_block(context, while_stmt.body, decl_map);
+            *kind = .While(while_stmt);
+        }
+        case .Builtin(var builtin) => {
+            specialize_builtin(context, &builtin, decl_map);
+            *kind = .Builtin(builtin);
+        }
+        case .Expr(var expr) => {
+            specialize_expr(context, &expr, decl_map);
+            *kind = .Expr(expr);
+        }
+        case .Variable(var var_stmt) => {
+            specialize_var_stmt(context, &var_stmt, decl_map);
+            *kind = .Variable(var_stmt);
+        }
+        case .Defer(var defer_stmt) => {
+            specialize_stmt(context, &defer_stmt.operand->kind, decl_map);
+            *kind = .Defer(defer_stmt);
+        }
+        else => {}
+    }
+}
+
+fn specialize_if_stmt(
+    context: AnalyzerContext*,
+    if_: cir::IfStmt*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    specialize_expr(context, &if_->cond, decl_map);
+    specialize_block(context, if_->then_block, decl_map);
+
+    switch (if_->else_block) {
+        case .Some(else_block) => {
+            specialize_block(context, else_block, decl_map);
+        }
+        else => {}
+    }
+
+    for (var i: usize = 0; i < if_->branches.len(); i += 1) {
+        const branch = if_->branches.get(i).unwrap();
+        specialize_if_stmt(context, branch, decl_map);
+    }
+}
+
+fn specialize_var_stmt(
+    context: AnalyzerContext*,
+    var_stmt: cir::VarStmt*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (remap_var_decl_id(context, decl_map, var_stmt->var_decl_id)) {
+        case .Some(new_var_decl_id) => {
+            var_stmt->var_decl_id = new_var_decl_id;
+        }
+        else => {}
+    }
+
+    switch (var_stmt->rhs) {
+        case .Some(var rhs) => {
+            specialize_expr(context, &rhs, decl_map);
+            var_stmt->rhs = .Some(rhs);
+        }
+        else => {}
+    }
+}
+
+fn specialize_builtin(
+    context: AnalyzerContext*,
+    builtin: cir::Builtin*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (*builtin) {
+        case .BuiltinFunc(var builtin_func) => {
+            specialize_expr_vec(context, &builtin_func.args, decl_map);
+        }
+        case .BuiltinBlock(var builtin_block) => {
+            specialize_expr_vec(context, &builtin_block.args, decl_map);
+            specialize_block(context, builtin_block.block, decl_map);
+        }
+    }
+}
+
+fn specialize_tuple_export_pattern(
+    context: AnalyzerContext*,
+    pattern: cir::TupleExportPattern*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (pattern->kind) {
+        case .Tuple(patterns) => {
+            for (var i: usize = 0; i < patterns.len(); i += 1) {
+                const inner = patterns.get(i).unwrap();
+                specialize_tuple_export_pattern(context, inner, decl_map);
+            }
+        }
+        case .Ident(var_decl_id) => {
+            switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
+                case .Some(new_var_decl_id) => {
+                    pattern->kind = .Ident(new_var_decl_id);
+                }
+                else => {}
+            }
+        }
+        case .Ignore => {}
+    }
+}
+
+fn specialize_switch_pattern(
+    context: AnalyzerContext*,
+    pattern: cir::SwitchCasePattern*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (pattern->kind) {
+        case .Wildcard | .EnumUnit => {}
+
+        case .Binding { var name, var_decl_id, .. } => {
+            switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
+                case .Some(new_var_decl_id) => pattern->kind = .Binding {
+                    name,
+                    var_decl_id: new_var_decl_id
+                };
+                else => {}
+            }
+        }
+        
+        case .Range(var range) => {
+            specialize_expr(context, &range.lower, decl_map);
+            specialize_expr(context, &range.upper, decl_map);
+            pattern->kind = .Range(range);
+        }
+        
+        case .Expr(var expr) => {
+            specialize_expr(context, &expr, decl_map);
+            pattern->kind = .Expr(expr);
+        }
+        
+        case .EnumTupleVariant { ident, items, .. } => {
+            for (var i: usize = 0; i < items.len(); i += 1) {
+                const item = items.get(i).unwrap();
+                specialize_switch_pattern(context, item, decl_map);
+            }
+
+            pattern->kind = .EnumTupleVariant { ident, items };
+        }
+        
+        case .EnumStructVariant { ident, items, ignore } => {
+            for (var i: usize = 0; i < items.len(); i += 1) {
+                const item = items.get(i).unwrap();
+                specialize_switch_pattern(context, &item->pattern, decl_map);
+            }
+
+            pattern->kind = .EnumStructVariant { ident, items, ignore };
+        }
+    }
+}
+
+fn specialize_expr(
+    context: AnalyzerContext*,
+    expr: cir::Expr*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (expr->kind) {
+        case .Literal 
+        | .SemaType 
+        | .Poisoned => {}
+
+        case .EnumInit(enum_init) => {
+            switch (enum_init.arg) {
+                case .Unit => {}
+
+                case .Tuple(var elements) => {
+                    specialize_expr_vec(context, &elements, decl_map);
+                }
+                
+                case .Struct(var field_inits) => {
+                    for (var i: usize = 0; i < field_inits.len(); i += 1) {
+                        const field_init = field_inits.get(i).unwrap();
+                        specialize_expr(context, field_init->value, decl_map);
+                    }
+                }
+            }
+        }
+
+        case .EnumStructVariantInit(variant_init) => {
+            specialize_expr(context, variant_init.operand, decl_map);
+
+            for (var i: usize = 0; i < variant_init.field_inits.len(); i += 1) {
+                const field_init = variant_init.field_inits.get(i).unwrap();
+                specialize_expr(context, field_init->value, decl_map);
+            }
+        }
+
+        case .UnnamedStructValue(struct_value) => {
+            for (var i: usize = 0; i < struct_value.fields.len(); i += 1) {
+                const field = struct_value.fields.get(i).unwrap();
+                specialize_expr(context, field->value, decl_map);
+            }
+        }
+
+        case .UnnamedUnionValue(union_value) => {
+            for (var i: usize = 0; i < union_value.fields.len(); i += 1) {
+                const field = union_value.fields.get(i).unwrap();
+                specialize_expr(context, field->value, decl_map);
+            }
+        }
+
+        case .UnnamedEnumValue(enum_value) => {
+            switch (enum_value.kind) {
+                case .Unit => {}
+
+                case .Tuple(var elements) => {
+                    specialize_expr_vec(context, &elements, decl_map);
+                }
+                
+                case .Struct(var field_inits) => {
+                    for (var i: usize = 0; i < field_inits.len(); i += 1) {
+                        const field_init = field_inits.get(i).unwrap();
+                        specialize_expr(context, field_init->value, decl_map);
+                    }
+                }
+            }
+        }
+        
+        case .InlineAsm(asm) => {
+            for (var i: usize = 0; i < asm.outputs.len(); i += 1) {
+                const operand = asm.outputs.get(i).unwrap();
+                specialize_expr(context, operand->expr, decl_map);
+            }
+
+            for (var i: usize = 0; i < asm.inputs.len(); i += 1) {
+                const operand = asm.inputs.get(i).unwrap();
+                specialize_expr(context, operand->expr, decl_map);
+            }
+        }
+
+        case .Symbol(var symbol_expr) => {
+            switch (analyze_symbol_expr(context->registry, &symbol_expr)) {
+                case .Some(decl_id) => {
+                    switch (decl_id.as_var()) {
+                        case .Some(var_decl_id) => {
+                            switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
+                                case .Some(new_var_decl_id) => {
+                                    symbol_expr = .Resolved {
+                                        decl_id: .Var(new_var_decl_id),
+                                        span: symbol_expr.span()
+                                    };
+                                }
+                                else => {}
+                            }
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+
+            expr->kind = .Symbol(symbol_expr);
+        }
+
+        case .Prefix(prefix) => {
+            specialize_expr(context, prefix.operand, decl_map);
+        }
+        
+        case .Infix(infix) => {
+            specialize_expr(context, infix.lhs, decl_map);
+            specialize_expr(context, infix.rhs, decl_map);
+        }
+        
+        case .Assign(assign) => {
+            specialize_expr(context, assign.lhs, decl_map);
+            specialize_expr(context, assign.rhs, decl_map);
+        }
+        
+        case .AddrOf(addr_of) => {
+            specialize_expr(context, addr_of.operand, decl_map);
+        }
+        
+        case .Deref(deref) => {
+            specialize_expr(context, deref.operand, decl_map);
+        }
+        
+        case .Array(var array) => {
+            specialize_expr_vec(context, &array.elements, decl_map);
+        }
+        
+        case .Tuple(var tuple) => {
+            specialize_expr_vec(context, &tuple.elements, decl_map);
+        }
+        
+        case .ArrayIndex(array_index) => {
+            specialize_expr(context, array_index.operand, decl_map);
+            specialize_expr(context, array_index.index, decl_map);
+        }
+        
+        case .TupleAccess(tuple_access) => {
+            specialize_expr(context, tuple_access.operand, decl_map);
+        }
+        
+        case .FieldAccess(field_access) => {
+            specialize_expr(context, field_access.operand, decl_map);
+        }
+        
+        case .StructInit(var struct_init) => {
+            for (var i: usize = 0; i < struct_init.fields.len(); i += 1) {
+                const field = struct_init.fields.get(i).unwrap();
+                specialize_expr(context, &field->value, decl_map);
+            }
+        }
+        
+        case .UnionInit(union_init) => {
+            specialize_expr(context, &union_init.field->value, decl_map);
+        }
+        
+        case .FuncCall(var func_call) => {
+            specialize_expr(context, func_call.operand, decl_map);
+            specialize_expr_vec(context, &func_call.args, decl_map);
+        }
+        
+        case .MethodCall(var method_call) => {
+            specialize_expr(context, method_call.operand, decl_map);
+            specialize_expr_vec(context, &method_call.args, decl_map);
+        }
+        
+        case .Dynamic(dynamic_) => {
+            specialize_expr(context, dynamic_.operand, decl_map);
+        }
+        
+        case .Lambda(var lambda) => {
+            specialize_func_params(context, &lambda.params, decl_map);
+            specialize_block(context, lambda.body, decl_map);
+        }
+        
+        case .Builtin(var builtin) => {
+            switch (builtin) {
+                case .BuiltinFunc(var builtin_func) => {
+                    specialize_expr_vec(context, &builtin_func.args, decl_map);
+                }
+                case .BuiltinBlock(var builtin_block) => {
+                    specialize_expr_vec(context, &builtin_block.args, decl_map);
+                    specialize_block(context, builtin_block.block, decl_map);
+                }
+            }
+        }
+    }
+}
+
+fn specialize_expr_vec(
+    context: AnalyzerContext*,
+    exprs: Vec<cir::Expr>*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    for (var i: usize = 0; i < exprs->len(); i += 1) {
+        const element = exprs->get(i).unwrap();
+        specialize_expr(context, element, decl_map);
+    }
+}
+
+fn specialize_func_params(
+    context: AnalyzerContext*,
+    params: cir::FuncParams*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    for (var i: usize = 0; i < params->list.len(); i += 1) {
+        const param_kind = params->list.get(i).unwrap();
+
+        switch (*param_kind) {
+            case .FuncParam(var func_param) => {
+                switch (func_param.var_decl_id) {
+                    case .Some(var_decl_id) => {
+                        switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
+                            case .Some(new_var_decl_id) => {
+                                func_param.var_decl_id = .Some(new_var_decl_id);
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
+                *param_kind = .FuncParam(func_param);
+            }
+            case .SelfModifier(var self_modifier) => {
+                switch (self_modifier.var_decl_id) {
+                    case .Some(var_decl_id) => {
+                        switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
+                            case .Some(new_var_decl_id) => {
+                                self_modifier.var_decl_id = .Some(new_var_decl_id);
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+
+                *param_kind = .SelfModifier(self_modifier);
+            }
+        }
+    }
+
+    switch (params->variadic) {
+        case .Some(var variadic) => {
+            switch (variadic) {
+                case .Typed { var ty, var span, var_decl_id } => {
+                    switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
+                        case .Some(new_var_decl_id) => {
+                            variadic = .Typed {
+                                var_decl_id: new_var_decl_id,
+                                ty,
+                                span
+                            };
+                        }
+                        else => {}
+                    }
+                }
+                case .UntypedCStyle => {}
+            }
+
+            params->variadic = .Some(variadic);
+        }
+        else => {}
+    }
+}
+
+fn collect_and_instantiate_fresh_var_decls(
+    context: AnalyzerContext*,
+    stmt_kind: const cir::StmtKind*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (*stmt_kind) {
+        case .Switch(switch_stmt) => {
+            for (var i: usize = 0; i < switch_stmt.cases.len(); i += 1) {
+                const case_item = switch_stmt.cases.get_const(i).unwrap();
+
+                for (var j: usize = 0; j < case_item->patterns.len(); j += 1) {
+                    const pattern = case_item->patterns.get_const(j).unwrap();
+                    collect_fresh_var_decls_of_switch_pattern(context, pattern, decl_map);
+                }
+
+                collect_fresh_var_decls_in_block(context, case_item->body, decl_map);
+            }
+        }
+        case .For(for_stmt) => {
+            switch (for_stmt.initializer) {
+                case .Some(var var_stmt) => {
+                    instantiate_fresh_var_stmt(context, &var_stmt, decl_map);
+                }
+                else => {}
+            }
+
+            collect_fresh_var_decls_in_block(context, for_stmt.body, decl_map);
+        }
+        case .Expr(expr) => {
+            switch (expr.kind) {
+                case .Lambda(lambda) => {
+                    collect_fresh_var_decls_of_func_params(context, &lambda.params, decl_map);
+                    collect_fresh_var_decls_in_block(context, lambda.body, decl_map);
+                }
+                else => {}
+            }
+        }
+        case .Builtin(builtin) => {
+            switch (builtin) {
+                case .BuiltinFunc => {}
+                case .BuiltinBlock(builtin_block) => {
+                    collect_fresh_var_decls_in_block(context, builtin_block.block, decl_map);
+                }
+            }
+        }
+        case .Defer(defer_stmt) => {
+            collect_and_instantiate_fresh_var_decls(context, &defer_stmt.operand->kind, decl_map);
+        }
+        case .TupleExport(tuple_export) => {
+            collect_fresh_var_decls_of_tuple_pattern(context, &tuple_export.pattern, decl_map);
+        }
+        case .While(while_stmt) => {
+            collect_fresh_var_decls_in_block(context, while_stmt.body, decl_map);
+        }
+        case .BlockStmt(block) => {
+            collect_fresh_var_decls_in_block(context, &block, decl_map);
+        }
+        case .Variable(var_stmt) => {
+            instantiate_fresh_var_stmt(context, &var_stmt, decl_map);
+        }
+        case .If(if_) => {
+            collect_fresh_var_decls_of_if(context, &if_, decl_map);
+        }
+        else => {}
+    }
+}
+
+fn collect_fresh_var_decls_in_block(
+    context: AnalyzerContext*,
+    block: const cir::BlockStmt*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    for (var i: usize = 0; i < block->stmts.len(); i += 1) {
+        const stmt = block->stmts.get_const(i).unwrap();
+        
+        collect_and_instantiate_fresh_var_decls(
+            context, 
+            &stmt->kind, 
+            decl_map
+        );
+    }
+
+    for (var i: usize = 0; i < block->defers.len(); i += 1) {
+        const defer_stmt = block->defers.get_const(i).unwrap();
+
+        collect_and_instantiate_fresh_var_decls(
+            context, 
+            &defer_stmt->operand->kind, 
+            decl_map
+        );
+    }
+}
+
+fn collect_fresh_var_decls_of_if(
+    context: AnalyzerContext*,
+    if_: const cir::IfStmt*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    collect_fresh_var_decls_in_block(context, if_->then_block, decl_map);
+
+    switch (if_->else_block) {
+        case .Some(else_block) => {
+            collect_fresh_var_decls_in_block(context, else_block, decl_map);
+        }
+        else => {}
+    }
+
+    for (var i: usize = 0; i < if_->branches.len(); i += 1) {
+        const branch = if_->branches.get_const(i).unwrap();
+        collect_fresh_var_decls_of_if(context, branch, decl_map);
+    }
+}
+
+fn collect_fresh_var_decls_of_func_params(
+    context: AnalyzerContext*,
+    params: const cir::FuncParams*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    for (var i: usize = 0; i < params->list.len(); i += 1) {
+        const param_kind = params->list.get_const(i).unwrap();
+
+        switch (*param_kind) {
+            case .FuncParam(func_param) => {
+                switch (func_param.var_decl_id) {
+                    case .Some(var_decl_id) => instantiate_fresh_var_decl_from_tables(
+                        context, 
+                        var_decl_id, 
+                        decl_map
+                    );
+                    else => {}
+                }
+            }
+            case .SelfModifier(self_modifier) => {
+                switch (self_modifier.var_decl_id) {
+                    case .Some(var_decl_id) => instantiate_fresh_var_decl_from_tables(
+                        context, 
+                        var_decl_id, 
+                        decl_map
+                    );
+                    else => {}
+                }
+            }
+        }
+    }
+
+    switch (params->variadic) {
+        case .Some(variadic) => {
+            switch (variadic) {
+                case .Typed { var_decl_id, .. } => {
+                    instantiate_fresh_var_decl_from_tables(
+                        context, 
+                        var_decl_id, 
+                        decl_map
+                    );
+                }
+                case .UntypedCStyle => {}
+            }
+        }
+        else => {}
+    }
+}
+
+fn collect_fresh_var_decls_of_tuple_pattern(
+    context: AnalyzerContext*,
+    pattern: const cir::TupleExportPattern*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (pattern->kind) {
+        case .Tuple(patterns) => {
+            for (var i: usize = 0; i < patterns.len(); i += 1) {
+                const inner = patterns.get_const(i).unwrap();
+                collect_fresh_var_decls_of_tuple_pattern(context, inner, decl_map);
+            }
+        }
+        case .Ident(var_decl_id) => {
+            instantiate_fresh_var_decl_from_tables(context, var_decl_id, decl_map);
+        }
+        case .Ignore => {}
+    }
+}
+
+fn collect_fresh_var_decls_of_switch_pattern(
+    context: AnalyzerContext*,
+    pattern: const cir::SwitchCasePattern*,
+    decl_map: HashMap<usize, cir::VarDeclId>*
+) {
+    switch (pattern->kind) {
+        case .Wildcard 
+        | .Range 
+        | .Expr 
+        | .EnumUnit => {}
+
+        case .Binding { var_decl_id, .. } => {
+            instantiate_fresh_var_decl_from_tables(context, var_decl_id, decl_map);
+        }
+
+        case .EnumTupleVariant { items, .. } => {
+            for (var i: usize = 0; i < items.len(); i += 1) {
+                const item = items.get_const(i).unwrap();
+                collect_fresh_var_decls_of_switch_pattern(context, item, decl_map);
+            }
+        }
+
+        case .EnumStructVariant { items, .. } => {
+            for (var i: usize = 0; i < items.len(); i += 1) {
+                const item = items.get_const(i).unwrap();
+                collect_fresh_var_decls_of_switch_pattern(context, &item->pattern, decl_map);
+            }
+        }
+    }
+}
+
+pub fn check_func_variadic_arguments(
+    context: AnalyzerContext*,
+    func_decl: const cir::FuncDecl*,
+    args: Vec<cir::Expr>*,
+    span: Span
+) {
+    const static_params_len = func_decl->params.list.len();
+
+    if (static_params_len > args->len()) {
+        return;
+    }
+
+    switch (func_decl->params.variadic) {
+        case .Some(.Typed { ty, .. }) => {
+            for (var i: usize = static_params_len; i < args->len(); i += 1) {
+                const arg = args->get(i).unwrap();
+
+                switch (context->dispatcher.analyze_expr(context, arg, arg->ty)) {
+                    case .Some(arg_type) => {
+                        if (!is_assignable_to(context, arg_type, ty, span)) {
+                            var param_type_str = format::format_sema_type(
+                                context->allocator, 
+                                context->decl_tables, 
+                                &ty
+                            );
+                            var argument_type_str = format::format_sema_type(
+                                context->allocator, 
+                                context->decl_tables, 
+                                &arg_type
+                            );
+                            
+                            diags::report_func_call_variadic_param_type_mismatch(
+                                context->dctx,
+                                context->allocator,
+                                span,
+                                @cast(uint32, i),
+                                argument_type_str.as_str_const(),
+                                param_type_str.as_str_const()
+                            );
+                            
+                            argument_type_str.free();
+                            param_type_str.free();
+                        }
+                    }
+                    case .None => {}
+                }
+            }
+        }
+        case .Some(.UntypedCStyle) => {
+            for (var i: usize = static_params_len; i < args->len(); i += 1) {
+                const arg = args->get(i).unwrap();
+                
+                switch (context->dispatcher.analyze_expr(context, arg, arg->ty)) {
+                    case .Some(arg_type) => {
+                        if (arg_type.is_void()) {
+                            diags::report_void_argument_in_variadic_param(
+                                context->dctx,
+                                context->allocator,
+                                span
+                            );
+                        }
+                    }
+                    case .None => {}
+                }
+            }
+        }
+        case .None => {}
+    }
+}
+
+pub fn check_func_type_call(
+    context: AnalyzerContext*,
+    func_type: cir::FuncType*,
+    args: Vec<cir::Expr>*,
+    span: Span
+) Option<cir::SemaType> {
+    const expected_args_len = func_type->params.list.len();
+    const is_variadic = func_type->params.variadic.is_some();
+    
+    var func_name = format::format_func_type(
+        context->allocator, 
+        context->decl_tables, 
+        func_type
+    );
+    defer func_name.free();
+
+    if ((!is_variadic && args->len() != expected_args_len) 
+        || (is_variadic && args->len() < expected_args_len)
+    ) {
+        diags::report_func_call_args_count_mismatch(
+            context->dctx,
+            context->allocator,
+            span,
+            func_name.as_str_const(),
+            @cast(uint32, expected_args_len),
+            @cast(uint32, args->len())
+        );
+        return .None;
+    }
+
+    var i: usize = 0;
+
+    while (i < expected_args_len && i < args->len()) {
+        const param_type_raw = *func_type->params.list.get_const(i).unwrap();
+
+        switch (normalize_and_check_type_formation(context, param_type_raw, span, 0)) {
+            case .Some(param_type) => {
+                const arg = args->get(i).unwrap();
+
+                switch (context->dispatcher.analyze_expr(context, arg, .Some(param_type))) {
+                    case .Some(arg_type) => {
+                        if (!is_assignable_to(context, arg_type, param_type, arg->span)) {
+                            var param_type_str = format::format_sema_type(
+                                context->allocator, 
+                                context->decl_tables, 
+                                &param_type
+                            );
+                            var argument_type_str = format::format_sema_type(
+                                context->allocator, 
+                                context->decl_tables, 
+                                &arg_type
+                            );
+                            
+                            diags::report_func_call_param_type_mismatch(
+                                context->dctx,
+                                context->allocator,
+                                arg->span,
+                                @cast(uint32, i),
+                                argument_type_str.as_str_const(),
+                                param_type_str.as_str_const()
+                            );
+
+                            argument_type_str.free();
+                            param_type_str.free();
+                        }
+                    }
+                    case .None => {}
+                }
+            }
+            case .None => {}
+        }
+
+        i += 1;
+    }
+
+    if (is_variadic) {
+        switch (func_type->params.variadic) case .Some(variadic) else {
+            return .Some(*func_type->ret_type);
+        }
+
+        switch (*variadic) {
+            case .Typed(ty) => {
+                if (expected_args_len <= args->len()) {
+                    for (var j: usize = expected_args_len; j < args->len(); j += 1) {
+                        const arg = args->get(j).unwrap();
+
+                        switch (context->dispatcher.analyze_expr(context, arg, arg->ty)) {
+                            case .Some(arg_type) => {
+                                if (!is_assignable_to(context, arg_type, ty, span)) {
+                                    var param_type_str = format::format_sema_type(
+                                        context->allocator, 
+                                        context->decl_tables, 
+                                        &ty
+                                    );
+                                    var argument_type_str = format::format_sema_type(
+                                        context->allocator, 
+                                        context->decl_tables, 
+                                        &arg_type
+                                    );
+                                    
+                                    diags::report_func_call_variadic_param_type_mismatch(
+                                        context->dctx,
+                                        context->allocator,
+                                        span,
+                                        @cast(uint32, j),
+                                        argument_type_str.as_str_const(),
+                                        param_type_str.as_str_const()
+                                    );
+
+                                    argument_type_str.free();
+                                    param_type_str.free();
+                                }
+                            }
+                            case .None => {}
+                        }
+                    }
+                }
+            }
+            case .UntypedCStyle => {
+                if (expected_args_len <= args->len()) {
+                    for (var j: usize = expected_args_len; j < args->len(); j += 1) {
+                        const arg = args->get(j).unwrap();
+                        context->dispatcher.analyze_expr(context, arg, arg->ty);
+                    }
+                }
+            }
+        }
+    }
+
+    return .Some(*func_type->ret_type);
+}
+
+pub fn check_method_call(
+    context: AnalyzerContext*,
+    operand_type: const cir::SemaType*,
+    method_decl: const cir::MethodDecl*,
+    method_decls: const cir::MethodDecls*,
+    object_name: const uint8*,
+    is_thin_arrow: bool,
+    is_interface_method_call: bool,
+    is_operand_const_qualified: bool,
+    span: Span
+) {
+    var access_violation = false;
+
+    switch (context->func_env.current_method) {
+        case .Some(current_method_id) => {
+            if (method_decls->contains_method_id(current_method_id)) {
+                access_violation = false;
+            } else {
+                access_violation = 
+                    method_decl->func_decl.modifiers.vis != .Public 
+                    && !is_interface_method_call;
+            }
+        }
+        case .None => {
+            access_violation = 
+                method_decl->func_decl.modifiers.vis != .Public 
+                && !is_interface_method_call;
+        }
+    }
+
+    if (access_violation) {
+        diags::report_internal_method_call(
+            context->dctx,
+            context->allocator,
+            span,
+            method_decl->func_decl.name.as_str_const(),
+            object_name
+        );
+    }
+
+    const is_base_type_pointer = operand_type->const_inner()->is_pointer();
+
+    switch (method_decl->func_decl.params.get_self_modifier()) {
+        case .Some(self_modifier) => {
+            const is_self_const = self_modifier.constness == .Const;
+
+            // Only if referenced
+            if (!is_self_const && is_operand_const_qualified && self_modifier.is_indirect()) {
+                var type_name = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    operand_type
+                );
+                
+                diags::report_mutable_method_on_const_instance(
+                    context->dctx,
+                    context->allocator,
+                    span,
+                    method_decl->func_decl.name.as_str_const(),
+                    type_name.as_str_const()
+                );
+
+                type_name.free();
+            }
+        }
+        case .None => {}
+    }
+
+    if (is_base_type_pointer) {
+        if (!is_thin_arrow) {
+            diags::report_use_thin_arrow(
+                context->dctx, 
+                context->allocator, 
+                span
+            );
+        }
+    } else {
+        if (is_thin_arrow) {
+            diags::report_invalid_thin_arrow(
+                context->dctx, 
+                context->allocator, 
+                span
+            );
+        }
+    }
+}
+
+pub fn finalize_generic_method_call(
+    context: AnalyzerContext*,
+    method_call: cir::MethodCall*,
+    method_decl: cir::MethodDecl*,
+    method_decl_id: cir::MethodDeclId,
+    operand_type: cir::SemaType*,
+    pure_operand_type: const cir::SemaType*,
+    final_type_args: const cir::TypeArgs*,
+    final_generic_params: const cir::GenericParams*,
+    is_instance_method_call: bool,
+    span: Span
+) Option<cir::SemaType> {
+    switch (normalize_sema_type(
+        context, 
+        method_decl->func_decl.ret_type, 
+        span, 
+        0
+    )) {
+        case .Some(ty) => {
+            method_decl->func_decl.ret_type = ty;
+        }
+        case .None => {
+            return .None;
+        }
+    }
+
+    // Substitute function paramters
+    generics::substitute_func_params(
+        context, 
+        &method_decl->func_decl.params
+    );
+
+    // Substitute return type
+    method_decl->func_decl.ret_type = generics::substitute_type(
+        context, 
+        &method_decl->func_decl.ret_type
+    );
+
+    const ret_type = method_decl->func_decl.ret_type;
+
+    switch (monomorphize_generic_method_call(context,
+        *pure_operand_type,
+        method_decl_id,
+        method_decl,
+        final_type_args,
+        final_generic_params,
+        false,
+        span
+    )) {
+        case .Some(monomorph_id) => {
+            method_call->operand->ty = .Some(*operand_type);
+            
+            // Configure method call dispatch
+            method_call->dispatch = .Monomorph {
+                monomorph_id,
+                is_instance_method: is_instance_method_call,
+            };
+
+            return .Some(ret_type);
+        }
+        case .None => return .None;
+    }
+}
+
+pub fn apply_self_type_in_method_decl_and_variable(
+    context: AnalyzerContext*,
+    method_decl: cir::MethodDecl*,
+    concrete_self_type: const cir::SemaType*
+) {
+    for (var i: usize = 0; i < method_decl->func_decl.params.list.len(); i += 1) {
+        const kind = method_decl->func_decl.params.list.get(i).unwrap();
+
+        switch (*kind) {
+            case .FuncParam(var func_param) => {
+                func_param.ty = generics::substitute_self_type(
+                    context, 
+                    &func_param.ty,
+                    concrete_self_type
+                );
+                *kind = .FuncParam(func_param);
+            }
+            case .SelfModifier(var self_modifier) => {
+                self_modifier.ty = generics::substitute_self_type(
+                    context, 
+                    &self_modifier.ty, 
+                    concrete_self_type
+                );
+
+                switch (self_modifier.var_decl_id) {
+                    case .Some(var_decl_id) => {
+                        const var_decl = context->decl_tables->vars.get(var_decl_id);
+                        
+                        switch (var_decl) {
+                            case .Some(entry) => entry->ty = .Some(self_modifier.ty);
+                            case .None => {}
+                        }
+                    }
+                    case .None => {}
+                }
+
+                *kind = .SelfModifier(self_modifier);
+            }
+        }
+    }
+
+    switch (normalize_sema_type(
+        context, 
+        method_decl->func_decl.ret_type, 
+        method_decl->func_decl.span, 
+        0
+    )) {
+        case .Some(ty) => {
+            method_decl->func_decl.ret_type = ty;
+        }
+        case .None => {}
+    }
+
+    var subst_ret_type = generics::substitute_self_type(
+        context, 
+        &method_decl->func_decl.ret_type, 
+        concrete_self_type
+    );
+    
+    switch (context->func_env.infer) {
+        case .Some(infer_context) => {
+            subst_ret_type = infer_context->resolve(&subst_ret_type);
+        }
+        case .None => {}
+    }
+
+    method_decl->func_decl.ret_type = subst_ret_type;
+}
+
+pub fn set_operand_named_type_args(
+    context: AnalyzerContext*,
+    ty: cir::SemaType*,
+    generic_params: cir::GenericParams
+) bool {
+    switch (*ty) {
+        case .Named(var named_type) => {
+            named_type.type_args = instantiated_type_args(context, generic_params);
+            *ty = .Named(named_type);
+            return true;
+        }
+        case .Pointer(inner) => {
+            return set_operand_named_type_args(context, inner, generic_params);
+        }
+        case .Const(inner) => {
+            return set_operand_named_type_args(context, inner, generic_params);
+        }
+        else => {
+            return false;
+        }
+    }
+}
+
+pub fn apply_generic_defaults(context: AnalyzerContext*, generic_params: cir::GenericParams) {
+    for (var i: usize = 0; i < generic_params.len(); i += 1) {
+        const generic_param_id = *generic_params.ids.get_const(i).unwrap();
+        
+        const generic_param = 
+            context
+            ->decl_tables
+            ->generic_params.get_const(generic_param_id).unwrap();
+
+        var binding: Option<cir::SemaType> = .None;
+
+        switch (generics::current_generic_env(context)) {
+            case .Some(env) => {
+                binding = env->lookup(generic_param_id);
+            }
+            case .None => {}
+        }
+
+        switch (binding) {
+            case .Some(bound_type) => {
+                var ty: cir::SemaType = .Placeholder;
+
+                switch (context->func_env.infer) {
+                    case .Some(infer_context) => ty = infer_context->resolve(&bound_type);
+                    case .None => ty = bound_type;
+                }
+
+                switch (ty) {
+                    case .InferVar(var_id) => {
+                        switch (generic_param->default) {
+                            case .Some(default_type) => {
+                                const ty = generics::substitute_type(context, default_type);
+
+                                switch (context->func_env.infer) {
+                                    case .Some(infer_context) => {
+                                        const infer_var_ty: cir::SemaType = .InferVar(var_id);
+                                        infer_context->unify(&infer_var_ty, &ty);
+                                    }
+                                    case .None => {}
+                                }
+                            }
+                            case .None => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .None => {
+                switch (generic_param->default) {
+                    case .Some(default_type) => {
+                        const ty = generics::substitute_type(context, default_type);
+
+                        switch (generics::current_generic_env(context)) {
+                            case .Some(env) => env->bind(generic_param_id, ty);
+                            case .None => {}
+                        }
+                    }
+                    case .None => {}
+                }
+            }
+        }
+    }
+}
+
+pub fn instantiated_type_args(
+    context: AnalyzerContext*,
+    generic_params: cir::GenericParams
+) cir::TypeArgs {
+    var args = cir::TypeArgs.new(context->allocator);
+
+    for (var i: usize = 0; i < generic_params.len(); i += 1) {
+        const generic_param_id = *generic_params.ids.get_const(i).unwrap();
+        
+        const generic_param = 
+            context->
+            decl_tables->
+            generic_params.get_const(generic_param_id).unwrap();
+
+        var ty: cir::SemaType = .Placeholder;
+
+        switch (generics::lookup_generic_binding(context, generic_param_id)) {
+            case .Some(bound) => ty = bound;
+            case .None => {}
+        }
+
+        switch (context->func_env.infer) {
+            case .Some(infer_context) => ty = infer_context->resolve(&ty);
+            case .None => {}
+        }
+
+        args.push(.Type(ty, generic_param->name.span));
+    }
+
+    return args;
+}
+
+pub fn check_argument_satisfies_generic_param_bounds(
+    context: AnalyzerContext*,
+    original_params: const cir::FuncParams*,
+    param_name: const uint8*,
+    arg_type: const cir::SemaType*,
+    arg_loc: Span,
+    arg_index: usize
+) bool {
+    if (arg_type->contains_error()) {
+        return true;
+    }
+
+    switch (original_params->lookup_param(param_name)) case .Some(original_param) else {
+        return false;
+    }
+
+    var original_param_type = original_param->ty();
+
+    switch (original_param_type.as_generic_param()) case .Some(generic_param_id) else {
+        return false;
+    }
+
+    var error = false;
+    
+    const generic_param = context
+        ->decl_tables
+        ->generic_params
+        .get_const(generic_param_id).unwrap();
+
+    for (var i: usize = 0; i < generic_param->bounds.len(); i += 1) {
+        const bound = generic_param->bounds.get_const(i).unwrap();
+
+        // Prevent cascading failures
+        if (!bound->ty.is_interface()) {
+            continue;
+        }
+
+        var satisfies_bound = false;
+
+        switch (arg_type->as_named_type()) {
+            case .Some(named_type) => {
+                switch (implement_interfaces_of_named_type(
+                    context->decl_tables, 
+                    &named_type
+                )) {
+                    case .Some(impls) => {
+                        for (var j: usize = 0; j < impls->len() && !satisfies_bound; j += 1) {
+                            const implement_interface = impls->get_const(j).unwrap();
+                            
+                            if (!is_assignable_to(
+                                context, 
+                                implement_interface->ty,
+                                bound->ty, 
+                                bound->span
+                            )) {
+                                satisfies_bound = true;
+                            }
+                        }
+                    }
+                    case .None => {}
+                }
+            }
+            case .None => {}
+        }
+
+        if (!satisfies_bound) {
+            error = true;
+
+            var expected_bound = format::format_sema_type(
+                context->allocator, 
+                context->decl_tables, 
+                &bound->ty
+            );
+            var found_type = format::format_sema_type(
+                context->allocator, 
+                context->decl_tables, 
+                arg_type
+            );
+
+            diags::report_argument_does_not_satisfy_bound(
+                context->dctx,
+                context->allocator,
+                arg_loc,
+                arg_index,
+                expected_bound.as_str_const(),
+                found_type.as_str_const()
+            );
+
+            expected_bound.free();
+            found_type.free();
+        }
+    }
+
+    return error; 
+}
+
+pub fn monomorphize_generic_func_call(
+    context: AnalyzerContext*,
+    operand_type: const cir::SemaType*,
+    func_call: cir::FuncCall*,
+    func_decl_id: cir::FuncDeclId,
+    func_decl: cir::FuncDecl*,
+    final_type_args: const cir::TypeArgs*
+) Option<cir::SemaType> {
+    func_call->operand->ty = .Some(generics::substitute_type(context, operand_type));
+    func_decl->ret_type = generics::substitute_type(context, &func_decl->ret_type);
+    generics::substitute_func_params(context, &func_decl->params);
+
+    if (!check_type_arity(context, func_decl->ret_type, func_call->span)) {
+        return .None;
+    }
+
+    switch (context->func_env.current_func) {
+        case .Some(var updated) => {
+            updated.params = cir::func_params_as_type_params(context->allocator, &func_decl->params);
+            updated.ret_type = alloc_init(context->allocator, func_decl->ret_type);
+            context->func_env.current_func = .Some(updated);
+        }
+        case .None => {}
+    }
+
+    // Postpone body specialization to 
+    // the monomorphization post-pass
+    //
+    // Only the signature is needed to 
+    // type-check this call site
+    const monomorph_id = context->monomorph_registry.request(
+        dynamic context->arena,
+        .Func(func_decl_id),
+        final_type_args,
+        &func_decl->params,
+        func_decl->ret_type,
+        func_decl->body,
+        &func_decl->generic_params,
+        .None
+    );
+
+    func_call->dispatch = .Monomorph { monomorph_id };
+
+    return .Some(func_decl->ret_type);
+}
+
+fn monomorphize_generic_method_call(
+    context: AnalyzerContext*,
+    pure_operand_type: cir::SemaType,
+    method_decl_id: cir::MethodDeclId,
+    method_decl: cir::MethodDecl*,
+    final_type_args: const cir::TypeArgs*,
+    final_generic_params: const cir::GenericParams*,
+    is_generic_interface_method_call: bool,
+    span: Span
+) Option<cir::MonomorphId> {
+    if (!is_generic_interface_method_call) {
+        // Substitute Self inside params, ret_type, variables
+        apply_self_type_in_method_decl_and_variable(
+            context, 
+            method_decl, 
+            &pure_operand_type
+        );
+    }
+
+    // Substitute function parameters
+    generics::substitute_func_params(
+        context, 
+        &method_decl->func_decl.params
+    );
+
+    // Substitute return type
+    method_decl->func_decl.ret_type = generics::substitute_type(
+        context, 
+        &method_decl->func_decl.ret_type
+    );
+
+    if (!check_type_arity(
+        context, 
+        method_decl->func_decl.ret_type, 
+        span
+    )) {
+        return .None;
+    }
+
+    switch (context->func_env.current_func) {
+        case .Some(var updated) => {
+            updated.params = cir::func_params_as_type_params(
+                context->allocator, 
+                &method_decl->func_decl.params
+            );
+            updated.ret_type = alloc_init(
+                context->allocator, 
+                method_decl->func_decl.ret_type
+            );
+            context->func_env.current_func = .Some(updated);
+        }
+        case .None => {}
+    }
+
+    // Postpone body specialization
+    const monomorph_id = context->monomorph_registry.request(
+        dynamic context->arena,
+        .Method(method_decl_id),
+        final_type_args,
+        &method_decl->func_decl.params,
+        method_decl->func_decl.ret_type,
+        method_decl->body,
+        final_generic_params,
+        .Some(pure_operand_type)
+    );
+
+    return .Some(monomorph_id);
+}
+
+pub fn monomorphize_interface_object_methods(
+    context: AnalyzerContext*,
+    vtable_id: cir::VTableId,
+    methods: const cir::MethodDecls*,
+    is_interface_generic: bool,
+    concrete_type: const cir::SemaType*,
+    span: Span
+) {
+    switch (concrete_type->as_named_type()) case .Some(concrete_named) else {
+        return;
+    }
+
+    const object_generic_params = *tables::type_decl_generic_params(
+        context->decl_tables, 
+        concrete_named.type_decl_id
+    );
+
+    const is_object_generic = !object_generic_params.is_empty();
+
+    for (var method_index: usize = 0; method_index < methods->entries.len(); method_index += 1) {
+        const entry = methods->entries.get_const(method_index).unwrap();
+
+        if (is_interface_generic && is_object_generic) {
+            // Monomorphize object method
+
+            switch (context->decl_tables->methods.get_owned(entry->id)) case .Some(var method_decl_storage) else {
+                continue;
+            }
+
+            method_decl_storage.func_decl.params = clone::clone_func_params(
+                context->allocator, 
+                &method_decl_storage.func_decl.params
+            );
+
+            const method_decl = &method_decl_storage;
+
+            switch (create_inference_generic_env(context,
+                entry->name.as_str_const(),
+                object_generic_params,
+                &concrete_named.type_args,
+                span
+            )) case .Some(object_method_generic_env) else {
+                continue;
+            }
+
+            generics::push_generic_env(context, object_method_generic_env);
+
+            // Substitute function params
+            generics::substitute_func_params(
+                context, 
+                &method_decl_storage.func_decl.params
+            );
+
+            // Substitute return type
+            method_decl_storage.func_decl.ret_type = generics::substitute_type(context,
+                &method_decl_storage.func_decl.ret_type
+            );
+
+            // Substitute Self inside the context modifier
+            switch (method_decl->func_decl.params.list.first()) {
+                case .Some(first_kind) => {
+                    switch (*first_kind) {
+                        case .SelfModifier(var self_modifier) => {
+                            self_modifier.ty = generics::substitute_self_type(context,
+                                &self_modifier.ty, 
+                                concrete_type
+                            );
+                            *first_kind = .SelfModifier(self_modifier);
+                        }
+                        else => {}
+                    }
+                }
+                case .None => {}
+            }
+
+            const func_type = cir::func_decl_as_func_type(
+                context->allocator, 
+                &method_decl_storage.func_decl
+            );
+
+            var func_env = create_method_env(
+                context, 
+                entry->id, 
+                func_type, 
+                context->func_env.infer
+            );
+
+            const final_generics_params = cir::extend_generic_params(
+                context->allocator,
+                &method_decl_storage.func_decl.generic_params,
+                &object_generic_params
+            );
+
+            const final_type_args = instantiated_type_args(context, final_generics_params);
+
+            var saved_func_env = context->func_env;
+            context->func_env = func_env;
+            defer restore_func_env(context, &saved_func_env);
+            context->func_env.current_object = .Some(*concrete_type);
+
+            const monomorph_id_opt = monomorphize_generic_method_call(context,
+                *concrete_type,
+                entry->id,
+                method_decl,
+                &final_type_args,
+                &final_generics_params,
+                true,
+                span
+            );
+
+            switch (monomorph_id_opt) {
+                case .Some(monomorph_id) => {
+                    context->vtable_registry.set_monomorphized_method(
+                        vtable_id,
+                        method_index,
+                        monomorph_id
+                    );
+                }
+                case .None => {}
+            }
+
+            generics::pop_generic_env(context);
+        }
+    }
+}
+
+/// Phase 3: specialize and analyze one deferred instance.
+pub fn analyze_monomorph_instance(
+    context: AnalyzerContext*,
+    monomorph_id: cir::MonomorphId
+) {
+    const inst = context->monomorph_registry.get(monomorph_id);
+
+    if (inst == null) {
+        return;
+    }
+
+    if (inst->analyzed) {
+        return;
+    }
+
+    const template_id: MonomorphTemplateId = inst->template_id;
+    const template_body: Option<cir::BodyId> = inst->template_body;
+    const self_type: Option<cir::SemaType> = inst->self_type;
+    const ret_type: cir::SemaType = inst->ret_type;
+    const generic_params: cir::GenericParams = inst->generic_params;
+    const type_args: cir::TypeArgs = inst->type_args;
+
+    var params = clone::clone_func_params(dynamic context->arena, &inst->params);
+
+    // Prevent infinite recursion 
+    context->monomorph_registry.mark_analyzed(monomorph_id);
+
+    switch (template_body) {
+        case .Some(body_id) => {
+            switch (context->decl_tables->bodies.get_const(body_id)) {
+                case .Some(template_block) => {
+                    const generic_env = env::GenericEnv.from_type_args(
+                        context->allocator,
+                        generic_params,
+                        &type_args
+                    );
+
+                    generics::push_generic_env(context, generic_env);
+                    defer generics::pop_generic_env(context);
+
+                    const func_type = cir::FuncType {
+                        params: cir::func_params_as_type_params(
+                            context->allocator,
+                            &params
+                        ),
+                        ret_type: alloc_init(context->allocator, ret_type),
+                        vis: .Private,
+                        callconv: .C,
+                        span: template_block->span,
+                    };
+
+                    var display_name: const uint8* = "<monomorph>";
+
+                    switch (template_id) {
+                        case .Func(func_decl_id) => {
+                            switch (context->decl_tables->funcs.get_const(func_decl_id)) {
+                                case .Some(decl) => {
+                                    display_name = decl->name.as_str_const();
+                                }
+                                case .None => {}
+                            }
+                        }
+                        case .Method(method_decl_id) => {
+                            switch (context->decl_tables->methods.get_const(method_decl_id)) {
+                                case .Some(decl) => {
+                                    display_name = decl->func_decl.name.as_str_const();
+                                }
+                                case .None => {}
+                            }
+                        }
+                    }
+
+                    var new_env = create_func_def_env(
+                        context,
+                        display_name,
+                        func_type,
+                        .None
+                    );
+
+                    switch (template_id) {
+                        case .Method(method_decl_id) => {
+                            new_env.current_method = .Some(method_decl_id);
+                        }
+                        case .Func(_) => {}
+                    }
+
+                    switch (self_type) {
+                        case .Some(ty) => {
+                            new_env.current_object = .Some(ty);
+                        }
+                        case .None => {}
+                    }
+
+                    var old_env = context->func_env;
+                    context->func_env = new_env;
+                    defer restore_func_env(context, &old_env);
+
+                    var body = specialize_func_body(
+                        context,
+                        template_block,
+                        &params
+                    );
+
+                    context->dispatcher.analyze_func_body(context, &body, &ret_type);
+
+                    const specialized_body_id = context->decl_tables->insert_body(body);
+
+                    context->monomorph_registry.set_body_and_params(
+                        monomorph_id,
+                        specialized_body_id,
+                        params
+                    );
+                }
+                case .None => {}
+            }
+        }
+        case .None => {}
+    }
+}
+
+pub fn dispatch_adopt_const_matched_type_args(
+    opaque_context: void*,
+    infer_context: infer::InferContext*,
+    operand: const cir::SemaType*,
+    expect: const cir::SemaType*,
+    generic_params: const cir::GenericParams*,
+    span: const Span*
+) {
+    adopt_const_matched_type_args(
+        @cast(AnalyzerContext*, opaque_context), 
+        infer_context, 
+        operand, 
+        expect, 
+        *generic_params, 
+        *span
+    );
+}
+
+pub fn dispatch_create_inference_generic_env(
+    opaque_context: void*,
+    type_name: const uint8*,
+    params: const cir::GenericParams*,
+    type_args: const cir::TypeArgs*,
+    span: const Span*,
+    result: Option<env::GenericEnv>*
+) {
+    *result = create_inference_generic_env(
+        @cast(AnalyzerContext*, opaque_context), 
+        type_name, 
+        *params, 
+        type_args, 
+        *span
+    );
+}
+/// Match `const` only differences in
+/// generic type arguments to avoid 
+/// generating duplicate declarations.
+pub fn adopt_const_matched_type_args(
+    context: AnalyzerContext*,
+    infer_context: infer::InferContext*,
+    operand: const cir::SemaType*,
+    expect: const cir::SemaType*,
+    generic_params: cir::GenericParams,
+    span: Span
+) {
+    switch (operand->const_inner()->as_named_type()) case .Some(operand_named) else {
+        return;
+    }
+    
+    switch (expect->const_inner()->as_named_type()) case .Some(expect_named) else {
+        return;
+    }
+
+    if (!cir::type_decl_id_eq(operand_named.type_decl_id, expect_named.type_decl_id)) {
+        return;
+    }
+
+    if (operand_named.type_args.len() != expect_named.type_args.len()) {
+        return;
+    }
+
+    if (generic_params.len() != expect_named.type_args.len()) {
+        return;
+    }
+
+    for (var i: usize = 0; i < expect_named.type_args.len(); i += 1) {
+        const inferred_entry = operand_named.type_args.get(i).unwrap();
+        const expected_entry = expect_named.type_args.get(i).unwrap();
+
+        var inferred_type: cir::SemaType = .Placeholder;
+        var has_inferred = false;
+
+        switch (*inferred_entry) {
+            case .Type(ty, _) => {
+                inferred_type = ty;
+                has_inferred = true;
+            }
+            else => {}
+        }
+
+        var expected_type: cir::SemaType = .Placeholder;
+        var has_expected = false;
+
+        switch (*expected_entry) {
+            case .Type(ty, _) => {
+                expected_type = ty;
+                has_expected = true;
+            }
+            else => {}
+        }
+
+        if (!has_inferred || !has_expected) {
+            continue;
+        }
+
+        // Already identical
+        if (cir::cir_types_eq(&inferred_type, &expected_type)) {
+            continue;
+        }
+
+        // Adopt only when the two differ solely by `const`
+        if (!cir::types_equal_modulo_const(&inferred_type, &expected_type)) {
+            continue;
+        }
+
+        if (!is_assignable_to(context, inferred_type, expected_type, span)) {
+            continue;
+        }
+
+        const generic_param_id = *generic_params.ids.get(i).unwrap();
+
+        rebind_generic_param_const(
+            context, 
+            infer_context, 
+            generic_param_id, 
+            &expected_type
+        );
+    }
+}
+
+/// Update an inference variable to `expected_type`.
+/// Skips parameters that already 
+/// have an explicit type.
+fn rebind_generic_param_const(
+    context: AnalyzerContext*,
+    infer_context: infer::InferContext*,
+    generic_param_id: cir::GenericParamId,
+    expected_type: const cir::SemaType*
+) {
+    switch (generics::lookup_generic_binding(context, generic_param_id)) {
+        case .Some(raw) => {
+            switch (raw) {
+                case .InferVar(var_id) => {
+                    infer_context->bind(var_id, expected_type);
+                }
+                else => {}
+            }
+        }
+        case .None => {}
+    }
+}
+
+pub fn create_inference_generic_env(
+    context: AnalyzerContext*,
+    type_name: const uint8*,
+    params: cir::GenericParams,
+    type_args: const cir::TypeArgs*,
+    span: Span
+) Option<env::GenericEnv> {
+    if (!type_args->is_empty() && params.len() != type_args->len()) {
+        diags::report_wrong_number_of_type_args(
+            context->dctx,
+            context->allocator,
+            span,
+            type_name,
+            params.len(),
+            type_args->len()
+        );
+        return .None;
+    }
+
+    var generic_env = env::GenericEnv.new(context->allocator, params);
+
+    for (var i: usize = 0; i < params.len(); i += 1) {
+        const param_id = *params.ids.get_const(i).unwrap();
+
+        switch (context->func_env.infer) {
+            case .Some(infer_context) => {
+                var bound_type: Option<cir::SemaType> = .None;
+
+                switch (type_args->get(i)) {
+                    case .Some(type_arg) => {
+                        switch (*type_arg) {
+                            case .Type(sema_type, _) => bound_type = .Some(sema_type);
+                            case .Infer => bound_type = .Some(infer_context->new_var());
+                        }
+                    }
+                    case .None => {}
+                }
+
+                switch (bound_type) {
+                    case .Some(ty) => {
+                        generic_env.bind(param_id, ty);
+                    }
+                    case .None => {
+                        generic_env.bind(param_id, infer_context->new_var());
+                    }
+                }
+            }
+            case .None => {}
+        }
+    }
+
+    return .Some(generic_env);
+}
+
+pub fn restore_func_env(context: AnalyzerContext*, old: const env::FuncEnv*) {
+    var shares_infer = false;
+
+    switch (context->func_env.infer) {
+        case .Some(new_infer) => {
+            switch (old->infer) {
+                case .Some(old_infer) => {
+                    if (new_infer == old_infer) {
+                        shares_infer = true;
+                    }
+                }
+                case .None => {}
+            }
+        }
+        case .None => {}
+    }
+
+    if (shares_infer) {
+        // Ownership should stay with `old`
+        // to prevent the double free
+        context->func_env.infer = .None;
+    }
+
+    context->func_env.free();
+    context->func_env = *old;
+}
+
+pub fn create_func_def_env(
+    context: AnalyzerContext*,
+    name: const uint8*,
+    func_type: cir::FuncType,
+    parent_infer: Option<infer::InferContext*>
+) env::FuncEnv {
+    var env = env::FuncEnv.new(context->allocator);
+    env.current_func_name = .Some(String.from_str(context->allocator, name));
+    env.current_func = .Some(func_type);
+    env.infer = parent_infer;
+    
+    if (env.infer.is_none()) {
+        env.infer = .Some(alloc_init(
+            context->allocator,
+            infer::InferContext.new(context->allocator)
+        ));
+    }
+
+    return env;
+}
+
+pub fn create_method_env(
+    context: AnalyzerContext*,
+    method_decl_id: cir::MethodDeclId,
+    func_type: cir::FuncType,
+    parent_infer: Option<infer::InferContext*>
+) env::FuncEnv {
+    var env = env::FuncEnv.new(context->allocator);
+    env.current_func = .Some(func_type);
+    env.current_method = .Some(method_decl_id);
+    env.infer = parent_infer;
+    
+    if (env.infer.is_none()) {
+        env.infer = .Some(alloc_init(
+            context->allocator,
+            infer::InferContext.new(context->allocator)
+        ));
+    }
+
+    return env;
+}
+
+fn remap_var_decl_id(
+    context: AnalyzerContext*,
+    decl_map: HashMap<usize, cir::VarDeclId>*,
+    var_decl_id: cir::VarDeclId
+) Option<cir::VarDeclId> {
+    switch (decl_map->get(var_decl_id)) {
+        case .Some(new_var_decl_id) => {
+            return .Some(*new_var_decl_id);
+        }
+        else => {
+            return .None;
+        }
+    }
+}
+
+pub fn analyze_generic_bounds(
+    context: AnalyzerContext*, 
+    generic_params: const cir::GenericParams*
+) {
+    for (var i: usize = 0; i < generic_params->ids.len(); i += 1) {
+        const generic_param_id = *generic_params->ids.get_const(i).unwrap();
+
+        var generic_param =
+            context->
+            decl_tables->
+            generic_params.get(generic_param_id).unwrap();
+
+        switch (generic_param->default) {
+            case .Some(default_type) => {
+                switch (normalize_sema_type(
+                    context, 
+                    *default_type, 
+                    generic_param->name.span, 
+                    0
+                )) {
+                    case .Some(ty) => {
+                        *default_type = ty;
+                    }
+                    case .None => {}
+                }
+            }
+            case .None => {}
+        }
+
+        for (var j: usize = 0; j < generic_param->bounds.len(); j += 1) {
+            const bound = generic_param->bounds.get_const(j).unwrap();
+
+            switch (normalize_sema_type(
+                context, 
+                bound->ty, 
+                generic_param->name.span, 
+                0
+            )) {
+                case .Some(ty) => {
+                    if (!ty.is_interface()) {
+                        var found = format::format_sema_type(
+                            context->allocator, 
+                            context->decl_tables, 
+                            &ty
+                        );
+                        
+                        diags::report_expected_interface_in_bound(
+                            context->dctx,
+                            context->allocator,
+                            bound->span,
+                            found.as_str_const()
+                        );
+                        
+                        found.free();
+                    }
+
+                    check_type_correctness(context, ty, bound->span);
+
+                    var bound = generic_param->bounds.get(j).unwrap();
+                    bound->ty = ty;
+                }
+                case .None => {}
+            }
+        }
+    }
+}
+
