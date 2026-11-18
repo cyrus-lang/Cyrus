@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
 import std::string{String, free_strings};
 import std::mem{Allocator, alloc_init};
 import std::collections{Vec};
@@ -84,9 +87,9 @@ pub fn analyze_expr(
                         );
 
                         name.free();
-                        const error_type: cir::SemaType = .Err(symbol_expr.span());
-                        expr->ty = .Some(error_type);
-                        return .Some(error_type);
+                        const err_ty: cir::SemaType = .Err(symbol_expr.span());
+                        expr->ty = .Some(err_ty);
+                        return .Some(err_ty);
                     }
                 }
                 else => {}
@@ -98,9 +101,9 @@ pub fn analyze_expr(
                 context->allocator, 
                 span
             );
-            const error_type: cir::SemaType = .Err(span);
-            expr->ty = .Some(error_type);
-            return .Some(error_type);
+            const err_ty: cir::SemaType = .Err(span);
+            expr->ty = .Some(err_ty);
+            return .Some(err_ty);
         }
         else => {}
     }
@@ -196,9 +199,9 @@ pub fn analyze_expr_non_terminal(
                 builtin_block.span
             );
 
-            const error_type: cir::SemaType = .Err(builtin_block.span);
-            expr->ty = .Some(error_type);
-            return .Some(error_type);
+            const err_ty: cir::SemaType = .Err(builtin_block.span);
+            expr->ty = .Some(err_ty);
+            return .Some(err_ty);
         }
         
         case .Literal(var literal) => {
@@ -324,9 +327,9 @@ pub fn analyze_expr_non_terminal(
         }
         
         case .Poisoned => {
-            const error_type: cir::SemaType = .Err(expr->span);
-            expr->ty = .Some(error_type);
-            return .Some(error_type);
+            const err_ty: cir::SemaType = .Err(expr->span);
+            expr->ty = .Some(err_ty);
+            return .Some(err_ty);
         }
     }
 
@@ -356,18 +359,18 @@ pub fn analyze_expr_non_terminal(
                 }
                 case .None => {
                     if (context->dctx->has_errors()) {
-                        const error_type: cir::SemaType = .Err(expr->span);
-                        expr->ty = .Some(error_type);
-                        return .Some(error_type);
+                        const err_ty: cir::SemaType = .Err(expr->span);
+                        expr->ty = .Some(err_ty);
+                        return .Some(err_ty);
                     }
                 }
             }
         }
         case .None => {
             if (context->dctx->has_errors()) {
-                const error_type: cir::SemaType = .Err(expr->span);
-                expr->ty = .Some(error_type);
-                return .Some(error_type);
+                const err_ty: cir::SemaType = .Err(expr->span);
+                expr->ty = .Some(err_ty);
+                return .Some(err_ty);
             }
         }
     }
@@ -1712,9 +1715,9 @@ fn analyze_field_access(
 
     // Prevent cascading failures
     if (operand_type.contains_error()) {
-        const error_type: cir::SemaType = .Err(field_access->span);
-        field_access->ty = .Some(error_type);
-        return .Some(error_type);
+        const err_ty: cir::SemaType = .Err(field_access->span);
+        field_access->ty = .Some(err_ty);
+        return .Some(err_ty);
     }
 
     const pure_operand_type = *operand_type.const_inner()->pointer_inner();

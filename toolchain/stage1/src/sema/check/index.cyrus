@@ -1,66 +1,62 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
 import std::string{String, free_strings};
-import std::mem{alloc_init};
-import std::collections{Vec};
 import std::fiber{Fiber, FiberState};
+import std::collections{Vec};
+import std::mem{alloc_init};
 import std::option{Option};
-import tokens{Span};
-import sema::context{AnalyzerContext, AnalyzerDispatcher};
-import parser::ast;
-import sema::format;
-import sema::diags;
-import sema::flow;
-import ciri;
-import cir;
-import .::exprs{
-    analyze_builtin_expr,
-    analyze_cond_expr,
-    analyze_expr,
-    analyze_expr_non_terminal,
-    analyze_inline_asm_stmt,
-    dispatch_analyze_expr,
-    builtin_const_mesg_param_type,
-    check_builtin_arg_count,
-    check_builtin_form,
-    tuple_access_expr,
-};
-import .::specialize{
-    analyze_monomorph_instance,
-    analyze_generic_bounds,
-    dispatch_adopt_const_matched_type_args,
-    apply_self_type_in_method_decl_and_variable,
-    create_func_def_env,
-    dispatch_create_inference_generic_env,
-    create_method_env,
-    instantiate_enum_decl_with_type_args,
-    restore_func_env,
-};
+
 import .::types{
+    coerce_interface_as_interface_object_if_possible,
+    dispatch_normalize_and_check_type_formation,
     analyze_object_implements_interfaces,
-    func_decl_contains_error,
-    check_align,
+    normalize_and_check_type_formation,
     check_duplicate_enum_variants,
+    check_enum_variant_field_type,
     check_duplicate_struct_field,
     check_duplicate_union_field,
-    check_enum_repr_attr,
-    check_enum_tag_type,
-    check_enum_variant_field_type,
-    check_struct_field_type,
-    check_struct_repr_attr,
     dispatch_check_type_arity,
-    check_type_correctness,
-    check_type_formation,
-    check_union_field_type,
-    check_union_repr_attr,
-    check_variable_type,
-    coerce_interface_as_interface_object_if_possible,
-    is_assignable_to,
-    normalize_and_check_type_formation,
-    dispatch_normalize_and_check_type_formation,
+    func_decl_contains_error,
+    check_struct_field_type,
     tuple_type_from_pattern,
-    write_enum_back,
+    check_union_field_type,
+    check_type_correctness,
+    check_struct_repr_attr,
+    check_union_repr_attr,
+    check_enum_repr_attr,
+    check_type_formation,
+    check_variable_type,
+    check_enum_tag_type,
     write_method_back,
     write_struct_back,
+    is_assignable_to,
     write_union_back,
+    write_enum_back,
+    check_align,
+};
+import .::specialize{
+    apply_self_type_in_method_decl_and_variable,
+    dispatch_adopt_const_matched_type_args,
+    dispatch_create_inference_generic_env,
+    instantiate_enum_decl_with_type_args,
+    analyze_monomorph_instance,
+    analyze_generic_bounds,
+    create_func_def_env,
+    create_method_env,
+    restore_func_env,
+};
+import .::exprs{
+    builtin_const_mesg_param_type,
+    analyze_expr_non_terminal,
+    analyze_inline_asm_stmt,
+    check_builtin_arg_count,
+    dispatch_analyze_expr,
+    analyze_builtin_expr,
+    check_builtin_form,
+    tuple_access_expr,
+    analyze_cond_expr,
+    analyze_expr,
 };
 import .::normalizer{
     expand_sema_type,
@@ -69,15 +65,26 @@ import .::normalizer{
     write_back_global_var,
     write_back_var,
 };
+import sema::context{
+    AnalyzerDispatcher,
+    AnalyzerContext, 
+};
+import tokens{Span};
+import sema::format;
+import sema::diags;
+import parser::ast;
+import sema::flow;
+import ciri;
+import cir;
 
 pub fn analyzer_dispatcher() AnalyzerDispatcher {
     return AnalyzerDispatcher {
+        normalize_and_check_type_formation_fn: dispatch_normalize_and_check_type_formation,
         adopt_const_matched_type_args_fn: dispatch_adopt_const_matched_type_args,
-        analyze_expr_fn: dispatch_analyze_expr,
+        create_inference_generic_env_fn: dispatch_create_inference_generic_env,
         analyze_func_body_fn: dispatch_analyze_func_body,
         check_type_arity_fn: dispatch_check_type_arity,
-        create_inference_generic_env_fn: dispatch_create_inference_generic_env,
-        normalize_and_check_type_formation_fn: dispatch_normalize_and_check_type_formation,
+        analyze_expr_fn: dispatch_analyze_expr,
     };
 }
 
@@ -86,7 +93,11 @@ fn dispatch_analyze_func_body(
     body: cir::BlockStmt*,
     ret_type: const cir::SemaType*
 ) {
-    analyze_func_body(@cast(AnalyzerContext*, opaque_context), body, ret_type);
+    analyze_func_body(
+        @cast(AnalyzerContext*, opaque_context), 
+        body, 
+        ret_type
+    );
 }
 
 fn analyze_builtin_block(
@@ -108,7 +119,12 @@ fn analyze_builtin_block(
 
     const builtin_spec = cir::builtin_spec_of(builtin_kind);
 
-    if (!check_builtin_form(context, builtin_spec, .Stmt, builtin_block->span)) {
+    if (!check_builtin_form(
+        context, 
+        builtin_spec, 
+        .Stmt, 
+        builtin_block->span
+    )) {
         return .Reachable;
     }
 
@@ -150,6 +166,7 @@ fn analyze_builtin_block(
                 builtin_block->name.str.as_str_const()
             );
         }
+
         return analyze_block_stmt(context, builtin_block->block);
     }
 }
@@ -171,7 +188,10 @@ fn analyze_test_case_header(
     switch (name_arg->literal_const_string_value()) {
         case .Some(test_name) => {
             if (seen_test_names != null) {
-                if (!str_set_insert(seen_test_names, String.from_str(context->allocator, test_name))) {
+                if (!str_set_insert(
+                    seen_test_names, 
+                    String.from_str(context->allocator, test_name)
+                )) {
                     diags::report_duplicate_test_case_name(
                         context->dctx,
                         context->allocator,
@@ -210,6 +230,7 @@ fn analyze_test_case_body(
     };
 
     var test_name: const uint8* = "<test>";
+
     if (builtin_block->args.len() > 0) {
         const arg0 = builtin_block->args.get_const(0).unwrap();
         switch (arg0->literal_const_string_value()) {
@@ -224,6 +245,7 @@ fn analyze_test_case_body(
         func_type,
         .None
     );
+
     var saved_func_env = context->func_env;
     context->func_env = func_env;
     defer restore_func_env(context, &saved_func_env);
@@ -246,10 +268,15 @@ pub fn analyze_toplevel_stmts(
     context: AnalyzerContext*, 
     typed_stmts: Vec<cir::Stmt>*
 ) {
-    analyze_toplevel_stmts_staged(context, typed_stmts, .None);
+    analyze_toplevel_stmts_staged(
+        context, 
+        typed_stmts, 
+        .None
+    );
 }
 
-/// Analyses one module's top level, but defers function bodies.
+/// Analyses one module's top level, 
+/// but defers function bodies.
 pub fn analyze_toplevel_headers(
     context: AnalyzerContext*,
     tree: cir::ProgramTree*,
@@ -271,7 +298,13 @@ pub fn analyze_toplevel_headers(
     }
 
     for (var i: usize = 0; i < count; i += 1) {
-        analyze_toplevel_stmt_with_tests(context, tree->body_get(i), i, .Some(staged), &seen_test_names);
+        analyze_toplevel_stmt_with_tests(
+            context, 
+            tree->body_get(i), 
+            i, 
+            .Some(staged), 
+            &seen_test_names
+        );
     }
 }
 
@@ -287,7 +320,10 @@ fn analyze_toplevel_typedefs_in_stmt(
         case .Builtin(.BuiltinBlock(var block)) => {
             if (block.args.len() == 0) {
                 for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
-                    analyze_toplevel_typedefs_in_stmt(context, block.block->stmts.get(i).unwrap());
+                    analyze_toplevel_typedefs_in_stmt(
+                        context, 
+                        block.block->stmts.get(i).unwrap()
+                    );
                 }
             }
 
@@ -309,7 +345,10 @@ fn analyze_toplevel_global_vars_in_stmt(
         case .Builtin(.BuiltinBlock(var block)) => {
             if (block.args.len() == 0) {
                 for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
-                    analyze_toplevel_global_vars_in_stmt(context, block.block->stmts.get(i).unwrap());
+                    analyze_toplevel_global_vars_in_stmt(
+                        context, 
+                        block.block->stmts.get(i).unwrap()
+                    );
                 }
             }
 
@@ -347,7 +386,13 @@ fn analyze_toplevel_stmt(
     index: usize,
     staged: Option<StagedBodies>
 ) {
-    analyze_toplevel_stmt_with_tests(context, stmt, index, staged, null);
+    analyze_toplevel_stmt_with_tests(
+        context, 
+        stmt, 
+        index, 
+        staged, 
+        null
+    );
 }
 
 fn analyze_toplevel_stmt_with_tests(
@@ -355,7 +400,7 @@ fn analyze_toplevel_stmt_with_tests(
     stmt: cir::Stmt*,
     index: usize,
     staged: Option<StagedBodies>,
-    seen_test_names: Vec<String>*
+    seen_test_names: Vec<String>* // FIXME: Use Option instead of pointer for nullability
 ) {
     switch (stmt->kind) {
         case .FuncDef(var func_def) => {
@@ -407,13 +452,30 @@ fn analyze_toplevel_stmt_with_tests(
                 case .Some(builtin_kind) => {
                     const builtin_spec = cir::builtin_spec_of(builtin_kind);
                     
-                    if (check_builtin_form(context, builtin_spec, .Stmt, builtin_block.span) &&
-                        check_builtin_arg_count(context, builtin_spec, builtin_block.args.len(), builtin_block.span))
-                    {
+                    const form = check_builtin_form(
+                        context, 
+                        builtin_spec, 
+                        .Stmt, 
+                        builtin_block.span
+                    );
+
+                    const arg_count = check_builtin_arg_count(
+                        context, 
+                        builtin_spec, 
+                        builtin_block.args.len(), 
+                        builtin_block.span
+                    );
+                    
+                    if (form && arg_count) {
                         builtin_block.is_toplevel = .Some(true);
 
                         if (builtin_block.args.len() > 0) {
-                            const needs_body = analyze_test_case_header(context, &builtin_block, seen_test_names);
+                            const needs_body = analyze_test_case_header(
+                                context, 
+                                &builtin_block, 
+                                seen_test_names
+                            );
+
                             switch (staged) {
                                 case .Some(staged_bodies) => {
                                     if (needs_body) {
@@ -444,7 +506,15 @@ fn analyze_toplevel_stmt_with_tests(
                                 switch (staged) {
                                     case .Some(staged_bodies) => {
                                         const before = staged_bodies.work->len();
-                                        analyze_toplevel_stmt_with_tests(context, sub, index, staged, seen_test_names);
+                                        
+                                        analyze_toplevel_stmt_with_tests(
+                                            context, 
+                                            sub, 
+                                            index, 
+                                            staged, 
+                                            seen_test_names
+                                        );
+                                        
                                         if (staged_bodies.work->len() > before) {
                                             if (has_work) {
                                                 // Keep only one work item 
@@ -455,7 +525,13 @@ fn analyze_toplevel_stmt_with_tests(
                                         }
                                     }
                                     case .None => {
-                                        analyze_toplevel_stmt_with_tests(context, sub, index, .None, seen_test_names);
+                                        analyze_toplevel_stmt_with_tests(
+                                            context, 
+                                            sub, 
+                                            index, 
+                                            .None, 
+                                            seen_test_names
+                                        );
                                     }
                                 }
                             }
@@ -811,13 +887,16 @@ fn analyze_global_var(
     switch (global_var->rhs) {
         case .Some(var expr) => {
             const rhs_ty_opt = analyze_expr(context, &expr, global_var->ty);
-            const rhs_has_err = rhs_ty_opt.is_none() || (expr.ty.is_some() && expr.ty.unwrap().contains_error());
+            
+            const rhs_has_err = rhs_ty_opt.is_none() || 
+                (expr.ty.is_some() && expr.ty.unwrap().contains_error());
+
             if (rhs_has_err) {
                 global_var->rhs = .Some(expr);
 
                 if (global_var->ty.is_none()) {
-                    const error_type = cir::SemaType.Err(global_var->span);
-                    global_var->ty = .Some(error_type);
+                    const err_ty = cir::SemaType.Err(global_var->span);
+                    global_var->ty = .Some(err_ty);
                 }
 
                 write_back_global_var(context, global_var);
@@ -834,8 +913,8 @@ fn analyze_global_var(
                 global_var->rhs = .Some(expr);
                 
                 if (global_var->ty.is_none()) {
-                    const error_type = cir::SemaType.Err(global_var->span);
-                    global_var->ty = .Some(error_type);
+                    const err_ty = cir::SemaType.Err(global_var->span);
+                    global_var->ty = .Some(err_ty);
                 }
                 
                 write_back_global_var(context, global_var);
@@ -852,8 +931,8 @@ fn analyze_global_var(
                 global_var->rhs = .Some(expr);
                 
                 if (global_var->ty.is_none()) {
-                    const error_type = cir::SemaType.Err(global_var->span);
-                    global_var->ty = .Some(error_type);
+                    const err_ty = cir::SemaType.Err(global_var->span);
+                    global_var->ty = .Some(err_ty);
                 }
                 
                 write_back_global_var(context, global_var);
@@ -3636,7 +3715,9 @@ fn are_profile_decls_compatible(
                         const t1 = p1->ty();
                         const t2 = p2->ty();
 
-                        if (!is_assignable_to(context, t1, t2, span) || !is_assignable_to(context, t2, t1, span)) {
+                        if (!is_assignable_to(context, t1, t2, span) ||
+                            !is_assignable_to(context, t2, t1, span))
+                        {
                             return false;
                         }
                     }
@@ -3779,15 +3860,19 @@ pub struct BodyScheduler {
 
 pub fn trigger_analyzer(context: AnalyzerContext*) {
     var work: Vec<BodyWorkItem> = Vec.new(context->allocator);
-    defer work.free();
 
     run_header_phase(context, &work);
     check_profile_symbol_pairs(context);
     run_body_phase(context, &work);
     run_monomorphization_phase(context);
+    
+    work.free();
 }
 
-fn tree_dependency_has_errors(context: const AnalyzerContext*, tree: const cir::ProgramTree*) bool {
+fn tree_dependency_has_errors(
+    context: const AnalyzerContext*, 
+    tree: const cir::ProgramTree*
+) bool {
     for (var i: usize = 0; i < tree->deps.len(); i += 1) {
         const dep_id = *tree->deps.get_const(i).unwrap();
 
@@ -3840,8 +3925,8 @@ fn run_body_phase(context: AnalyzerContext*, work: const Vec<BodyWorkItem>*) {
         const state = fiber->resume();
 
         switch (state) {
-            case .Done => return;
             case .Suspended => {}
+            case .Done => return;
             else => return;
         }
     }

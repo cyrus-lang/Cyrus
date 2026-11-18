@@ -1020,7 +1020,8 @@ def ensure_codegen_c_rt(cfg: Config) -> Path:
     build_dir = rt_dir / "build"
     lib_path = build_dir / "libcyrus_rt.a"
     header = rt_dir / "runtime.h"
-    srcs = [rt_dir / "int128.c", rt_dir / "float16.c", rt_dir / "panic.c"]
+    srcs = [rt_dir / name for name in ("int128.c", "float16.c", "panic.c")]
+    srcs.append(cfg.stage1 / "src" / "testh" / "harness.c")
     objs = [build_dir / f"{src.stem}.o" for src in srcs]
 
     header_mtime = header.stat().st_mtime if header.is_file() else 0.0
