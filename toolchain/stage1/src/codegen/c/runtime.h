@@ -65,4 +65,14 @@ void __cyrus_fail_(
 
 float __cyrus_f16_round(double d);
 
+struct __cyrus_test_case {
+    const char *name;
+    const char *file;
+    unsigned long line;
+    void (*run)(void);
+};
+
+int __cyrus_run_tests(const struct __cyrus_test_case *test_cases,
+                      unsigned long count);
+
 #endif

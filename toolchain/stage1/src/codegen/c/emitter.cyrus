@@ -384,6 +384,13 @@ pub struct Emitter {
     }
 
     fn emit_test_runner(self: Self*) {
+        self->protos_out.push_str(
+            "struct __cyrus_test_case{const char*name;const char*file;unsigned long line;void(*run)(void);};"
+        );
+        self->protos_out.push_str(
+            "int __cyrus_run_tests(const struct __cyrus_test_case*,unsigned long);"
+        );
+
         for (var test_index: usize = 0; test_index < self->test_cases.len(); test_index += 1) {
             const test_case = self->test_cases.get_const(test_index).unwrap();
             var test_name = String.from_str(self->allocator, "__cyrus_test_");
@@ -411,13 +418,45 @@ pub struct Emitter {
             test_name.free();
         }
 
-        self->body_out.push_str("int main(void){");
+        if (self->test_cases.len() == 0) {
+            self->body_out.push_str("int main(void){return __cyrus_run_tests(0,0);}");
+            return;
+        }
+
+        self->body_out.push_str("static const struct __cyrus_test_case __cyrus_tests[]={");
         for (var test_index: usize = 0; test_index < self->test_cases.len(); test_index += 1) {
+            const test_case = self->test_cases.get_const(test_index).unwrap();
+            const case_name = test_case->args.get_const(0).unwrap()->literal_const_string_value().unwrap();
+            var quoted_name = self->quoted_cstr(case_name);
+            self->body_out.push('{');
+            self->body_out.push_str(quoted_name.as_str_const());
+            quoted_name.free();
+            self->body_out.push(',');
+
+            switch (self->tree_for_source(test_case->span.source_id)) {
+                case .Some(tree) => {
+                    var path = self->quoted_cstr(tree->file_name.as_str_const());
+                    self->body_out.push_str(path.as_str_const());
+                    path.free();
+                }
+                case .None => self->body_out.push_str("\"<unknown>\"");
+            }
+            self->body_out.push(',');
+
+            var line: usize = 0;
+            if (self->sctx != null) {
+                const source = self->sctx->get(test_case->span.source_id);
+                line = source->nearest_line(test_case->span.loc.start).unwrap_or(0);
+            }
+            push_usize(&self->body_out, line);
+            self->body_out.push(',');
             self->body_out.push_str("__cyrus_test_");
             push_usize(&self->body_out, test_index);
-            self->body_out.push_str("();");
+            self->body_out.push_str("},");
         }
-        self->body_out.push_str("return 0;}");
+        self->body_out.push_str("};int main(void){return __cyrus_run_tests(__cyrus_tests,");
+        push_usize(&self->body_out, self->test_cases.len());
+        self->body_out.push_str(");}");
     }
 
     fn emit_int128_decls(self: Self*, writer: Writer) {
