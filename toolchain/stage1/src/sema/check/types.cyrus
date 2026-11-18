@@ -1,0 +1,2593 @@
+import std::collections{Vec};
+import std::mem{alloc_init};
+import std::option{Option};
+
+import sema::context{AnalyzerContext};
+import .::normalizer{
+    normalize_sema_type,
+    expand_sema_type,
+};
+import sema::generics;
+import sema::format;
+import tokens{Span};
+import sema::diags;
+import parser::ast;
+import cir::tables;
+import cir::clone;
+import sema::env;
+import ciri;
+import cir;
+
+pub fn analyze_object_implements_monomorphized_interfaces(
+    context: AnalyzerContext*,
+    interface_decl: const cir::InterfaceDecl*,
+    interface_type_args: const cir::TypeArgs*,
+    object_name: const uint8*,
+    object_type: const cir::SemaType*,
+    object_impls: const Vec<cir::ImplementInterface>*,
+    method_decls: const cir::MethodDecls*,
+    span: Span
+) {
+    const generic_env_opt = context->dispatcher.create_inference_generic_env(
+        context,
+        interface_decl->name.as_str_const(),
+        interface_decl->generic_params,
+        interface_type_args,
+        span
+    );
+
+    switch (generic_env_opt) case .Some(env) else {
+        return;   
+    }
+
+    generics::push_generic_env(context, env);
+
+    for (var i: usize = 0; i < object_impls->len(); i += 1) {
+        const implement_interface = object_impls->get_const(i).unwrap();
+
+        const normalized_type_opt = normalize_sema_type(context,
+            implement_interface->ty,
+            implement_interface->span,
+            0
+        );
+
+        switch (normalized_type_opt) case .Some(normalized_type) else {
+            continue;
+        }
+
+        const ty = expand_sema_type(
+            context, 
+            normalized_type, 
+            implement_interface->span
+        );
+
+        switch (ty.as_named_interface()) case .Some(inner_interface_id) else {
+            const symbol_name = format::format_sema_type(
+                context->allocator, 
+                context->decl_tables, 
+                &ty
+            );
+        
+            diags::report_non_interface_symbol(
+                context->dctx,
+                context->allocator,
+                implement_interface->span,
+                symbol_name.as_str_const()
+            );
+            
+            symbol_name.free();
+            continue;
+        }
+
+        const inner_interface_decl = 
+            context->
+            decl_tables->
+            interfaces.get_const(inner_interface_id).unwrap();
+
+        for (var j: usize = 0; j < inner_interface_decl->methods.entries.len(); j += 1) {
+            const interface_method = 
+                inner_interface_decl->methods.entries.get_const(j).unwrap();
+            
+            const table_interface_method = 
+                context->
+                decl_tables->
+                methods.get(interface_method->id).unwrap();
+
+            // Interface method
+            var interface_func = table_interface_method->func_decl;
+            
+            interface_func.params = clone::clone_func_params(
+                context->allocator, 
+                &table_interface_method->func_decl.params
+            );
+
+            switch (interface_func.params.list.first()) {
+                case .Some(first_kind) => {
+                    switch (*first_kind) {
+                        case .SelfModifier(var self_modifier) => {
+                            self_modifier.ty = generics::substitute_self_type(
+                                context, 
+                                &self_modifier.ty, 
+                                object_type
+                            );
+
+                            *first_kind = .SelfModifier(self_modifier);
+                        }
+                        else => {}
+                    }
+                }
+                case .None => {}
+            }
+
+            // Substitute function parameters
+            generics::substitute_func_params(context, &interface_func.params);
+            
+            // Substitute return type
+            interface_func.ret_type = generics::substitute_type(
+                context, 
+                &interface_func.ret_type
+            );
+
+            // Object method
+            switch (method_decls->get(
+                interface_func.name.as_str_const()
+            )) case .Some(object_method_id) else {
+                continue;
+            }
+
+            const table_object_method =
+                context->
+                decl_tables->
+                methods.get(object_method_id).unwrap();
+
+            if (!table_object_method->func_decl.is_generic()) {
+                // Skip comparison for generic methods
+                // because they will be validated
+                // during monomorphization
+                var object_func = table_object_method->func_decl;
+                
+                object_func.params = clone::clone_func_params(
+                    context->allocator, 
+                    &table_object_method->func_decl.params
+                );
+
+                switch (object_func.params.list.first()) {
+                    case .Some(first_kind) => {
+                        switch (*first_kind) {
+                            case .SelfModifier(var self_modifier) => {
+                                self_modifier.ty = generics::substitute_self_type(
+                                    context, 
+                                    &self_modifier.ty, 
+                                    object_type
+                                );
+                                
+                                *first_kind = .SelfModifier(self_modifier);
+                            }
+                            else => {}
+                        }
+                    }
+                    case .None => {}
+                }
+
+                // Substitute function parameters
+                generics::substitute_func_params(context, &object_func.params);
+
+                // Substitute return type
+                object_func.ret_type = generics::substitute_type(
+                    context, 
+                    &object_func.ret_type
+                );
+
+                // Check method declaration mismatch
+                if (!cir::func_decl_eq(&object_func, &interface_func)) {
+                    diags::report_interface_method_type_mismatch(
+                        context->dctx,
+                        context->allocator,
+                        interface_func.span,
+                        object_name,
+                        interface_func.name.as_str_const(),
+                        inner_interface_decl->name.as_str_const()
+                    );
+                }
+            }
+        }
+
+        if (!check_type_correctness(context, ty, implement_interface->span)) {
+            continue;
+        }
+    }
+
+    generics::pop_generic_env(context);
+}
+
+pub fn normalize_and_check_type_formation(
+    context: AnalyzerContext*,
+    ty: cir::SemaType,
+    span: Span,
+    indirection: uint8
+) Option<cir::SemaType> {
+    var error = false;
+
+    check_type_formation_recuresively(context, &ty, span, &error);
+
+    if (error) {
+        return .None;
+    }
+
+    switch (normalize_sema_type(context, ty, span, indirection)) {
+        case .Some(ty) => {
+            return check_type_formation(context, ty, span);
+        }
+        case .None => {
+            return .None;
+        }
+    }
+}
+
+pub fn check_type_arity(
+    context: AnalyzerContext*, 
+    ty: cir::SemaType, 
+    span: Span
+) bool {
+    if (ty.is_err()) {
+        return true;
+    }
+
+    return check_type_arity_recursively(context, &ty, span);
+}
+
+fn check_type_arity_recursively(
+    context: AnalyzerContext*, 
+    ty: const cir::SemaType*, 
+    span: Span
+) bool {
+    switch (*ty) {
+        case .Named(named_type) => {
+            if (check_missing_type_args(context, &named_type, span)) {
+                return false;
+            }
+            if (check_unresolved_infer_vars(context, &named_type, span)) {
+                return false;
+            }
+
+            for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                const arg = named_type.type_args.get(i).unwrap();
+                
+                switch (*arg) {
+                    case .Type(inner, inner_span) => {
+                        if (!check_type_arity_recursively(
+                            context, 
+                            &inner, 
+                            inner_span
+                        )) {
+                            return false;
+                        }
+                    }
+                    case .Infer => {}
+                }
+            }
+
+            switch (named_type.type_decl_id) {
+                case .Interface(interface_decl_id) => {
+                    const interface_decl = 
+                        context->
+                        decl_tables->
+                        interfaces.get_const(interface_decl_id).unwrap();
+                    
+                    if (!interface_decl->is_interface_dynamically_dispatchable) {
+                        diags::report_not_dynamic_compatible_interface(
+                            context->dctx,
+                            context->allocator,
+                            span,
+                            interface_decl->name.as_str_const()
+                        );
+                        return false;
+                    }
+                }
+                else => {}
+            }
+
+            return true;
+        }
+
+        case .Array(array_type) => {
+            return check_type_arity_recursively(
+                context, 
+                array_type.element_type, 
+                array_type.span
+            );
+        }
+
+        case .FuncType(func_type) => {
+            for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
+                const param = func_type.params.list.get_const(i).unwrap();
+                
+                if (!check_type_arity_recursively(
+                    context, 
+                    param, 
+                    func_type.span
+                )) {
+                    return false;
+                }
+            }
+            
+            return check_type_arity_recursively(
+                context, 
+                func_type.ret_type, 
+                func_type.span
+            );
+        }
+
+        case .Tuple(tuple_type) => {
+            for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                const element = tuple_type.elements.get_const(i).unwrap();
+                
+                if (!check_type_arity_recursively(context, &element->ty, tuple_type.span)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        case .Pointer(inner) => return check_type_arity_recursively(context, inner, span);
+        
+        case .Const(inner) => return check_type_arity_recursively(context, inner, span);
+
+        case .Plain
+        | .SelfType
+        | .InterfaceObject
+        | .GenericParam
+        | .InferVar
+        | .Unresolved
+        | .Err
+        | .Placeholder => return true;
+    }
+}
+
+pub fn check_type_formation(
+    context: AnalyzerContext*, 
+    ty: cir::SemaType, 
+    span: Span
+) Option<cir::SemaType> {
+    if (ty.is_err()) {
+        return .None;
+    }
+
+    var error = false;
+
+    check_type_formation_recuresively(context, &ty, span, &error);
+
+    if (error) {
+        return .None;
+    }
+
+    return .Some(ty);
+}
+
+fn check_type_formation_recuresively(
+    context: AnalyzerContext*, 
+    ty: const cir::SemaType*, 
+    span: Span, 
+    error: bool*
+) {
+    if (ty->count_const_layers() > 1) {
+        diags::report_redundant_const_qualifier(
+            context->dctx, 
+            context->allocator, 
+            span
+        );
+        *error = true;
+    }
+
+    switch (*ty) {
+        case .Named(named_type) => {
+            check_unexpected_type_args(context, &named_type, span);
+
+            for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                const arg = named_type.type_args.get(i).unwrap();
+                
+                switch (*arg) {
+                    case .Type(inner, _) => {
+                        check_type_formation_recuresively(context, &inner, span, error);
+                    }
+                    case .Infer => {}
+                }
+            }
+
+            switch (named_type.type_decl_id) {
+                case .Union(union_decl_id) => {
+                    const union_decl = 
+                        context->
+                        decl_tables->
+                        unions.get_const(union_decl_id).unwrap();
+                    
+                    if (union_decl->fields.is_empty()) {
+                        diags::report_union_type_must_contain_at_least_one_field(
+                            context->dctx,
+                            context->allocator,
+                            span
+                        );
+                        *error = true;
+                    }
+                }
+                else => {}
+            }
+        }
+
+        case .Array(array_type) => {
+            if (array_type.element_type->is_void()) {
+                diags::report_void_element_type_not_allowed(
+                    context->dctx,
+                    context->allocator,
+                    array_type.span
+                );
+
+                *error = true;
+            }
+
+            check_type_formation_recuresively(
+                context, 
+                array_type.element_type, 
+                span, 
+                error
+            );
+        }
+
+        case .FuncType(func_type) => {
+            for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
+                const param = func_type.params.list.get_const(i).unwrap();
+                
+                if (param->is_void()) {
+                    diags::report_void_parameter_type(
+                        context->dctx, 
+                        context->allocator, 
+                        func_type.span
+                    );
+                    
+                    *error = true;
+                }
+                
+                check_type_formation_recuresively(
+                    context, 
+                    param, 
+                    span, 
+                    error
+                );
+            }
+
+            check_type_formation_recuresively(
+                context, 
+                func_type.ret_type, 
+                span, 
+                error
+            );
+        }
+
+        case .Tuple(tuple_type) => {
+            for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                const element = tuple_type.elements.get_const(i).unwrap();
+                
+                if (element->ty.is_void()) {
+                    diags::report_void_tuple_element_not_allowed(
+                        context->dctx,
+                        context->allocator,
+                        tuple_type.span
+                    );
+
+                    *error = true;
+                }
+                
+                check_type_formation_recuresively(
+                    context, 
+                    &element->ty, 
+                    span, 
+                    error
+                );
+            }
+        }
+
+        case .SelfType => {
+            if (context->func_env.current_object.is_none()) {
+                diags::report_self_type_outside_of_an_object(
+                    context->dctx, 
+                    context->allocator, 
+                    span
+                );
+
+                *error = true;
+            }
+        }
+
+        case .Const(inner) => {
+            check_type_formation_recuresively(context, inner, span, error);
+        }
+        
+        case .Pointer(inner) => {
+            check_type_formation_recuresively(context, inner, span, error);
+        }
+
+        case .Plain
+        | .InterfaceObject
+        | .GenericParam
+        | .InferVar
+        | .Unresolved
+        | .Err
+        | .Placeholder => {}
+    }
+}
+
+fn check_unexpected_type_args(
+    context: AnalyzerContext*, 
+    named_type: const cir::NamedType*, 
+    span: Span
+) bool {
+    const generic_params = tables::type_decl_generic_params(
+        context->decl_tables,
+        named_type->type_decl_id
+    );
+
+    if (generic_params->is_empty() && !named_type->type_args.is_empty()) {
+        const ty = named_type->as_sema_type();
+
+        var type_name = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &ty
+        );
+
+        diags::report_unexpected_type_args(
+            context->dctx,
+            context->allocator,
+            span,
+            type_name.as_str_const()
+        );
+
+        type_name.free();
+        return true;
+    }
+
+    return false;
+}
+
+fn check_missing_type_args(
+    context: AnalyzerContext*, 
+    named_type: const cir::NamedType*, 
+    span: Span
+) bool {
+    var error = false;
+
+    const generic_params = tables::type_decl_generic_params(
+        context->decl_tables, 
+        named_type->type_decl_id
+    );
+    const ty = named_type->as_sema_type();
+
+    for (var i: usize = 0; i < generic_params->len(); i += 1) {
+        const param_id = generic_params->ids.get_const(i).unwrap();
+
+        const type_arg = named_type->type_args.get(i);
+
+        switch (type_arg) {
+            case .Some(arg) => {
+                const generic_param = 
+                    context->
+                    decl_tables->
+                    generic_params.get_const(*param_id).unwrap();
+
+                switch (*arg) {
+                    case .Type(ty, _) => {
+                        if (ty.contains_generic_param()) {
+                            diags::report_unresolved_generic_parameter(
+                                context->dctx,
+                                context->allocator,
+                                span,
+                                generic_param->name.str.as_str_const()
+                            );
+
+                            error = true;
+                        }
+                    }
+                    case .Infer => {
+                        diags::report_unresolved_generic_parameter(
+                            context->dctx,
+                            context->allocator,
+                            span,
+                            generic_param->name.str.as_str_const()
+                        );
+
+                        error = true;
+                    }
+                }
+            }
+            case .None => {
+                const param = 
+                    context->
+                    decl_tables->
+                    generic_params.get_const(*param_id).unwrap();
+                
+                var type_name = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    &ty
+                );
+
+                diags::report_missing_generic_argument(
+                    context->dctx,
+                    context->allocator,
+                    span,
+                    type_name.as_str_const(),
+                    param->name.str.as_str_const()
+                );
+
+                type_name.free();
+
+                error = true;
+            }
+        }
+    }
+
+    return error;
+}
+
+fn check_unresolved_infer_vars(
+    context: AnalyzerContext*, 
+    named_type: const cir::NamedType*, 
+    span: Span
+) bool {
+    var error = false;
+
+    const generic_params = tables::type_decl_generic_params(
+        context->decl_tables, 
+        named_type->type_decl_id
+    );
+
+    const sema_type = named_type->as_sema_type();
+
+    for (var i: usize = 0; i < generic_params->len(); i += 1) {
+        const param_id = generic_params->ids.get_const(i).unwrap();
+        const type_arg = named_type->type_args.get(i);
+        
+        switch (type_arg) {
+            case .Some(arg) => {
+                const generic_param = context->decl_tables->generic_params.get_const(*param_id).unwrap();
+
+                switch (*arg) {
+                    case .Type(arg_ty, _) => {
+                        if (arg_ty.contains_infer_var()) {
+                            error = true;
+
+                            var type_name = format::format_sema_type(
+                                context->allocator,
+                                context->decl_tables,
+                                &sema_type
+                            );
+
+                            diags::report_cannot_infer_generic_argument(
+                                context->dctx,
+                                context->allocator,
+                                span,
+                                type_name.as_str_const(),
+                                generic_param->name.str.as_str_const()
+                            );
+
+                            type_name.free();
+                        }
+                    }
+                    case .Infer => {
+                        error = true;
+
+                        var type_name = format::format_sema_type(
+                            context->allocator,
+                            context->decl_tables,
+                            &sema_type
+                        );
+
+                        diags::report_cannot_infer_generic_argument(
+                            context->dctx,
+                            context->allocator,
+                            span,
+                            type_name.as_str_const(),
+                            generic_param->name.str.as_str_const()
+                        );
+
+                        type_name.free();
+                    }
+                }
+            }
+            else => {}
+        }
+    }
+
+    return error;
+}
+
+pub fn check_type_correctness(
+    context: AnalyzerContext*, 
+    ty: cir::SemaType, 
+    span: Span
+) bool {
+    if (ty.is_err()) {
+        return true;
+    }
+
+    return check_type_correctness_recursively(
+        context, 
+        &ty, 
+        span
+    );
+}
+
+fn check_type_correctness_recursively(
+    context: AnalyzerContext*, 
+    ty: const cir::SemaType*, 
+    span: Span
+) bool {
+    switch (*ty) {
+        case .Named(named_type) => {
+            if (check_missing_type_args(context, &named_type, span)) {
+                return false;
+            }
+            if (check_unresolved_infer_vars(context, &named_type, span)) {
+                return false;
+            }
+
+            for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                const arg = named_type.type_args.get(i).unwrap();
+                
+                switch (*arg) {
+                    case .Type(inner, inner_span) => {
+                        if (!check_type_correctness_recursively(
+                            context, 
+                            &inner, 
+                            inner_span
+                        )) {
+                            return false;
+                        }
+                    }
+                    case .Infer => {}
+                }
+            }
+
+            return true;
+        }
+
+        case .FuncType(func_type) => {
+            for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
+                const param = func_type.params.list.get_const(i).unwrap();
+                
+                if (!check_type_correctness_recursively(
+                    context, 
+                    param, 
+                    func_type.span
+                )) {
+                    return false;
+                }
+            }
+
+            return check_type_correctness_recursively(
+                context, 
+                func_type.ret_type, 
+                func_type.span
+            );
+        }
+
+        case .Tuple(tuple_type) => {
+            for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                const element = tuple_type.elements.get_const(i).unwrap();
+                
+                if (!check_type_correctness_recursively(
+                    context, 
+                    &element->ty, 
+                    tuple_type.span
+                )) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        case .Array(array_type) => {
+            return check_type_correctness_recursively(context, 
+                array_type.element_type,
+                array_type.span
+            );
+        }
+
+        case .Pointer(inner) => {
+            return check_type_correctness_recursively(context, inner, span);
+        }
+
+        case .Const(inner) => {
+            return check_type_correctness_recursively(context, inner, span);
+        }
+
+        else => return true;
+    }
+}
+
+pub fn is_assignable_to(
+    context: AnalyzerContext*,
+    rhs_type: cir::SemaType,
+    lhs_type: cir::SemaType,
+    span: Span
+) bool {
+    if (rhs_type.contains_error() || lhs_type.contains_error()) {
+        return true;
+    }
+
+    const expanded_lhs = expand_sema_type(context, lhs_type, span);
+    const expanded_rhs = expand_sema_type(context, rhs_type, span);
+
+    // T* <-> T* (Constness matters)
+    switch (expanded_rhs) {
+        case .Pointer(inner1) => {
+            switch (expanded_lhs) {
+                case .Pointer(inner2) => {
+                    const is_lhs_const = inner2->is_const();
+                    const is_rhs_const = inner1->is_const();
+
+                    if (!is_lhs_const && is_rhs_const) {
+                        return false;
+                    }
+
+                    if (inner1->is_void() || inner2->is_void()) {
+                        return true;
+                    }
+
+                    return is_assignable_to(context, *inner1, *inner2, span);
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    const rhs_inner = expanded_rhs.const_inner();
+    const lhs_inner = expanded_lhs.const_inner();
+
+    if (rhs_inner->is_err() || lhs_inner->is_err()) {
+        return true;
+    }
+
+    // null -> T*
+    switch (*rhs_inner) {
+        case .Plain(.Null) => {
+            switch (*lhs_inner) {
+                case .Pointer => return true;
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    switch (*rhs_inner) {
+        case .Plain(plain_typ1) => {
+            switch (*lhs_inner) {
+                case .Plain(plain_typ2) => {
+                    return is_plain_type_assignable_to(plain_typ1, plain_typ2);
+                }
+                else => return false;
+            }
+        }
+
+        case .InterfaceObject(interface_object1) => {
+            switch (*lhs_inner) {
+                case .InterfaceObject(interface_object2) => {
+                    return is_named_type_assignable_to(context, 
+                        &interface_object1.interface_type,
+                        &interface_object2.interface_type,
+                        span
+                    );
+                }
+                case .Named(named_type2) => {
+                    return is_named_type_assignable_to(context, 
+                        &interface_object1.interface_type,
+                        &named_type2,
+                        span
+                    );
+                }
+                else => return false;
+            }
+        }
+
+        case .Named(named_type1) => {
+            switch (*lhs_inner) {
+                case .Named(named_type2) => {
+                    return is_named_type_assignable_to(
+                        context, 
+                        &named_type1, 
+                        &named_type2, 
+                        span
+                    );
+                }
+                else => return false;
+            }
+        }
+
+        case .Array(array_type1) => {
+            switch (*lhs_inner) {
+                case .Array(array_type2) => {
+                    if (!is_const_str_assignable_to_array(
+                        context, 
+                        &array_type1, 
+                        &array_type2
+                    )) {
+                        return false;
+                    }
+
+                    return is_assignable_to(context, 
+                        *array_type1.element_type,
+                        *array_type2.element_type,
+                        span
+                    );
+                }
+                
+                // Array-to-pointer decay
+                case .Pointer(inner) => {
+                    return is_assignable_to(
+                        context, 
+                        *array_type1.element_type, 
+                        *inner, 
+                        span
+                    );
+                }
+
+                else => return false;
+            }
+        }
+
+        case .Tuple(tuple_type1) => {
+            switch (*lhs_inner) {
+                case .Tuple(tuple_type2) => {
+                    return cir::tuple_type_eq(&tuple_type1, &tuple_type2);
+                }
+                else => {
+                    return false;
+                }
+            }
+        }
+
+        case .FuncType(func_type1) => {
+            switch (*lhs_inner) {
+                case .FuncType(func_type2) => {
+                    return cir::func_type_eq(&func_type1, &func_type2);
+                }
+                else => {
+                    return false;
+                }
+            }
+        }
+
+        else => return false;
+    }
+}
+
+fn is_named_type_assignable_to(
+    context: AnalyzerContext*,
+    named_type1: const cir::NamedType*,
+    named_type2: const cir::NamedType*,
+    span: Span
+) bool {
+    switch (named_type1->type_decl_id) {
+        case .Struct(id1) => {
+            switch (named_type2->type_decl_id) {
+                case .Struct(id2) => {
+                    if (id1 == id2 &&
+                        cir::type_args_eq(&named_type1->type_args, &named_type2->type_args)) {
+                        return true;
+                    }
+
+                    const decl1 = context->decl_tables->structs.get_const(id1).unwrap();
+                    const decl2 = context->decl_tables->structs.get_const(id2).unwrap();
+
+                    var env1 = env::GenericEnv.from_type_args(
+                        context->allocator,
+                        decl1->generic_params,
+                        &named_type1->type_args
+                    );
+                    defer env1.free();
+
+                    var env2 = env::GenericEnv.from_type_args(
+                        context->allocator,
+                        decl2->generic_params,
+                        &named_type2->type_args
+                    );
+                    defer env2.free();
+                    
+                    return is_struct_decl_assignable_to(context, decl1, decl2, &env1, &env2, span);
+                }
+                else => return false;
+            }
+        }
+
+        case .Union(id1) => {
+            switch (named_type2->type_decl_id) {
+                case .Union(id2) => {
+                    if (id1 == id2 &&
+                        cir::type_args_eq(&named_type1->type_args, &named_type2->type_args)) {
+                        return true;
+                    }
+
+                    const decl1 = context->decl_tables->unions.get_const(id1).unwrap();
+                    const decl2 = context->decl_tables->unions.get_const(id2).unwrap();
+
+                    var env1 = env::GenericEnv.from_type_args(
+                        context->allocator,
+                        decl1->generic_params,
+                        &named_type1->type_args
+                    );
+                    defer env1.free();
+
+                    var env2 = env::GenericEnv.from_type_args(
+                        context->allocator,
+                        decl2->generic_params,
+                        &named_type2->type_args
+                    );
+                    defer env2.free();
+
+                    return is_union_decl_assignable_to(
+                        context, 
+                        decl1, 
+                        decl2, 
+                        &env1, 
+                        &env2, 
+                        span
+                    );
+                }
+                else => return false;
+            }
+        }
+
+        case .Enum(id1) => {
+            switch (named_type2->type_decl_id) {
+                case .Enum(id2) => {
+                    if (id1 == id2 && 
+                        cir::type_args_eq(&named_type1->type_args, &named_type2->type_args)) {
+                        return true;
+                    }
+
+                    const decl1 = context->decl_tables->enums.get_const(id1).unwrap();
+                    const decl2 = context->decl_tables->enums.get_const(id2).unwrap();
+
+                    var env1 = env::GenericEnv.from_type_args(
+                        context->allocator,
+                        decl1->generic_params,
+                        &named_type1->type_args
+                    );
+                    defer env1.free();
+
+                    var env2 = env::GenericEnv.from_type_args(
+                        context->allocator,
+                        decl2->generic_params,
+                        &named_type2->type_args
+                    );
+                    defer env2.free();
+
+                    return is_enum_decl_assignable_to(
+                        context, 
+                        decl1, 
+                        decl2, 
+                        &env1, 
+                        &env2, 
+                        span
+                    );
+                }
+                else => return false;
+            }
+        }
+
+        case .Interface(id1) => {
+            switch (named_type2->type_decl_id) {
+                case .Interface(id2) => {
+                    return id1 == id2 && 
+                        cir::type_args_eq(&named_type1->type_args, &named_type2->type_args);
+                }
+                else => return false;
+            }
+        }
+
+        else => return false;
+    }
+}
+
+fn is_struct_decl_assignable_to(
+    context: AnalyzerContext*,
+    struct_decl1: const cir::StructDecl*,
+    struct_decl2: const cir::StructDecl*,
+    env1: const env::GenericEnv*,
+    env2: const env::GenericEnv*,
+    span: Span
+) bool {
+    var ok = true;
+
+    for (var i: usize = 0; i < struct_decl2->fields.len() && ok; i += 1) {
+        const field2 = struct_decl2->fields.get_const(i).unwrap();
+        const found = struct_decl1->lookup_field(field2->name.as_str_const());
+
+        switch (found) case .Some(field1) else {
+            ok = false;
+            continue;
+        }
+
+        switch (normalize_sema_type(context, field1->ty, span, 0)) case .Some(var ty1) else {
+            ok = false;
+            continue;
+        }
+
+        switch (normalize_sema_type(context, field2->ty, span, 0)) case .Some(var ty2) else {
+            ok = false;
+            continue;
+        }
+
+        ty1 = env1->substitute_sema_type(&ty1);
+        ty2 = env2->substitute_sema_type(&ty2);
+
+        if (!is_assignable_to(context, ty1, ty2, span)) {
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
+fn is_union_decl_assignable_to(
+    context: AnalyzerContext*,
+    union_decl1: const cir::UnionDecl*,
+    union_decl2: const cir::UnionDecl*,
+    env1: const env::GenericEnv*,
+    env2: const env::GenericEnv*,
+    span: Span
+) bool {
+    var ok = true;
+
+    for (var i: usize = 0; i < union_decl1->fields.len() && ok; i += 1) {
+        const field1 = union_decl1->fields.get_const(i).unwrap();
+        const found = union_decl2->lookup_field(field1->name.as_str_const());
+
+        switch (found) {
+            case .Some(field2) => {
+                switch (normalize_sema_type(context, field1->ty, span, 0)) {
+                    case .Some(ty1_raw) => {
+                        switch (normalize_sema_type(context, field2->ty, span, 0)) {
+                            case .Some(ty2_raw) => {
+                                const ty1 = env1->substitute_sema_type(&ty1_raw);
+                                const ty2 = env2->substitute_sema_type(&ty2_raw);
+
+                                if (!is_assignable_to(context, ty1, ty2, span)) {
+                                    ok = false;
+                                }
+                            }
+                            case .None => ok = false;
+                        }
+                    }
+                    case .None => ok = false;
+                }
+            }
+            case .None => ok = false;
+        }
+    }
+
+    return ok;
+}
+
+fn is_enum_decl_assignable_to(
+    context: AnalyzerContext*,
+    enum_decl1: const cir::EnumDecl*,
+    enum_decl2: const cir::EnumDecl*,
+    env1: const env::GenericEnv*,
+    env2: const env::GenericEnv*,
+    span: Span
+) bool {
+    switch (enum_decl1->tag_type) {
+        case .Some(tag1) => {
+            switch (enum_decl2->tag_type) {
+                case .Some(tag2) => {
+                    const ty1 = env1->substitute_sema_type(&tag1);
+                    const ty2 = env2->substitute_sema_type(&tag2);
+
+                    if (!is_assignable_to(context, ty1, ty2, span)) {
+                        return false;
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    switch (enum_decl1->align) {
+        case .Some(align1) => {
+            switch (enum_decl2->align) {
+                case .Some(align2) => {
+                    if (align1 != align2) {
+                        return false;
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    var ok = true;
+
+    for (var i: usize = 0; i < enum_decl1->variants.len() && ok; i += 1) {
+        const variant1 = enum_decl1->variants.get_const(i).unwrap();
+        const found = enum_decl2->lookup_variant(variant1->name());
+
+        switch (found) {
+            case .Some(variant2) => {
+                switch (*variant1) {
+                    case .Unit => {
+                        switch (*variant2) {
+                            case .Unit => {}
+                            else => {
+                                ok = false;
+                            }
+                        }
+                    }
+
+                    case .Valued { value: v1, .. } => {
+                        switch (*variant2) case .Valued { value: v2, .. } else {
+                            ok = false;
+                            continue;
+                        }
+
+                        switch (v1->ty) case .Some(raw1) else {
+                            ok = false;
+                            continue;
+                        }
+
+                        switch (v2->ty) case .Some(raw2) else {
+                            ok = false;
+                            continue;
+                        }
+
+                        switch (normalize_sema_type(context, raw1, span, 0)) case .Some(var ty1) else {
+                            ok = false;
+                            continue;
+                        }
+
+                        switch (normalize_sema_type(context, raw2, span, 0)) case .Some(var ty2) else {
+                            ok = false;
+                            continue;
+                        }
+
+                        ty1 = env1->substitute_sema_type(&ty1);
+                        ty2 = env2->substitute_sema_type(&ty2);
+
+                        if (!is_assignable_to(context, ty1, ty2, span)) {
+                            ok = false;
+                        }
+                    }
+
+                    case .Tuple { fields: fields1, .. } => {
+                        switch (*variant2) {
+                            case .Tuple { fields: fields2, .. } => {
+                                if (fields1.len() == fields2.len()) {
+                                    for (var j: usize = 0; j < fields1.len() && ok; j += 1) {
+                                        const field1 = fields1.get_const(j).unwrap();
+                                        const field2 = fields2.get_const(j).unwrap();
+
+                                        switch (normalize_sema_type(context, field1->ty, span, 0)) case .Some(ty1_n) else {
+                                            ok = false;
+                                            continue;
+                                        }
+
+                                        switch (normalize_sema_type(context, field2->ty, span, 0)) case .Some(ty2_n) else {
+                                            ok = false;
+                                            continue;
+                                        }
+
+                                        const ty1 = env1->substitute_sema_type(&ty1_n);
+                                        const ty2 = env2->substitute_sema_type(&ty2_n);
+
+                                        if (!is_assignable_to(context, ty1, ty2, span)) {
+                                            ok = false;
+                                        }
+                                    }
+                                } else {
+                                    ok = false;
+                                }
+                            }
+                            else => ok = false;
+                        }
+                    }
+
+                    case .Struct { fields: fields1, .. } => {
+                        switch (*variant2) {
+                            case .Struct { fields: fields2, .. } => {
+                                for (var j: usize = 0; j < fields2.len() && ok; j += 1) {
+                                    const field2 = fields2.get_const(j).unwrap();
+
+                                    var found_index: usize = fields1.len();
+                                    var k: usize = 0;
+
+                                    while (k < fields1.len()) {
+                                        const candidate = fields1.get_const(k).unwrap();
+
+                                        if (candidate->name.str.as_str_const() == field2->name.str.as_str_const()) {
+                                            found_index = k;
+                                            k = fields1.len();
+                                        } else {
+                                            k += 1;
+                                        }
+                                    }
+
+                                    if (found_index >= fields1.len()) {
+                                        ok = false;
+                                    } else {
+                                        const field1 = fields1.get_const(found_index).unwrap();
+
+                                        switch (normalize_sema_type(context, field1->ty, span, 0)) {
+                                            case .Some(ty1) => {
+                                                switch (normalize_sema_type(context, field2->ty, span, 0)) {
+                                                    case .Some(ty2) => {
+                                                        const ty1 = env1->substitute_sema_type(&ty1);
+                                                        const ty2 = env2->substitute_sema_type(&ty2);
+
+                                                        if (!is_assignable_to(context, ty1, ty2, span)) {
+                                                            ok = false;
+                                                        }
+                                                    }
+                                                    case .None => ok = false;
+                                                }
+                                            }
+                                            case .None => ok = false;
+                                        }
+                                    }
+                                }
+                            }
+                            else => ok = false;
+                        }
+                    }
+                }
+            }
+            case .None => {
+                ok = false;
+            }
+        }
+    }
+
+    return ok;
+}
+
+pub fn is_type_comparable(
+    context: AnalyzerContext*,
+    rhs_type: cir::SemaType,
+    lhs_type: cir::SemaType,
+    span: Span
+) bool {
+    const lhs = expand_sema_type(context, lhs_type, span);
+    const rhs = expand_sema_type(context, rhs_type, span);
+
+    switch (rhs) {
+        case .Pointer(inner_rhs) => {
+            switch (lhs) {
+                case .Pointer(inner_lhs) => {
+                    if (inner_rhs->is_void() || inner_lhs->is_void()) {
+                        return true;
+                    }
+
+                    return is_assignable_to(context, *inner_rhs, *inner_lhs, span);
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return is_assignable_to(context, rhs, lhs, span);
+}
+
+pub fn is_explicit_cast_allowed(
+    context: AnalyzerContext*,
+    value_type: cir::SemaType,
+    target_type: cir::SemaType,
+    span: Span
+) bool {
+    if (is_assignable_to(context, value_type, target_type, span)) {
+        return true;
+    }
+
+    const value_base = value_type.const_inner();
+    const target_base = target_type.const_inner();
+
+    var is_allowed = false;
+
+    switch (*value_base) {
+        case .Plain(value_pt) => {
+            switch (*target_base) {
+                case .Plain(target_pt) => {
+                    if (value_pt.is_integer() && target_pt.is_integer()) {
+                        is_allowed = true;
+                    } else if (value_pt.is_float() && target_pt.is_float()) {
+                        is_allowed = true;
+                    } else if ((value_pt.is_integer() 
+                        && target_pt.is_float()) 
+                        || (value_pt.is_float() 
+                        && target_pt.is_integer())
+                    ) {
+                        is_allowed = true;
+                    } else if (value_pt == .Bool && target_pt.is_integer()) {
+                        is_allowed = true;
+                    }
+                }
+                case .Pointer => {
+                    is_allowed = value_pt == .IntPtr || value_pt == .UIntPtr;
+                }
+                case .Named(named_type) => {
+                    is_allowed = is_enum_to_plain_cast_allowed(
+                        context, 
+                        &named_type, 
+                        value_pt
+                    );
+                }
+                else => {}
+            }
+        }
+        case .Pointer => {
+            switch (*target_base) {
+                case .Plain(target_pt) => {
+                    is_allowed = target_pt == .IntPtr || target_pt == .UIntPtr;
+                }
+                else => {}
+            }
+        }
+        case .Named(named_type) => {
+            switch (*target_base) {
+                case .Plain(plain_type) => {
+                    is_allowed = is_enum_to_plain_cast_allowed(
+                        context, 
+                        &named_type, 
+                        plain_type
+                    );
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return is_allowed;
+}
+
+fn is_enum_to_plain_cast_allowed(
+    context: AnalyzerContext*,
+    named_type: const cir::NamedType*,
+    plain_type: cir::PlainType
+) bool {
+    if (named_type->type_decl_id.as_enum().is_none()) {
+        return false;
+    }
+
+    const enum_decl_id = named_type->type_decl_id.as_enum().unwrap();
+    
+    const enum_decl = 
+        context->
+        decl_tables->
+        enums.get_const(enum_decl_id).unwrap();
+
+    var ok = false;
+
+    switch (enum_decl->tag_type) {
+        case .Some(tag_ty) => {
+            const inner = tag_ty.const_inner();
+
+            switch (*inner) {
+                case .Plain(plain_type) => {
+                    ok = plain_type.is_integer_or_bool();
+                }
+                else => {
+                    ok = false;
+                }
+            }
+        }
+        case .None => ok = true;
+    }
+
+    return ok && plain_type.is_integer_or_bool();
+}
+
+fn is_plain_type_assignable_to(
+    value_type: cir::PlainType,
+    target_type: cir::PlainType
+) bool {
+    if (value_type == target_type) {
+        return true;
+    }
+
+    if (value_type.is_integer() && target_type.is_integer()) {
+        const signedness = 
+            (value_type.is_signed() && target_type.is_signed())
+            || (!value_type.is_signed() && !target_type.is_signed());
+
+        const rank1 = cir::PlainType.plain_type_rank(&value_type);
+        const rank2 = cir::PlainType.plain_type_rank(&target_type);
+
+        switch (rank1) {
+            case .Some(r1) => {
+                switch (rank2) {
+                    case .Some(r2) => return r1 <= r2 && signedness;
+                    case .None => return false;
+                }
+            }
+            case .None => return false;
+        }
+    }
+
+    if (value_type.is_float() && target_type.is_float()) {
+        const rank1 = cir::PlainType.plain_type_rank(&value_type);
+        const rank2 = cir::PlainType.plain_type_rank(&target_type);
+
+        switch (rank1) {
+            case .Some(r1) => {
+                switch (rank2) {
+                    case .Some(r2) => return r1 <= r2;
+                    case .None => return false;
+                }
+            }
+            case .None => return false;
+        }
+    }
+
+    switch (value_type) {
+        case .Bool => {
+            switch (target_type) {
+                case .Int8 | .UInt8 => return true;
+                else => {}
+            }
+        }
+        case .Int8 | .UInt8 => {
+            switch (target_type) {
+                case .Bool => return true;
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return false;
+}
+
+fn is_const_str_assignable_to_array(
+    context: AnalyzerContext*,
+    value_type: const cir::ArrayType*,
+    target_type: const cir::ArrayType*
+) bool {
+    switch (value_type->capacity) {
+        case .Fixed(value_capacity) => {
+            switch (target_type->capacity) {
+                case .Fixed(target_capacity) => {
+                    const value = ciri::fold_const_expr_int(
+                        context->decl_tables, 
+                        context->registry, 
+                        value_capacity
+                    );
+                    const target = ciri::fold_const_expr_int(
+                        context->decl_tables, 
+                        context->registry, 
+                        target_capacity
+                    );
+
+                    switch (value) {
+                        case .Some(value) => {
+                            switch (target) {
+                                case .Some(target) => {
+                                    return cir::integer_literal_eq(value, target);
+                                }
+                                case .None => {
+                                    return false;
+                                }
+                            }
+                        }
+                        case .None => return false;
+                    }
+                }
+                case .Slice => return false;
+            }
+        }
+        case .Slice => return false;
+    }
+}
+
+pub fn is_const_qualified_lvalue(
+    context: AnalyzerContext*, 
+    expr: const cir::Expr*
+) bool {
+    if (expr->value_category.is_const_lvalue()) {
+        return true;
+    }
+
+    switch (expr->ty) {
+        case .Some(ty) => {
+            if (ty.is_const()) {
+                return true;
+            }
+        }
+        else => {}
+    }
+
+    return false;
+}
+
+pub fn check_duplicate_union_field(
+    context: AnalyzerContext*,
+    object_name: const uint8*,
+    fields: const Vec<cir::UnionField>*
+) {
+    for (var i: usize = 0; i < fields->len(); i += 1) {
+        const field = fields->get_const(i).unwrap();
+
+        for (var j: usize = 0; j < i; j += 1) {
+            const other = fields->get_const(j).unwrap();
+
+            if (field->name.as_str_const() == other->name.as_str_const()) {
+                diags::report_duplicate_field_name(
+                    context->dctx,
+                    context->allocator,
+                    field->span,
+                    object_name,
+                    field->name.as_str_const()
+                );
+                break;
+            }
+        }
+    }
+}
+
+pub fn check_union_repr_attr(
+    context: AnalyzerContext*,
+    repr_attr: const Option<ast::ASTReprAttr>*,
+    fields_count: usize,
+    span: Span
+) {
+    switch (*repr_attr) {
+        case .Some(attr) => {
+            if (cir::is_attr_repr_packed(&attr)) {
+                diags::report_invalid_repr_attr(
+                    context->dctx,
+                    context->allocator,
+                    span,
+                    "packed layout is not supported for unions",
+                    "remove the [[repr(packed)]] attribute"
+                );
+                return;
+            }
+
+            switch (cir::repr_attr_kind(&attr)) {
+                case .Some(.Cyrus) => return;
+                case .Some(.C) => return;
+                case .Some(.Transparent) => {
+                    if (fields_count != 1) {
+                        diags::report_invalid_repr_attr(
+                            context->dctx,
+                            context->allocator,
+                            span,
+                            "[[repr(transparent)]] union must have exactly one field",
+                            "remove the extra fields or drop the [[repr(transparent)]] attribute"
+                        );
+                    }
+                }
+                case .None => return;
+            }
+        }
+        case .None => return;
+    }
+}
+
+pub fn check_union_field_type(
+    context: AnalyzerContext*,
+    union_decl_id: cir::UnionDeclId,
+    field_type: const cir::SemaType*,
+    span: Span
+) {
+    const inner = field_type->const_inner();
+
+    if (inner->is_void()) {
+        diags::report_void_field_type(
+            context->dctx, 
+            context->allocator, 
+            span
+        );
+    }
+
+    const ty = cir::NamedType {
+        type_decl_id: .Union(union_decl_id),
+        type_args: cir::TypeArgs.new(context->allocator),
+    };
+
+    if (cir::type_contains_self_by_value(inner, &ty)) {
+        var type_name = format::format_sema_type(
+            context->allocator, 
+            context->decl_tables, 
+            inner
+        );
+        
+        diags::report_infinite_size_recursive_type(
+            context->dctx, 
+            context->allocator, 
+            span, 
+            type_name.as_str_const()
+        );
+
+        type_name.free();
+        return;
+    }
+
+    check_type_arity(context, *inner, span);
+}
+
+pub fn check_duplicate_enum_variants(
+    context: AnalyzerContext*,
+    object_name: const uint8*,
+    variants: const Vec<cir::EnumVariant>*
+) {
+    for (var i: usize = 0; i < variants->len(); i += 1) {
+        const variant = variants->get_const(i).unwrap();
+        const name = variant->name();
+
+        for (var j: usize = 0; j < i; j += 1) {
+            const prev = variants->get_const(j).unwrap();
+
+            if (prev->name() == name) {
+                diags::report_duplicate_enum_variant_name(
+                    context->dctx,
+                    context->allocator,
+                    variant->span(),
+                    object_name,
+                    name
+                );
+                break;
+            }
+        }
+    }
+}
+
+pub fn check_enum_variant_field_type(
+    context: AnalyzerContext*, 
+    enum_decl_id: cir::EnumDeclId, 
+    field_type: const cir::SemaType*, 
+    span: Span
+) {
+    const inner = field_type->const_inner();
+
+    const ty = cir::NamedType {
+        type_decl_id: .Enum(enum_decl_id),
+        type_args: cir::TypeArgs.new(context->allocator),
+    };
+
+    if (cir::type_contains_self_by_value(inner, &ty)) {
+        var type_name = format::format_sema_type(
+            context->allocator, 
+            context->decl_tables, 
+            inner
+        );
+        
+        diags::report_infinite_size_recursive_type(
+            context->dctx, 
+            context->allocator, 
+            span, 
+            type_name.as_str_const()
+        );
+        
+        type_name.free();
+        return;
+    }
+
+    check_type_arity(context, *inner, span);
+}
+
+pub fn check_enum_repr_attr(
+    context: AnalyzerContext*, 
+    repr_attr: const Option<ast::ASTReprAttr>*, 
+    has_align: bool, 
+    span: Span
+) {
+    switch (*repr_attr) {
+        case .Some(attr) => {
+            if (cir::is_attr_repr_packed(&attr)) {
+                diags::report_invalid_repr_attr(
+                    context->dctx,
+                    context->allocator,
+                    span,
+                    "[[repr(packed)]] is not valid for enums",
+                    "remove the [[repr(packed)]] attribute"
+                );
+                return;
+            }
+
+            switch (cir::repr_attr_kind(&attr)) {
+                case .Some(.C) => {
+                    if (has_align) {
+                        diags::report_invalid_repr_attr(
+                            context->dctx,
+                            context->allocator,
+                            span,
+                            "cannot specify alignment with [[repr(c)]] or [[repr(cyrus)]] enum layout, alignment is determined by the target ABI",
+                            "remove the alignment from the repr attribute"
+                        );
+                        return;
+                    }
+                }
+                case .Some(.Cyrus) => {
+                    if (has_align) {
+                        diags::report_invalid_repr_attr(
+                            context->dctx,
+                            context->allocator,
+                            span,
+                            "cannot specify alignment with [[repr(c)]] or [[repr(cyrus)]] enum layout, alignment is determined by the target ABI",
+                            "remove the alignment from the repr attribute"
+                        );
+                        return;
+                    }
+                }
+                case .Some(.Transparent) => {
+                    diags::report_invalid_repr_attr(
+                        context->dctx,
+                        context->allocator,
+                        span,
+                        "[[repr(transparent)]] cannot be applied to enums",
+                        "enums only support [[repr(c)]] and [[repr(cyrus)]] layouts"
+                    );
+                }
+                case .None => {}
+            }
+        }
+        case .None => {}
+    }
+}
+
+pub fn check_enum_tag_type(
+    context: AnalyzerContext*,
+    tag_type: const Option<cir::SemaType>*,
+    span: Span
+) {
+    switch (*tag_type) {
+        case .Some(ty) => {
+            const inner = ty.const_inner();
+            const valid = inner->is_integer() 
+                || inner->is_uint8() 
+                || inner->is_bool();
+
+            if (!valid) {
+                var got = format::format_sema_type(
+                    context->allocator, 
+                    context->decl_tables, 
+                    inner
+                );
+                
+                diags::report_invalid_enum_tag_type(
+                    context->dctx, 
+                    context->allocator, 
+                    span, 
+                    got.as_str_const()
+                );
+                
+                got.free();
+            }
+        }
+        case .None => return;
+    }
+}
+
+pub fn check_struct_repr_attr(
+    context: AnalyzerContext*, 
+    repr_attr: const Option<ast::ASTReprAttr>*, 
+    fields_count: usize,
+    span: Span
+) {
+    switch (*repr_attr) {
+        case .Some(attr) => {
+            switch (cir::repr_attr_kind(&attr)) {
+                case .Some(.Transparent) => {
+                    if (fields_count != 1) {
+                        diags::report_invalid_repr_attr(
+                            context->dctx,
+                            context->allocator,
+                            span,
+                            "[[repr(transparent)]] struct must have exactly one field",
+                            "remove the extra fields or drop the [[repr(transparent)]] attribute"
+                        );
+                    }
+
+                    if (cir::is_attr_repr_packed(&attr)) {
+                        diags::report_invalid_repr_attr(
+                            context->dctx,
+                            context->allocator,
+                            span,
+                            "[[repr(transparent)]] cannot be combined with [[repr(packed)]]",
+                            "use either [[repr(transparent)]] or [[repr(packed)]], not both"
+                        );
+                    }
+                }
+                case .Some(.Cyrus) => {}
+                case .Some(.C) => {}
+                case .None => {}
+            }
+        }
+        case .None => {}
+    }
+}
+
+pub fn check_struct_field_type(
+    context: AnalyzerContext*,
+    struct_decl_id: cir::StructDeclId,
+    field_type: const cir::SemaType*,
+    span: Span
+) {
+    const inner = field_type->const_inner();
+
+    if (inner->is_void()) {
+        diags::report_void_field_type(
+            context->dctx, 
+            context->allocator, 
+            span
+        );
+    }
+
+    const ty = cir::NamedType {
+        type_decl_id: .Struct(struct_decl_id),
+        type_args: cir::TypeArgs.new(context->allocator),
+    };
+
+    if (cir::type_contains_self_by_value(inner, &ty)) {
+        var type_name = format::format_sema_type(
+            context->allocator, 
+            context->decl_tables, 
+            inner
+        );
+
+        diags::report_infinite_size_recursive_type(
+            context->dctx,
+            context->allocator, 
+            span, 
+            type_name.as_str_const()
+        );
+
+        type_name.free();
+        return;
+    }
+
+    check_type_arity(context, *inner, span);
+}
+
+pub fn check_duplicate_struct_field(
+    context: AnalyzerContext*, 
+    object_name: const uint8*, 
+    fields: const Vec<cir::StructField>*
+) {
+    for (var i: usize = 0; i < fields->len(); i += 1) {
+        const field = fields->get_const(i).unwrap();
+
+        for (var j: usize = 0; j < i; j += 1) {
+            const prev = fields->get_const(j).unwrap();
+
+            if (prev->name.as_str_const() == field->name.as_str_const()) {
+                diags::report_duplicate_field_name(
+                    context->dctx,
+                    context->allocator,
+                    field->span,
+                    object_name,
+                    field->name.as_str_const()
+                );
+                break;
+            }
+        }
+    }
+}
+
+pub fn coerce_interface_as_interface_object_if_possible(
+    context: AnalyzerContext*,
+    ty: const cir::SemaType*,
+    expr: const cir::Expr*,
+    span: Span
+) cir::SemaType {
+    switch (expr->ty) {
+        case .Some(expr_type) => {
+            switch (expr_type.as_interface_object()) {
+                case .Some(interface_object) => {
+                    return coerce_interface_object_recursively(
+                        context, 
+                        ty, 
+                        &interface_object, 
+                        span
+                    );
+                }
+                case .None => return *ty;
+            }
+        }
+        case .None => return *ty;
+    }
+}
+
+fn coerce_interface_object_recursively(
+    context: AnalyzerContext*,
+    ty: const cir::SemaType*,
+    interface_object: const cir::InterfaceObjectType*,
+    span: Span
+) cir::SemaType {
+    switch (*ty) {
+        case .Named(named_type) => {
+            if (is_named_type_assignable_to(
+                context, 
+                &named_type, 
+                &interface_object->interface_type, 
+                span)
+            ) {
+                return .InterfaceObject(*interface_object);
+            }
+
+            return *ty;
+        }
+
+        case .Const(inner) => {
+            const coerce = coerce_interface_object_recursively(
+                context, 
+                inner, 
+                interface_object, 
+                span
+            );
+            return .Const(alloc_init(context->allocator, coerce));
+        }
+
+        case .Pointer(inner) => {
+            const coerce = coerce_interface_object_recursively(
+                context, 
+                inner, 
+                interface_object, 
+                span
+            );
+            return .Pointer(alloc_init(context->allocator, coerce));
+        }
+
+        case .Array(array_type) => {
+            const element_type = coerce_interface_object_recursively(context,
+                array_type.element_type, 
+                interface_object, 
+                span
+            );
+
+            return .Array(cir::ArrayType {
+                element_type: alloc_init(context->allocator, element_type),
+                capacity: array_type.capacity,
+                span: array_type.span,
+            });
+        }
+
+        case .Tuple(tuple_type) => {
+            var elements: Vec<cir::TupleElement> = Vec.with_capacity(
+                context->allocator, 
+                tuple_type.elements.len()
+            );
+
+            for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                const element = tuple_type.elements.get_const(i).unwrap();
+                const coerce = coerce_interface_object_recursively(
+                    context, 
+                    &element->ty, 
+                    interface_object, 
+                    span
+                );
+                
+                elements.push(cir::TupleElement {
+                    ty: coerce,
+                    span: element->span,
+                });
+            }
+
+            return .Tuple(cir::TupleType {
+                elements,
+                span: tuple_type.span,
+            });
+        }
+
+        case .FuncType(func_type) => {
+            var params = cir::FuncTypeParams {
+                list: Vec.with_capacity(
+                    context->allocator, 
+                    func_type.params.list.len()
+                ),
+                variadic: .None,
+            };
+
+            for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
+                const param = func_type.params.list.get_const(i).unwrap();
+                const coerce = coerce_interface_object_recursively(
+                    context, 
+                    param, 
+                    interface_object, 
+                    span
+                );
+                params.list.push(coerce);
+            }
+
+            switch (func_type.params.variadic) {
+                case .Some(variadic) => {
+                    switch (*variadic) {
+                        case .Typed(inner) => {
+                            const coerce = coerce_interface_object_recursively(
+                                context, 
+                                &inner, 
+                                interface_object, 
+                                span
+                            );
+                            
+                            params.variadic = .Some(alloc_init(
+                                context->allocator,
+                                cir::FuncTypeVariadicParam.Typed(coerce)
+                            ));
+                        }
+                        case .UntypedCStyle => {
+                            params.variadic = .Some(alloc_init(
+                                context->allocator,
+                                cir::FuncTypeVariadicParam.UntypedCStyle
+                            ));
+                        }
+                    }
+                }
+                else => {}
+            }
+
+            const ret_type = coerce_interface_object_recursively(
+                context, 
+                func_type.ret_type, 
+                interface_object, 
+                span
+            );
+
+            return .FuncType(cir::FuncType {
+                params,
+                ret_type: alloc_init(context->allocator, ret_type),
+                vis: func_type.vis,
+                callconv: func_type.callconv,
+                span: func_type.span,
+            });
+        }
+
+        else => return *ty;
+    }
+}
+
+pub fn check_variable_type(
+    context: AnalyzerContext*,
+    ty: const cir::SemaType*,
+    is_init: bool,
+    span: Span
+) bool {
+    if (ty->const_inner()->is_void()) {
+        diags::report_void_variable_type(
+            context->dctx, 
+            context->allocator, 
+            span
+        );
+    }
+
+    if (ty->const_inner()->is_interface() && !is_init) {
+        diags::report_interface_type_must_be_initialized(
+            context->dctx, 
+            context->allocator, 
+            span
+        );
+    }
+
+    if (ty->const_inner()->is_func_type() && !is_init) {
+        diags::report_lambda_type_must_be_initialized(
+            context->dctx, 
+            context->allocator, 
+            span
+        );
+    }
+
+    return check_type_arity(context, *ty, span);
+}
+
+pub fn tuple_type_from_pattern(
+    context: AnalyzerContext*, 
+    pattern: const cir::TupleExportPattern*
+) Option<cir::SemaType> {
+    switch (pattern->kind) {
+        case .Tuple(elements) => {
+            var result_type: Vec<cir::TupleElement> = Vec.new(context->allocator);
+            defer result_type.free();
+
+            var has_explicit_type = false;
+
+            for (var i: usize = 0; i < elements.len(); i += 1) {
+                const element = elements.get_const(i).unwrap();
+
+                switch (element->ty) {
+                    case .Some(ty) => {
+                        result_type.push(cir::TupleElement {
+                            ty,
+                            span: element->span
+                        });
+                        has_explicit_type = true;
+                    }
+                    case .None => {
+                        switch (element->kind) {
+                            case .Tuple => {
+                                switch (tuple_type_from_pattern(context, element)) {
+                                    case .Some(inner) => {
+                                        result_type.push(cir::TupleElement {
+                                            ty: inner, 
+                                            span: element->span
+                                        });
+                                        has_explicit_type = true;
+                                    }
+                                    case .None => {
+                                        switch (context->func_env.infer) {
+                                            case .Some(infer_context) => {
+                                                result_type.push(cir::TupleElement {
+                                                    ty: infer_context->new_var(),
+                                                    span: element->span,
+                                                });
+                                            }
+                                            case .None => {
+                                                return .None;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else => {
+                                switch (context->func_env.infer) {
+                                    case .Some(infer_context) => {
+                                        result_type.push(cir::TupleElement {
+                                            ty: infer_context->new_var(),
+                                            span: element->span,
+                                        });
+                                    }
+                                    case .None => {
+                                        return .None;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!has_explicit_type) {
+                return .None;
+            }
+
+            return .Some(.Tuple(cir::TupleType {
+                elements: result_type,
+                span: pattern->span,
+            }));
+        }
+        else => { return .None; }
+    }
+}
+
+pub fn infer_pointer_arithmetic_type(
+    lhs_type: const cir::SemaType*,
+    rhs_type: const cir::SemaType*,
+    is_addition: bool
+) Option<cir::SemaType> {
+    if (lhs_type->is_pointer() && rhs_type->is_integer()) {
+        return .Some(*lhs_type);
+    } else if (lhs_type->is_integer() && rhs_type->is_pointer()) {
+        return .Some(*rhs_type);
+    } else if (lhs_type->is_pointer() && rhs_type->is_pointer() && !is_addition) {
+        return .Some(.Plain(.ISize));
+    } else {
+        return .None;
+    }
+}
+
+pub fn infer_null_coalesce_type(
+    lhs_type: cir::SemaType,
+    rhs_type: cir::SemaType
+) Option<cir::SemaType> {
+    if (lhs_type.is_plain_null()) {
+        switch (rhs_type) {
+            case .Pointer(inner) => return .Some(.Pointer(inner));
+            case .Plain(.Null) => return .Some(lhs_type);
+            else => {}
+        }
+    } else if (lhs_type.is_pointer()) {
+        switch (rhs_type) {
+            case .Pointer(inner_rhs) => {
+                switch (lhs_type) {
+                    case .Pointer(inner_lhs) => {
+                        if (cir::cir_types_eq(inner_lhs, inner_rhs)) {
+                            return .Some(lhs_type);
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .Plain(.Null) => {
+                return .Some(lhs_type);
+            }
+            else => {}
+        }
+    }
+
+    return .None;
+}
+
+pub fn unify_with_expected_type(
+    context: AnalyzerContext*,
+    operand_type: cir::SemaType,
+    expected_type: Option<cir::SemaType>,
+    generic_params: cir::GenericParams,
+    span: Span
+) {
+    switch (expected_type) {
+        case .Some(expect) => {
+            switch (context->func_env.infer) {
+                case .Some(infer_context) => {
+                    infer_context->unify(&expect, &operand_type);
+
+                    context->dispatcher.adopt_const_matched_type_args(
+                        context,
+                        infer_context,
+                        &operand_type,
+                        &expect,
+                        generic_params,
+                        span
+                    );
+                }
+                case .None => {}
+            }
+        }
+        case .None => {}
+    }
+}
+
+pub fn dispatch_check_type_arity(
+    opaque_context: void*,
+    ty: const cir::SemaType*,
+    span: const Span*
+) bool {
+    return check_type_arity(@cast(AnalyzerContext*, opaque_context), *ty, *span);
+}
+
+pub fn dispatch_normalize_and_check_type_formation(
+    opaque_context: void*,
+    ty: const cir::SemaType*,
+    span: const Span*,
+    indirection: uint8,
+    result: Option<cir::SemaType>*
+) {
+    *result = normalize_and_check_type_formation(@cast(AnalyzerContext*, opaque_context), *ty, *span, indirection);
+}
+pub fn method_decls_of_named_type(
+    decl_tables: tables::DeclTables*,
+    named_type: const cir::NamedType*
+) Option<const cir::MethodDecls*> {
+    switch (named_type->type_decl_id) {
+        case .Struct(struct_decl_id) => {
+            const struct_decl = decl_tables->structs.get_const(struct_decl_id).unwrap();
+            return .Some(&struct_decl->methods);
+        }
+        case .Enum(enum_decl_id) => {
+            const enum_decl = decl_tables->enums.get_const(enum_decl_id).unwrap();
+            return .Some(&enum_decl->methods);
+        }
+        case .Union(union_decl_id) => {
+            const union_decl = decl_tables->unions.get_const(union_decl_id).unwrap();
+            return .Some(&union_decl->methods);
+        }
+        case .Interface | .Typedef => return .None;
+    }
+}
+
+pub fn implement_interfaces_of_named_type(
+    decl_tables: tables::DeclTables*,
+    named_type: const cir::NamedType*
+) Option<const Vec<cir::ImplementInterface>*> {
+    switch (named_type->type_decl_id) {
+        case .Struct(struct_decl_id) => {
+            const struct_decl = decl_tables->structs.get_const(struct_decl_id).unwrap();
+            return .Some(&struct_decl->impls);
+        }
+        case .Enum(enum_decl_id) => {
+            const enum_decl = decl_tables->enums.get_const(enum_decl_id).unwrap();
+            return .Some(&enum_decl->impls);
+        }
+        case .Union(union_decl_id) => {
+            const union_decl = decl_tables->unions.get_const(union_decl_id).unwrap();
+            return .Some(&union_decl->impls);
+        }
+        case .Interface | .Typedef => return .None;
+    }
+}
+
+pub fn write_struct_back(
+    context: AnalyzerContext*, 
+    struct_decl_id: cir::StructDeclId, 
+    struct_decl: cir::StructDecl
+) {
+    var decl = context->decl_tables->structs.get(struct_decl_id).unwrap();
+    *decl = struct_decl;
+}
+
+pub fn write_union_back(
+    context: AnalyzerContext*, 
+    union_decl_id: cir::UnionDeclId, 
+    union_decl: cir::UnionDecl
+) {
+    var decl = context->decl_tables->unions.get(union_decl_id).unwrap();
+    *decl = union_decl;
+}
+
+pub fn write_enum_back(
+    context: AnalyzerContext*, 
+    enum_decl_id: cir::EnumDeclId, 
+    enum_decl: cir::EnumDecl
+) {
+    var decl = context->decl_tables->enums.get(enum_decl_id).unwrap();
+    *decl = enum_decl;
+}
+
+pub fn write_method_back(
+    context: AnalyzerContext*, 
+    method_decl_id: cir::MethodDeclId, 
+    method_decl: cir::MethodDecl
+) {
+    var decl = context->decl_tables->methods.get(method_decl_id).unwrap();
+    *decl = method_decl;
+}
+
+pub fn check_align(
+    context: AnalyzerContext*, 
+    align: const Option<usize>*, 
+    span: Span
+) {
+    switch (*align) {
+        case .Some(value) => {
+            if (value == 0 || (value & (value - 1)) != 0) {
+                diags::report_invalid_align(
+                    context->dctx, 
+                    context->allocator, 
+                    span, 
+                    value
+                );
+            }
+        }
+        case .None => return;
+    }
+}
+
+pub fn func_decl_contains_error(func_decl: const cir::FuncDecl*) bool {
+    if (func_decl->ret_type.contains_error()) {
+        return true;
+    }
+
+    for (var i: usize = 0; i < func_decl->params.list.len(); i += 1) {
+        const param = func_decl->params.list.get_const(i).unwrap();
+        switch (*param) {
+            case .FuncParam(fp) => {
+                if (fp.ty.contains_error()) {
+                    return true;
+                }
+            }
+            case .SelfModifier(sm) => {
+                if (sm.ty.contains_error()) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    switch (func_decl->params.variadic) {
+        case .Some(.Typed { ty, .. }) => {
+            if (ty.contains_error()) {
+                return true;
+            }
+        }
+        else => {}
+    }
+
+    return false;
+}
+
+pub fn analyze_object_implements_interfaces(
+    context: AnalyzerContext*,
+    object_name: const uint8*,
+    object_span: Span,
+    is_object_generic: bool,
+    impls: const Vec<cir::ImplementInterface>*,
+    method_decls: const cir::MethodDecls*
+) {
+    for (var i: usize = 0; i < impls->len(); i += 1) {
+        const implement_interface = impls->get_const(i).unwrap();
+        
+        switch (normalize_and_check_type_formation(context,
+            implement_interface->ty,
+            implement_interface->span,
+            0
+        )) case .Some(normalized_type) else {
+            continue;
+        }
+
+        const ty = expand_sema_type(context, normalized_type, implement_interface->span);
+
+        if (ty.contains_error()) {
+            continue;
+        }
+
+        switch (ty.as_named_interface()) case .Some(interface_id) else {
+            var symbol = format::format_sema_type(
+                context->allocator, 
+                context->decl_tables, 
+                &ty
+            );
+            
+            diags::report_non_interface_symbol(
+                context->dctx,
+                context->allocator,
+                implement_interface->span,
+                symbol.as_str_const()
+            );
+
+            symbol.free();
+            continue;
+        }
+
+        const named = ty.as_named_type().unwrap();
+
+        const interface_decl = context->decl_tables->interfaces.get(interface_id).unwrap();
+
+        for (var j: usize = 0; j < interface_decl->methods.entries.len(); j += 1) {
+            const mentry = interface_decl->methods.entries.get_const(j).unwrap();
+
+            var method = *context->decl_tables->methods.get(mentry->id).unwrap();
+            
+            const inst_method = cir::instantiate_method_decl(
+                context->allocator,
+                &method,
+                &interface_decl->generic_params,
+                &named.type_args
+            );
+
+            const inst_func = &inst_method.func_decl;
+
+            if (!method_decls->contains(inst_func->name.as_str_const())) {
+                diags::report_missing_interface_method_impl(
+                    context->dctx,
+                    context->allocator,
+                    object_span,
+                    object_name,
+                    inst_func->name.as_str_const(),
+                    interface_decl->name.as_str_const()
+                );
+                continue;
+            }
+
+            const method_id = method_decls->get(
+                inst_func->name.as_str_const()
+            ).unwrap();
+            
+            var object_method = 
+                context->
+                decl_tables->
+                methods.get_owned(method_id).unwrap();
+
+            if (!is_object_generic && !object_method.func_decl.is_generic() && 
+                !func_decl_contains_error(&object_method.func_decl) &&
+                !func_decl_contains_error(inst_func) &&
+                !cir::func_decl_eq(&object_method.func_decl, inst_func)) 
+            {
+                diags::report_interface_method_type_mismatch(
+                    context->dctx,
+                    context->allocator,
+                    object_method.func_decl.span,
+                    object_name,
+                    inst_func->name.as_str_const(),
+                    interface_decl->name.as_str_const()
+                );
+            }
+        }
+
+        if (!is_object_generic) {
+            check_type_correctness(context, ty, implement_interface->span);
+        }
+    }
+}
+

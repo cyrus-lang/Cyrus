@@ -9,6 +9,7 @@ import std::errors{ErrorOr};
 import std::string{String};
 import std::path{Path};
 
+import sema::check::index{analyzer_dispatcher};
 import resolver::loader{ResolverOptions};
 import sema::context{AnalyzerContext};
 import .::lexical{LexicalContext};
@@ -89,7 +90,8 @@ pub struct AnalysisContext {
             &self->context->dctx,
             &self->resolver->global_symbols,
             &self->resolver->decl_tables,
-            self->resolver->program_trees
+            self->resolver->program_trees,
+            analyzer_dispatcher()
         );
         defer analyzer_context.free();
 

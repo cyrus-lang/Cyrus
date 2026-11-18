@@ -1,0 +1,1517 @@
+import std::string{String, free_strings};
+import std::collections{Vec};
+import std::mem{alloc_init};
+import std::option{Option};
+
+import resolver::symbols{GlobalSymbolRegistry};
+import sema::context{AnalyzerContext};
+import abi::typectx{TypeContext};
+import abi::target{TargetInfo};
+import sema::generics;
+import sema::format;
+import tokens{Span};
+import sema::diags;
+import sema::env;
+import cir;
+
+pub fn analyze_symbol_expr(
+    registry: const GlobalSymbolRegistry*,
+    symbol_expr: cir::SymbolExpr*
+) Option<cir::DeclId> {
+    switch (symbol_expr->as_decl_id()) {
+        case .Some(decl_id) => return .Some(decl_id);
+        else => {}
+    }
+
+    const symbol_id = symbol_expr->as_symbol_id();
+
+    switch (symbol_id) {
+        case .Some(id) => {
+            const decl_id = registry->lookup_symbol_as_decl_id(id);
+
+            switch (decl_id) {
+                case .Some(resolved) => {
+                    symbol_expr->to_resolved_decl_id(resolved);
+                    return .Some(resolved);
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return .None;
+}
+
+pub fn normalize_sema_type(
+    context: AnalyzerContext*,
+    ty: cir::SemaType,
+    span: Span,
+    indirection: uint8
+) Option<cir::SemaType> {
+    switch (ty) {
+        case .Unresolved(unresolved) => return normalize_unresolved_type(context, unresolved, span, indirection);
+        case .GenericParam(generic_param_id) => return normalize_generic_param(context, generic_param_id);
+        case .Named(named_type) => return normalize_named_type(context, &named_type, indirection);
+        case .Array(array_type) => return normalize_array(context, array_type, span, indirection);
+        case .FuncType(func_type) => return normalize_func_type(context, func_type, indirection);
+        case .Tuple(tuple_type) => return normalize_tuple(context, tuple_type, indirection);
+        case .Pointer(inner) => return normalize_pointer(context, inner, span, indirection);
+        case .Const(inner) => return normalize_const(context, inner, span, indirection);
+        case .SelfType(self_type) => return normalize_self_type(context, self_type);
+        case .InterfaceObject => return .Some(ty);
+        case .Placeholder => return .Some(ty);
+        case .InferVar => return .Some(ty);
+        case .Plain => return .Some(ty);
+        case .Err => return .Some(ty);
+    }
+}
+
+fn normalize_named_type(
+    context: AnalyzerContext*,
+    named_type: const cir::NamedType*,
+    indirection: uint8
+) Option<cir::SemaType> {
+    var type_args = cir::TypeArgs.new(context->allocator);
+    
+    for (var i: usize = 0; i < named_type->type_args.len(); i += 1) {
+        const arg = named_type->type_args.get(i).unwrap();
+        type_args.push(*arg);
+    }
+
+    normalize_type_args(context, &type_args, indirection);
+
+    switch (named_type->type_decl_id) {
+        case .Struct(struct_decl_id) => return normalize_struct_decl(
+            context, 
+            struct_decl_id, 
+            type_args, 
+            indirection
+        );
+
+        case .Union(union_decl_id) => return normalize_union_decl(
+            context, 
+            union_decl_id, 
+            type_args, 
+            indirection
+        );
+        
+        case .Enum(enum_decl_id) => return normalize_enum_decl(
+            context, 
+            enum_decl_id, 
+            type_args, 
+            indirection
+        );
+        
+        else => return .Some(.Named(cir::NamedType {
+            type_decl_id: named_type->type_decl_id,
+            type_args,
+        }));
+    }
+}
+
+fn normalize_struct_decl(
+    context: AnalyzerContext*,
+    struct_decl_id: cir::StructDeclId,
+    type_args: cir::TypeArgs,
+    indirection: uint8
+) Option<cir::SemaType> {
+    const struct_type: cir::SemaType = .Named(cir::NamedType {
+        type_decl_id: .Struct(struct_decl_id),
+        type_args,
+    });
+
+    const decl = 
+        context->
+        decl_tables->
+        structs.get(struct_decl_id).unwrap();
+
+    if (decl->is_normalized) {
+        return .Some(struct_type);
+    }
+
+    decl->is_normalized = true;
+
+    for (var i: usize = 0; i < decl->fields.len(); i += 1) {
+        const field = decl->fields.get(i).unwrap();
+        const span = field->span;
+
+        switch (normalize_sema_type(
+            context, 
+            field->ty, 
+            span, 
+            indirection + 1
+        )) {
+            case .Some(ty) => field->ty = ty;
+            case .None => field->ty = .Err(span);
+        }
+    }
+
+    return .Some(struct_type);
+}
+
+fn normalize_union_decl(
+    context: AnalyzerContext*,
+    union_decl_id: cir::UnionDeclId,
+    type_args: cir::TypeArgs,
+    indirection: uint8
+) Option<cir::SemaType> {
+    const union_type: cir::SemaType = .Named(cir::NamedType {
+        type_decl_id: .Union(union_decl_id),
+        type_args,
+    });
+
+    const union_decl = 
+        context->
+        decl_tables->
+        unions.get(union_decl_id).unwrap();
+
+    if (union_decl->is_normalized) {
+        return .Some(union_type);
+    }
+
+    union_decl->is_normalized = true;
+
+    for (var i: usize = 0; i < union_decl->fields.len(); i += 1) {
+        const field = union_decl->fields.get(i).unwrap();
+        const span = field->span;
+
+        switch (normalize_sema_type(
+            context, 
+            field->ty, 
+            span, 
+            indirection + 1
+        )) {
+            case .Some(ty) => field->ty = ty;
+            case .None => field->ty = .Err(span);
+        }
+    }
+
+    return .Some(union_type);
+}
+
+fn normalize_enum_decl(
+    context: AnalyzerContext*,
+    enum_decl_id: cir::EnumDeclId,
+    type_args: cir::TypeArgs,
+    indirection: uint8
+) Option<cir::SemaType> {
+    const enum_type: cir::SemaType = .Named(cir::NamedType {
+        type_decl_id: .Enum(enum_decl_id),
+        type_args,
+    });
+
+    const decl = 
+        context->
+        decl_tables->
+        enums.get(enum_decl_id).unwrap();
+
+    if (decl->is_normalized) {
+        return .Some(enum_type);
+    }
+
+    decl->is_normalized = true;
+
+    for (var i: usize = 0; i < decl->variants.len(); i += 1) {
+        const variant = decl->variants.get(i).unwrap();
+
+        switch (*variant) {
+            case .Valued { value, .. } => {
+                context->dispatcher.analyze_expr(context, value, decl->tag_type);
+            }
+
+            case .Tuple { var fields, .. } => {
+                for (var j: usize = 0; j < fields.len(); j += 1) {
+                    const field = fields.get(j).unwrap();
+                    const span = field->span;
+
+                    switch (normalize_sema_type(context,
+                        field->ty, 
+                        span, 
+                        indirection + 1
+                    )) {
+                        case .Some(ty) => field->ty = ty;
+                        case .None => field->ty = .Err(span);
+                    }
+                }
+            }
+
+            case .Struct { var fields, .. } => {
+                for (var j: usize = 0; j < fields.len(); j += 1) {
+                    const field = fields.get(j).unwrap();
+                    const span = field->span;
+
+                    switch (normalize_sema_type(
+                        context, 
+                        field->ty, 
+                        span, 
+                        indirection + 1
+                    )) {
+                        case .Some(ty) => field->ty = ty;
+                        case .None => field->ty = .Err(span);
+                    }
+                }
+            }
+            else => {}
+        }
+    }
+
+    return .Some(enum_type);
+}
+
+fn normalize_unresolved_type(
+    context: AnalyzerContext*,
+    unresolved: cir::UnresolvedType,
+    span: Span,
+    indirection: uint8
+) Option<cir::SemaType> {
+    switch (unresolved) {
+        case .Decl(symbol_id) => {
+            const decl_id_opt = context->registry->lookup_symbol_as_decl_id(symbol_id);
+
+            switch (decl_id_opt) {
+                case .Some(decl_id) => {
+                    switch (cir::decl_id_as_type_decl_id(decl_id)) {
+                        case .Some => {
+                            return type_of_decl(context, decl_id, span, indirection);
+                        }
+                        case .None => {
+                            var symbol_name = format::format_decl_name(
+                                context->allocator,
+                                context->decl_tables,
+                                &decl_id
+                            );
+
+                            diags::report_non_type_symbol(
+                                context->dctx,
+                                context->allocator,
+                                span,
+                                symbol_name.as_str_const()
+                            );
+
+                            symbol_name.free();
+                            return .None;
+                        }
+                    }
+                }
+                case .None => return .None;
+            }
+        }
+
+        case .GenericInst { base_symbol_id, var type_args } => {
+            const decl_id = 
+                context->
+                registry->
+                lookup_symbol_as_decl_id(base_symbol_id);
+
+            switch (decl_id) {
+                case .Some(id) => {
+                    switch (cir::decl_id_as_type_decl_id(id)) {
+                        case .Some(type_decl_id) => {
+                            var args = cir::TypeArgs.new(context->allocator);
+                            
+                            for (var i: usize = 0; i < type_args.len(); i += 1) {
+                                const arg = type_args.get(i).unwrap();
+                                args.push(*arg);
+                            }
+
+                            normalize_type_args(context, &args, indirection);
+
+                            var named_type = cir::NamedType { type_decl_id, type_args: args };
+                            return normalize_named_type(context, &named_type, indirection);
+                        }
+                        case .None => return .None;
+                    }
+                }
+                case .None => return .None;
+            }
+        }
+
+        // REVIEW: Refactor this and make a helper
+        // for handling builtins in normalization
+        case .BuiltinFunc(builtin_func) => {
+            for (var i: usize = 0; i < builtin_func->args.len(); i += 1) {
+                const arg = builtin_func->args.get(i).unwrap();
+                context->dispatcher.analyze_expr(context, arg, .None);
+            }
+
+            if (builtin_func->name.str.as_str_const() == "typeof") {
+                switch (builtin_func->args.first_const()) {
+                    case .Some(arg) => {
+                        switch (arg->ty) {
+                            case .Some(arg_type) => {
+                                return .Some(expand_sema_type(
+                                    context, 
+                                    arg_type, 
+                                    builtin_func->span
+                                ));
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+
+            diags::report_builtin_does_not_produce_type(
+                context->dctx,
+                context->allocator,
+                builtin_func->span,
+                builtin_func->name.str.as_str_const()
+            );
+
+            return .Some(.Err(builtin_func->span));
+        }
+    }
+}
+
+fn normalize_func_type(
+    context: AnalyzerContext*,
+    func_type: cir::FuncType,
+    indirection: uint8
+) Option<cir::SemaType> {
+    const params_len = func_type.params.list.len();
+
+    var params = cir::FuncTypeParams {
+        list: Vec.with_capacity(context->allocator, params_len),
+        variadic: .None,
+    };
+
+    var failed = false;
+
+    for (var i: usize = 0; i < params_len && !failed; i += 1) {
+        const param = func_type.params.list.get_const(i).unwrap();
+        
+        switch (normalize_sema_type(
+            context, 
+            *param, 
+            func_type.span, 
+            indirection
+        )) {
+            case .Some(ty) => params.list.push(ty);
+            case .None => failed = true;
+        }
+    }
+    
+    if (failed) {
+        params.list.free();
+        return .None;
+    }
+
+    switch (func_type.params.variadic) {
+        case .Some(variadic) => {
+            switch (*variadic) {
+                case .UntypedCStyle => {
+                    params.variadic = .Some(alloc_init(
+                        context->allocator,
+                        cir::FuncTypeVariadicParam.UntypedCStyle
+                    ));
+                }
+                case .Typed(ty) => {
+                    switch (normalize_sema_type(
+                        context, 
+                        ty, 
+                        func_type.span, 
+                        indirection
+                    )) {
+                        case .Some(normalized_type) => {
+                            params.variadic = .Some(alloc_init(
+                                context->allocator,
+                                cir::FuncTypeVariadicParam.Typed(normalized_type)
+                            ));
+                        }
+                        case .None => {
+                            params.list.free();
+                            return .None;
+                        }
+                    }
+                }
+            }
+        }
+        else => {}
+    }
+
+    switch (normalize_sema_type(context,
+        *func_type.ret_type, 
+        func_type.span, 
+        indirection
+    )) {
+        case .Some(ret_type) => {
+            return .Some(.FuncType(cir::FuncType {
+                params,
+                ret_type: alloc_init(context->allocator, ret_type),
+                vis: func_type.vis,
+                callconv: func_type.callconv,
+                span: func_type.span,
+            }));
+        }
+        case .None => {
+            params.list.free();
+            return .None;
+        }
+    }
+}
+
+fn normalize_tuple(
+    context: AnalyzerContext*,
+    tuple_type: cir::TupleType,
+    indirection: uint8
+) Option<cir::SemaType> {
+    const elements_len = tuple_type.elements.len();
+
+    var elements: Vec<cir::TupleElement> = Vec.with_capacity(
+        context->allocator, 
+        elements_len
+    );
+
+    var failed = false;
+
+    for (var i: usize = 0; i < elements_len && !failed; i += 1) {
+        const element = tuple_type.elements.get_const(i).unwrap();
+
+        switch (normalize_sema_type(
+            context, 
+            element->ty, 
+            element->span, 
+            indirection
+        )) {
+            case .Some(ty) => {
+                elements.push(cir::TupleElement {
+                    ty,
+                    span: element->span,
+                });
+            }
+            case .None => {
+                failed = true;
+            }
+        }
+    }
+
+    if (failed) {
+        elements.free();
+        return .None;
+    }
+
+    return .Some(.Tuple(cir::TupleType {
+        elements,
+        span: tuple_type.span,
+    }));
+}
+
+fn fold_type_builtin_as_integer(
+    context: AnalyzerContext*,
+    expr: cir::Expr*
+) bool {
+    switch (expr->kind) {
+        case .Builtin(builtin) => {
+            switch (builtin) case .BuiltinFunc(builtin_func) else {
+                return false;
+            }
+
+            const name = builtin_func.name.str.as_str_const();
+
+            var is_size = false;
+            var is_align = false;
+
+            switch (name) {
+                case "alignof" => is_align = true;
+                case "sizeof" => is_size = true;
+                else => return false;
+            }
+
+            switch (builtin_func.args.get_const(0)) {
+                case .Some(operand) => {
+                    switch (operand->ty) {
+                        case .Some(ty) => {
+                            const target = TargetInfo {
+                                arch: .X86_64,
+                                os: .Linux,
+                                format: .Elf,
+                            };
+
+                            var tctx = TypeContext.new(
+                                target,
+                                context->decl_tables,
+                                context->registry
+                            );
+
+                            const layout = tctx.layout_of(&ty);
+
+                            var value: uint128 = 0;
+
+                            if (is_size) {
+                                value = @cast(uint128, layout->size);
+                            } else if (is_align) {
+                                value = @cast(uint128, layout->align);
+                            }
+
+                            tctx.free();
+
+                            *expr = cir::const_untyped_integer_expr(value, expr->span);
+                            return true;
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return false;
+}
+
+fn normalize_array(
+    context: AnalyzerContext*,
+    var array_type: cir::ArrayType,
+    span: Span,
+    indirection: uint8
+) Option<cir::SemaType> {
+    switch (array_type.capacity) {
+        case .Fixed(expr) => {
+            context->dispatcher.analyze_expr(context, expr, .None);
+
+            switch (expr->ty) {
+                case .Some(ty) => {
+                    if (ty.contains_error()) {
+                        return .None;
+                    }
+                }
+                case .None => {}
+            }
+
+            if (expr->literal_const_int_value().is_none()) {
+                if (!fold_type_builtin_as_integer(context, expr)) {
+                    diags::report_array_capacity_not_const(
+                        context->dctx, 
+                        context->allocator, 
+                        span
+                    );
+                    return .None;
+                }
+            }
+        }
+        case .Slice => {
+            diags::report_unimplemented_feature_slice(
+                context->dctx, 
+                context->allocator, 
+                span
+            );
+            return .None;
+        }
+    }
+
+    switch (normalize_sema_type(
+        context, 
+        *array_type.element_type, 
+        span, 
+        indirection
+    )) {
+        case .Some(ty) => {
+            array_type.element_type = alloc_init(context->allocator, ty);
+        }
+        case .None => return .None;
+    }
+
+    return .Some(.Array(array_type));
+}
+
+fn normalize_const(
+    context: AnalyzerContext*,
+    inner: cir::SemaType*,
+    span: Span,
+    indirection: uint8
+) Option<cir::SemaType> {
+    switch (normalize_sema_type(context, *inner, span, indirection)) {
+        case .Some(ty) => {
+            if (ty.is_const()) {
+                return .Some(ty);
+            }
+
+            return .Some(.Const(alloc_init(context->allocator, ty)));
+        }
+        case .None => return .None;
+    }
+}
+
+fn normalize_pointer(
+    context: AnalyzerContext*,
+    inner: cir::SemaType*,
+    span: Span,
+    indirection: uint8
+) Option<cir::SemaType> {
+    switch (normalize_sema_type(
+        context, 
+        *inner, 
+        span, 
+        indirection + 1
+    )) {
+        case .Some(ty) => {
+            return .Some(.Pointer(alloc_init(context->allocator, ty)));
+        }
+        case .None => {
+            return .None;
+        }
+    }
+}
+
+fn normalize_generic_param(
+    context: AnalyzerContext*,
+    generic_param_id: cir::GenericParamId
+) Option<cir::SemaType> {
+    const bound = generics::lookup_generic_binding(
+        context, 
+        generic_param_id
+    );
+
+    switch (bound) {
+        case .Some(ty) => {
+            switch (context->func_env.infer) {
+                case .Some(infer_context) => {
+                    return .Some(infer_context->resolve(&ty));
+                }
+                case .None => {
+                    return .Some(ty);
+                }
+            }
+        }
+        case .None => {
+            return .Some(.GenericParam(generic_param_id));
+        }
+    }
+}
+
+fn normalize_self_type(
+    context: AnalyzerContext*, 
+    self_type: cir::SelfType
+) Option<cir::SemaType> {
+    switch (context->func_env.current_object) {
+        case .Some(object_type) => return .Some(object_type);
+        case .None => return .Some(.SelfType(self_type));
+    }
+}
+
+pub fn normalize_type_args(
+    context: AnalyzerContext*, 
+    type_args: cir::TypeArgs*, 
+    indirection: uint8
+) {
+    for (var i: usize = 0; i < type_args->len(); i += 1) {
+        var arg = type_args->get(i).unwrap();
+
+        switch (*arg) {
+            case .Type(inner, span) => {
+                switch (normalize_sema_type(context,
+                    inner, 
+                    span, 
+                    indirection
+                )) {
+                    case .Some(ty) => {
+                        *arg = .Type(ty, span);
+                    }
+                    case .None => {
+                        *arg = .Type(.Err(span), span);
+                    }
+                }
+            }
+            case .Infer => {}
+        }
+    }
+}
+
+fn write_back_param_var_decl(
+    context: AnalyzerContext*,
+    var_decl_id: Option<cir::VarDeclId>,
+    ty: cir::SemaType
+) {
+    switch (var_decl_id) {
+        case .Some(id) => {
+            switch (context->decl_tables->vars.get(id)) {
+                case .Some(var var_decl) => {
+                    var_decl->ty = .Some(ty);
+                }
+                case .None => {}
+            }
+        }
+        case .None => {}
+    }
+}
+
+pub fn normalize_func_params(
+    context: AnalyzerContext*,
+    params: cir::FuncParams*,
+    validate: bool,
+    indirection: uint8
+) {
+    for (var i: usize = 0; i < params->list.len(); i += 1) {
+        var kind = params->list.get(i).unwrap();
+
+        switch (*kind) {
+            case .FuncParam(var func_param) => {
+                var final_type: cir::SemaType = .Err(func_param.span);
+                switch (normalize_sema_type(
+                    context, 
+                    func_param.ty, 
+                    func_param.span, 
+                    indirection
+                )) {
+                    case .Some(ty) => {
+                        if (validate) {
+                            validate_param_type(context, &ty, func_param.span);
+                        }
+                        final_type = ty;
+                    }
+                    else => {}
+                }
+
+                func_param.ty = final_type;
+                *kind = .FuncParam(func_param);
+                write_back_param_var_decl(context, func_param.var_decl_id, final_type);
+            }
+            case .SelfModifier(var self_modifier) => {
+                var final_type: cir::SemaType = .Err(self_modifier.span);
+
+                switch (normalize_sema_type(
+                    context, 
+                    self_modifier.ty, 
+                    self_modifier.span, 
+                    indirection
+                )) {
+                    case .Some(ty) => {
+                        if (validate) {
+                            validate_param_type(context, &ty, self_modifier.span);
+                        }
+                        final_type = ty;
+                    }
+                    else => {}
+                }
+
+                self_modifier.ty = final_type;
+                *kind = .SelfModifier(self_modifier);
+                write_back_param_var_decl(context, self_modifier.var_decl_id, final_type);
+            }
+        }
+    }
+
+    switch (params->variadic) {
+        case .Some(.Typed { var_decl_id, ty, span }) => {
+            var final_type: cir::SemaType = .Err(span);
+
+            switch (normalize_sema_type(context, ty, span, indirection)) {
+                case .Some(normalized_type) => {
+                    if (validate) {
+                        validate_param_type(context, &normalized_type, span);
+                    }
+                    final_type = normalized_type;
+                }
+                case .None => {}
+            }
+
+            params->variadic = .Some(cir::FuncVariadicParam.Typed {
+                var_decl_id,
+                ty: final_type,
+                span,
+            });
+
+            write_back_param_var_decl(
+                context, 
+                .Some(var_decl_id), 
+                final_type
+            );
+        }
+        else => {}
+    }
+}
+
+pub fn normalize_func_type_params(
+    context: AnalyzerContext*,
+    params: cir::FuncTypeParams*,
+    span: Span,
+    indirection: uint8
+) {
+    for (var i: usize = 0; i < params->list.len(); i += 1) {
+        var param = params->list.get(i).unwrap();
+
+        switch (normalize_sema_type(context, *param, span, indirection)) {
+            case .Some(normalized_type) => {
+                *param = normalized_type;
+                validate_param_type(context, &normalized_type, span);
+            }
+            case .None => return;
+        }
+    }
+
+    switch (params->variadic) {
+        case .Some(variadic) => {
+            switch (*variadic) {
+                case .Typed(ty) => {
+                    switch (normalize_sema_type(context, ty, span, indirection)) {
+                        case .Some(normalized_type) => {
+                            validate_param_type(context, &normalized_type, span);
+                            *variadic = cir::FuncTypeVariadicParam.Typed(normalized_type);
+                        }
+                        case .None => return;
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+}
+
+pub fn type_of_decl(
+    context: AnalyzerContext*,
+    decl_id: cir::DeclId,
+    span: Span,
+    indirection: uint8
+) Option<cir::SemaType> {
+    const key = cir::decl_id_key(decl_id);
+
+    switch (context->type_cache.get(key)) {
+        case .Some(ty) => return .Some(ty);
+        else => {}
+    }
+
+    switch (context->type_cache.enter(key, indirection)) {
+        case .AlreadyResolving(frame_indirection) => {
+            // Indirection makes recursion legal
+            if (frame_indirection > 0 || indirection > 0) {
+                switch (cir::decl_id_as_type_decl_id(decl_id)) {
+                    case .Some(type_decl_id) => {
+                        return .Some(.Named(cir::NamedType {
+                            type_decl_id,
+                            type_args: cir::TypeArgs.new(context->allocator),
+                        }));
+                    }
+                    case .None => return .None;
+                }
+            }
+
+            var symbol_name = format::format_decl_name(
+                context->allocator, 
+                context->decl_tables, 
+                &decl_id
+            );
+
+            var cycle: Vec<String> = Vec.new(context->allocator);
+            cycle.push(symbol_name);
+
+            diags::report_cyclic_type_definition(
+                context->dctx,
+                context->allocator,
+                span,
+                &cycle
+            );
+
+            free_strings(&cycle);
+            return .None;
+        }
+        case .Entered => {}
+    }
+    
+    switch (type_of_decl_internal(context, decl_id, indirection)) {
+        case .Some(decl_type) => {
+            switch (normalize_sema_type(
+                context, 
+                decl_type, 
+                span, 
+                indirection
+            )) {
+                case .Some(ty) => {
+                    context->type_cache.leave(key, ty);
+                    return .Some(ty);
+                }
+                case .None => {
+                    const err_ty: cir::SemaType = .Err(span);
+                    context->type_cache.leave(key, err_ty);
+                    return .Some(err_ty);
+                }
+            }
+        }
+        case .None => {
+            const err_ty: cir::SemaType = .Err(span);
+            context->type_cache.leave(key, err_ty);
+            return .Some(err_ty);
+        }
+    }
+}
+
+fn type_of_decl_internal(
+    context: AnalyzerContext*,
+    decl_id: cir::DeclId,
+    indirection: uint8
+) Option<cir::SemaType> {
+    switch (decl_id) {
+        case .GlobalVar(global_var_decl_id) => {
+            const global_var_decl =
+                context->
+                decl_tables->
+                global_vars.get_const(global_var_decl_id).unwrap();
+
+            return global_var_decl->ty;
+        }
+        case .Var(var_decl_id) => {
+            const var_decl = 
+                context->
+                decl_tables->
+                vars.get_const(var_decl_id).unwrap();
+
+            return var_decl->ty;
+        }
+        case .Func(func_decl_id) => {
+            const func_decl = 
+                context->
+                decl_tables->
+                funcs.get_const(func_decl_id).unwrap();
+
+            const func_type = cir::func_decl_as_func_type(
+                context->allocator, 
+                func_decl
+            );
+
+            return normalize_func_type(context, func_type, indirection);
+        }
+        case .Struct(struct_decl_id) => {
+            return .Some(.Named(cir::NamedType {
+                type_decl_id: .Struct(struct_decl_id),
+                type_args: cir::TypeArgs.new(context->allocator),
+            }));
+        }
+        case .Enum(enum_decl_id) => {
+            return .Some(.Named(cir::NamedType {
+                type_decl_id: .Enum(enum_decl_id),
+                type_args: cir::TypeArgs.new(context->allocator),
+            }));
+        }
+        case .Union(union_decl_id) => {
+            return .Some(.Named(cir::NamedType {
+                type_decl_id: .Union(union_decl_id),
+                type_args: cir::TypeArgs.new(context->allocator),
+            }));
+        }
+        case .Typedef(typedef_decl_id) => {
+            return .Some(.Named(cir::NamedType {
+                type_decl_id: .Typedef(typedef_decl_id),
+                type_args: cir::TypeArgs.new(context->allocator),
+            }));
+        }
+        case .Interface(interface_decl_id) => {
+            return .Some(.Named(cir::NamedType {
+                type_decl_id: .Interface(interface_decl_id),
+                type_args: cir::TypeArgs.new(context->allocator),
+            }));
+        }
+        case .Method(method_decl_id) => {
+            const method_decl = 
+                context->
+                decl_tables->
+                methods.get_const(method_decl_id).unwrap();
+
+            const func_type = cir::func_decl_as_func_type(
+                context->allocator, 
+                &method_decl->func_decl
+            );
+            
+            return normalize_func_type(context, func_type, indirection);
+        }
+    }
+}
+
+/// Expand typedef references recursively.
+pub fn expand_sema_type(
+    context: AnalyzerContext*, 
+    ty: cir::SemaType,
+    span: Span
+) cir::SemaType {
+    switch (ty) {
+        case .Placeholder => return ty;
+        case .InferVar => return ty;
+
+        case .Named(named_type) => {
+            switch (named_type.type_decl_id) {
+                case .Typedef(typedef_decl_id) => {
+                    return expand_typedef(context, typedef_decl_id, &named_type.type_args, span);
+                }
+                else => {
+                    var type_args = cir::TypeArgs.new(context->allocator);
+                    
+                    for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                        const arg = named_type.type_args.get(i).unwrap();
+
+                        switch (*arg) {
+                            case .Type(inner, span) => {
+                                const expand = expand_sema_type(context, inner, span);
+                                type_args.push(.Type(expand, span));
+                            }
+                            case .Infer => type_args.push(.Infer);
+                        }
+                    }
+
+                    return .Named(cir::NamedType {
+                        type_decl_id: named_type.type_decl_id,
+                        type_args,
+                    });
+                }
+            }
+        }
+
+        case .Pointer(inner) => {
+            const expand = expand_sema_type(context, *inner, span);
+            return .Pointer(alloc_init(context->allocator, expand));
+        }
+
+        case .Const(inner) => {
+            const expand = expand_sema_type(context, *inner, span);
+
+            if (expand.is_const()) {
+                return expand;
+            }
+
+            return .Const(alloc_init(context->allocator, expand));
+        }
+
+        case .Array(array) => {
+            const element_type = expand_sema_type(context, *array.element_type, span);
+            
+            return .Array(cir::ArrayType {
+                element_type: alloc_init(context->allocator, element_type),
+                capacity: array.capacity,
+                span: array.span,
+            });
+        }
+
+        case .Tuple(tuple_type) => {
+            var elements: Vec<cir::TupleElement> =
+                Vec.with_capacity(context->allocator, tuple_type.elements.len());
+            
+            for (var i: usize = 0; i < tuple_type.elements.len(); i += 1) {
+                const element = tuple_type.elements.get_const(i).unwrap();
+                const expand = expand_sema_type(context, element->ty, element->span);
+                
+                elements.push(cir::TupleElement {
+                    ty: expand,
+                    span: element->span,
+                });
+            }
+
+            return .Tuple(cir::TupleType {
+                elements,
+                span: tuple_type.span,
+            });
+        }
+
+        case .FuncType(func_type) => {
+            var params = cir::FuncTypeParams {
+                list: Vec.with_capacity(context->allocator, func_type.params.list.len()),
+                variadic: .None,
+            };
+
+            for (var i: usize = 0; i < func_type.params.list.len(); i += 1) {
+                const param = func_type.params.list.get_const(i).unwrap();
+                const expand = expand_sema_type(context, *param, span);
+                params.list.push(expand);
+            }
+
+            switch (func_type.params.variadic) {
+                case .Some(variadic) => {
+                    switch (*variadic) {
+                        case .UntypedCStyle => {
+                            params.variadic = .Some(alloc_init(
+                                context->allocator,
+                                cir::FuncTypeVariadicParam.UntypedCStyle
+                            ));
+                        }
+                        case .Typed(ty) => {
+                            const expand = expand_sema_type(context, ty, span);
+                            params.variadic = .Some(alloc_init(
+                                context->allocator,
+                                cir::FuncTypeVariadicParam.Typed(expand)
+                            ));
+                        }
+                    }
+                }
+                else => {}
+            }
+
+            const ret_type = expand_sema_type(context, *func_type.ret_type, span);
+
+            return .FuncType(cir::FuncType {
+                params,
+                ret_type: alloc_init(context->allocator, ret_type),
+                vis: func_type.vis,
+                callconv: func_type.callconv,
+                span: func_type.span,
+            });
+        }
+
+        else => return ty;
+    }
+}
+
+fn expand_typedef(
+    context: AnalyzerContext*,
+    typedef_decl_id: cir::TypedefDeclId,
+    args: const cir::TypeArgs*,
+    span: Span
+) cir::SemaType {
+    switch (enter_typedef(context, typedef_decl_id)) {
+        case .Some(var path) => {
+            var key = typedef_cycle_key(context, path);
+            defer path.free();
+            defer key.free();
+
+            if (!is_typedef_cycle_already_reported(context, key.as_str_const())) {
+                const n = path.len() - 1;
+                var min_index: usize = 0;
+                var min_val: usize = *path.get_const(0).unwrap();
+
+                for (var i: usize = 1; i < n; i += 1) {
+                    const v = *path.get_const(i).unwrap();
+                    if (v < min_val) {
+                        min_val = v;
+                        min_index = i;
+                    }
+                }
+
+                var names: Vec<String> = Vec.new(context->allocator);
+
+                for (var i: usize = 0; i < n; i += 1) {
+                    const index = (min_index + i) % n;
+                    const id = *path.get_const(index).unwrap();
+
+                    names.push(format::format_type_decl_name(
+                        context->allocator,
+                        context->decl_tables,
+                        .Typedef(id)
+                    ));
+                }
+
+                // Close the cycle
+                if (n > 0) {
+                    const first = names.get_const(0).unwrap();
+                    names.push(String.from_str(context->allocator, first->as_str_const()));
+                }
+
+                diags::report_cyclic_type_definition(
+                    context->dctx,
+                    context->allocator,
+                    span,
+                    &names
+                );
+                free_strings(&names);
+
+                context->reported_typedef_cycles.push(key);
+            }
+
+            return .Err(span);
+        }
+        else => {}
+    }
+
+    const typedef_decl = 
+        context->
+        decl_tables->
+        typedefs.get_const(typedef_decl_id).unwrap();
+
+    if (typedef_decl->ty == null) {
+        exit_typedef(context);
+        return .Err(span);
+    }
+
+    const generic_params = &typedef_decl->generic_params;
+
+    var final_args = cir::TypeArgs.new(context->allocator);
+    defer final_args.free();
+
+    for (var i: usize = 0; i < generic_params->len(); i += 1) {
+        if (i < args->len()) {
+            const arg = args->get(i).unwrap();
+            final_args.push(*arg);
+        } else {
+            switch (context->func_env.infer) {
+                case .Some(infer_context) => {
+                    const infer_var = infer_context->new_var_id();
+                    final_args.push(.Type(.InferVar(infer_var), span));
+                }
+                case .None => {
+                    final_args.push(.Infer);
+                }
+            }
+        }
+    }
+
+    if (args->len() > final_args.len()) {
+        var named = cir::NamedType {
+            type_decl_id: .Typedef(typedef_decl_id),
+            type_args: cir::TypeArgs.new(context->allocator),
+        };
+
+        for (var i: usize = 0; i < args->len(); i += 1) {
+            const arg = args->get(i).unwrap();
+            named.type_args.push(*arg);
+        }
+
+        const ty: cir::SemaType = .Named(named);
+        
+        var type_name = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &ty
+        );
+
+        diags::report_wrong_number_of_type_args(
+            context->dctx,
+            context->allocator,
+            span,
+            type_name.as_str_const(),
+            final_args.len(),
+            args->len()
+        );
+        
+        type_name.free();
+        named.free(); 
+    }
+
+    var generic_env = env::GenericEnv.from_type_args(
+        context->allocator,
+        *generic_params,
+        &final_args
+    );
+    defer generic_env.free();
+
+    const typedef_type = context->dispatcher.normalize_and_check_type_formation(
+        context, 
+        *typedef_decl->ty, 
+        span, 
+        0
+    );
+    
+    switch (typedef_type) {
+        case .Some(defined_type) => {
+            const subst = generic_env.substitute_sema_type(&defined_type);
+            exit_typedef(context);
+            return expand_sema_type(context, subst, span);
+        }
+        case .None => {
+            exit_typedef(context);
+            return .Err(span);
+        }
+    }
+}
+
+pub fn enter_typedef(
+    context: AnalyzerContext*,
+    id: cir::TypedefDeclId
+) Option<Vec<usize>> {
+    for (var i: usize = 0; i < context->typedef_stack.len(); i += 1) {
+        const existing = *context->typedef_stack.get_const(i).unwrap();
+        
+        if (existing == id) {
+            var path: Vec<usize> = Vec.with_capacity(
+                context->allocator, 
+                context->typedef_stack.len() - i + 1
+            );
+            
+            for (var j: usize = i; j < context->typedef_stack.len(); j += 1) {
+                path.push(*context->typedef_stack.get_const(j).unwrap());
+            }
+            
+            path.push(id);
+            return .Some(path);
+        }
+    }
+
+    context->typedef_stack.push(id);
+    return .None;
+}
+
+[[inline]]
+pub fn exit_typedef(context: AnalyzerContext*) {
+    context->typedef_stack.pop();
+}
+
+pub fn typedef_cycle_key(
+    context: AnalyzerContext*, 
+    path: const Vec<usize>
+) String {
+    if (path.len() == 0) {
+        return String.new(context->allocator);
+    }
+
+    const n = path.len() - 1;
+
+    if (n == 0) {
+        var key = String.new(context->allocator);
+        diags::append_usize(&key, *path.get_const(0).unwrap());
+        return key;
+    }
+
+    var min_index: usize = 0;
+    var min_value: usize = *path.get_const(0).unwrap();
+    
+    for (var i: usize = 1; i < n; i += 1) {
+        const v = *path.get_const(i).unwrap();
+        
+        if (v < min_value) {
+            min_value = v;
+            min_index = i;
+        }
+    }
+
+    var key = String.new(context->allocator);
+    
+    for (var i: usize = 0; i < n; i += 1) {
+        const index = (min_index + i) % n;
+        
+        if (i > 0) {
+            key.push(',');
+        }
+        
+        diags::append_usize(&key, *path.get_const(index).unwrap());
+    }
+
+    return key;
+}
+
+pub fn is_typedef_cycle_already_reported(
+    context: AnalyzerContext*,
+    key: const uint8*
+) bool {
+    for (var i: usize = 0; i < context->reported_typedef_cycles.len(); i += 1) {
+        const existing = context->reported_typedef_cycles.get_const(i).unwrap();
+        
+        if (existing->as_str_const() == key) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+fn symbol_expr_as_decl_id(
+    registry: const GlobalSymbolRegistry*,
+    symbol_expr: const cir::SymbolExpr*
+) Option<cir::DeclId> {
+    switch (symbol_expr->as_symbol_id()) {
+        case .Some(symbol_id) => {
+            switch (registry->lookup_symbol_as_decl_id(symbol_id)) {
+                case .Some(decl_id) => return .Some(decl_id);
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return symbol_expr->as_decl_id();
+}
+
+pub fn enum_decl_id_of_expr_kind(
+    context: AnalyzerContext*,
+    expr_kind: const cir::ExprKind*,
+    span: Span
+) Option<cir::EnumTypeDecl> {
+    switch (*expr_kind) {
+        case .Symbol(symbol_expr) => {
+            switch (symbol_expr_as_decl_id(
+                context->registry, 
+                &symbol_expr
+            )) case .Some(decl_id) else {
+                return .None;
+            }
+
+            switch (decl_id.as_enum()) case .Some(enum_decl_id) else {
+                switch (cir::decl_id_as_type_decl_id(decl_id)) case .Some(type_decl_id) else {
+                    return .None;
+                }
+
+                const type_args = cir::TypeArgs.new(context->allocator);
+
+                const named: cir::SemaType = .Named(cir::NamedType {
+                    type_decl_id,
+                    type_args,
+                });
+
+                switch (normalize_sema_type(context, named, span, 0)) case .Some(ty) else {
+                    return .None;
+                }
+
+                const expand = expand_sema_type(context, ty, span);
+
+                switch (expand.as_enum()) case .Some(aliased_enum_id) else {
+                    return .None;
+                }
+
+                return .Some(cir::EnumTypeDecl {
+                    enum_decl_id: aliased_enum_id,
+                    type_args: cir::TypeArgs.new(context->allocator),
+                });
+            }
+
+            return .Some(cir::EnumTypeDecl {
+                enum_decl_id,
+                type_args: cir::TypeArgs.new(context->allocator),
+            });
+        }
+
+        case .SemaType { ty, .. } => {
+            switch (normalize_sema_type(context, ty, span, 0)) case .Some(normalized_type) else {
+                return .None;
+            }
+
+            const expand = expand_sema_type(context, normalized_type, span);
+
+            switch (expand.as_named_type()) case .Some(named_type) else {
+                return .None;
+            }
+
+            switch (named_type.type_decl_id.as_enum()) case .Some(enum_decl_id) else {
+                return .None;
+            }
+
+            return .Some(cir::EnumTypeDecl {
+                enum_decl_id,
+                type_args: named_type.type_args,
+            });
+        }
+
+        else => return .None;
+    }
+}
+
+pub fn write_back_global_var(
+    context: AnalyzerContext*,
+    global_var: const cir::GlobalVarStmt*
+) {
+    var decl = context
+        ->decl_tables
+        ->global_vars
+        .get(global_var->global_var_decl_id).unwrap();
+
+    decl->rhs = global_var->rhs;
+    decl->ty = global_var->ty;
+}
+
+pub fn write_back_var(
+    context: AnalyzerContext*, 
+    var_: const cir::VarStmt*
+) {
+    var decl = context->decl_tables->vars.get(var_->var_decl_id).unwrap();
+    decl->rhs = var_->rhs;
+    decl->ty = var_->ty;
+}
+
+// -------------------------- FIXME ----------------------------- 
+
+// FIXME: Replace this with a new helper function called
+// `check_finalized_type_arity`
+fn validate_param_type(context: AnalyzerContext*, ty: const cir::SemaType*, span: Span) {
+    const inner = ty->const_inner();
+
+    if (inner->is_void()) {
+        diags::report_void_parameter_type(context->dctx, context->allocator, span);
+    }
+
+    context->dispatcher.check_type_arity(context, *inner, span);
+}

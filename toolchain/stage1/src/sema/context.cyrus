@@ -12,10 +12,10 @@ import std::option{Option};
 import .::monomorph{MonomorphRegistry, InstanceSite};
 import resolver::symbols{GlobalSymbolRegistry};
 import .::vtables{VTableRegistry};
-import sema::infer{InferContext};
 import diags{DiagContext};
 import tokens{Span};
 import cir::tables;
+import sema::infer;
 import .::flow;
 import .::env;
 import cir;
@@ -42,13 +42,15 @@ pub struct AnalyzerContext {
     pub instantiations: Vec<InstanceSite>,
     pub monomorph_registry: MonomorphRegistry,
     pub vtable_registry: VTableRegistry,
+    pub dispatcher: AnalyzerDispatcher,
 
     pub fn new(
         allocator: Allocator,
         dctx: DiagContext*,
         registry: GlobalSymbolRegistry*,
         decl_tables: tables::DeclTables*,
-        trees: Vec<cir::ProgramTree>
+        trees: Vec<cir::ProgramTree>,
+        dispatcher: AnalyzerDispatcher
     ) Self {
         const control_region_stack: Vec<flow::ControlRegion> = Vec.new(allocator);
         const generic_env_stack: Vec<env::GenericEnv*> = Vec.new(allocator);
@@ -81,6 +83,7 @@ pub struct AnalyzerContext {
             reported_const_cycles,
             vtable_registry,
             monomorph_registry,
+            dispatcher,
         };
     }
 
@@ -114,6 +117,157 @@ pub struct AnalyzerContext {
         self->func_env.free();
         self->scratch_arena.destroy();
         self->arena.destroy();
+    }
+}
+
+pub struct AnalyzerDispatcher {
+    pub adopt_const_matched_type_args_fn: fn(
+        void*, 
+        infer::InferContext*, 
+        const cir::SemaType*, 
+        const cir::SemaType*, 
+        const cir::GenericParams*, 
+        const Span*
+    ) void,
+
+    pub create_inference_generic_env_fn: fn(
+        void*, 
+        const uint8*, 
+        const cir::GenericParams*, 
+        const cir::TypeArgs*, 
+        const Span*, 
+        Option<env::GenericEnv>*
+    ) void,
+
+    pub normalize_and_check_type_formation_fn: fn(
+        void*, 
+        const cir::SemaType*, 
+        const Span*, 
+        uint8, Option<cir::SemaType>*
+    ) void,
+
+    pub analyze_expr_fn: fn(
+        void*, 
+        cir::Expr*, 
+        const Option<cir::SemaType>*, 
+        Option<cir::SemaType>*
+    ) void,
+
+    pub analyze_func_body_fn: fn(
+        void*, 
+        cir::BlockStmt*, 
+        const cir::SemaType*
+    ) void,
+    
+    pub check_type_arity_fn: fn(
+        void*, 
+        const cir::SemaType*, 
+        const Span*
+    ) bool,
+
+    pub fn adopt_const_matched_type_args(
+        self: const Self*,
+        context: AnalyzerContext*,
+        infer_context: infer::InferContext*,
+        operand: const cir::SemaType*,
+        expect: const cir::SemaType*,
+        generic_params: cir::GenericParams,
+        span: Span
+    ) {
+        (self->adopt_const_matched_type_args_fn)(
+            @cast(void*, context), 
+            infer_context, 
+            operand, 
+            expect, 
+            &generic_params, 
+            &span
+        );
+    }
+
+    pub fn analyze_expr(
+        self: const Self*,
+        context: AnalyzerContext*,
+        expr: cir::Expr*,
+        expected_type: Option<cir::SemaType>
+    ) Option<cir::SemaType> {
+        var result: Option<cir::SemaType>;
+
+        (self->analyze_expr_fn)(
+            @cast(void*, context), 
+            expr, 
+            &expected_type, 
+            &result
+        );
+        
+        return result;
+    }
+
+    pub fn analyze_func_body(
+        self: const Self*,
+        context: AnalyzerContext*,
+        body: cir::BlockStmt*,
+        ret_type: const cir::SemaType*
+    ) {
+        (self->analyze_func_body_fn)(
+            @cast(void*, context), 
+            body, 
+            ret_type
+        );
+    }
+
+    pub fn check_type_arity(
+        self: const Self*,
+        context: AnalyzerContext*,
+        ty: cir::SemaType,
+        span: Span
+    ) bool {
+        return (self->check_type_arity_fn)(
+            @cast(void*, context), 
+            &ty, 
+            &span
+        );
+    }
+
+    pub fn create_inference_generic_env(
+        self: const Self*,
+        context: AnalyzerContext*,
+        type_name: const uint8*,
+        params: cir::GenericParams,
+        type_args: const cir::TypeArgs*,
+        span: Span
+    ) Option<env::GenericEnv> {
+        var result: Option<env::GenericEnv>;
+        
+        (self->create_inference_generic_env_fn)(
+            @cast(void*, context), 
+            type_name, 
+            &params, 
+            type_args, 
+            &span, 
+            &result
+        );
+        
+        return result;
+    }
+
+    pub fn normalize_and_check_type_formation(
+        self: const Self*,
+        context: AnalyzerContext*,
+        ty: cir::SemaType,
+        span: Span,
+        indirection: uint8
+    ) Option<cir::SemaType> {
+        var result: Option<cir::SemaType>;
+
+        (self->normalize_and_check_type_formation_fn)(
+            @cast(void*, context), 
+            &ty, 
+            &span, 
+            indirection, 
+            &result
+        );
+        
+        return result;
     }
 }
 

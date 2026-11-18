@@ -16,6 +16,7 @@ import std::cli;
 import std::os;
 
 import .::index{CompilerConfig, CompilerContext, CompilerTimings};
+import sema::check::index{analyzer_dispatcher};
 import .::codegen{Backend, CodegenContext};
 import resolver::loader{ResolverOptions};
 import sema::context{AnalyzerContext};
@@ -361,7 +362,8 @@ fn emit_backend_ir(
         &context.dctx,
         &resolver.global_symbols,
         &resolver.decl_tables,
-        resolver.program_trees
+        resolver.program_trees,
+        analyzer_dispatcher()
     );
     defer analyzer_context.free();
 
