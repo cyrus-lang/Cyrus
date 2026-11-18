@@ -54,7 +54,8 @@ pub struct CodegenContext {
                     &analyzer->vtable_registry,
                     &analyzer->monomorph_registry,
                     &context->sctx,
-                    self->target
+                    self->target,
+                    resolver->opts->profile == .Test
                 );
                 codegen.emit(writer);
                 codegen.free();

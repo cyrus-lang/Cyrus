@@ -28,9 +28,12 @@ pub struct CodegenC {
         vtables: VTableRegistry*,
         monomorphs: MonomorphRegistry*,
         sctx: const SourceContext*,
-        target: TargetInfo
+        target: TargetInfo,
+        test_profile: bool
     ) Self {
         var maps = mangle::new_module_maps(allocator, trees);
+
+        maps.test_profile = test_profile;
 
         mangle::build_module_maps(&maps, tables, trees);
 

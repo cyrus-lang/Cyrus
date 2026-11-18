@@ -2960,7 +2960,7 @@ fn resolve_builtin(
                 args,
                 block,
                 is_toplevel: .Some(builtin_block.is_toplevel),
-                is_active: !is_test_case && inner_profiles.contains_profile(ctx->profile),
+                is_active: inner_profiles.contains_profile(ctx->profile),
                 span: builtin_block.span,
             }));
         }

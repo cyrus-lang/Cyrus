@@ -36,11 +36,13 @@ pub struct ModuleMaps {
     pub func_modules: HashMap<cir::FuncDeclId, ModuleName>,
     pub method_modules: HashMap<cir::MethodDeclId, ModuleName>,
     pub global_modules: HashMap<cir::GlobalVarDeclId, ModuleName>,
+    pub test_profile: bool,
 }
 
 pub fn new_module_maps(allocator: Allocator, trees: const Vec<cir::ProgramTree>*) ModuleMaps {
     return ModuleMaps {
         allocator,
+        test_profile: false,
         interface_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
         typedef_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
         method_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
@@ -377,7 +379,7 @@ pub fn mangle_func(
         else => {}
     }
 
-    if (name == "main") {
+    if (name == "main" && !maps->test_profile) {
         return String.from_str(allocator, "main");
     }
 
