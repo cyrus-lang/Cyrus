@@ -33,7 +33,7 @@ fn app(argc: c_int, argv: c_char**) int32 {
     const profile_opt = opts.add(
         *cli::Opt.new(allocator, "profile")
         .arg(.Str)
-        ->help("Build profile (debug | release)")
+        ->help("Build profile (debug | release | test)")
     );
 
     const jobs_opt = opts.add(
@@ -178,17 +178,22 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(time_opt);
 
     const test_cmd =
-        cli::Cmd.new(allocator, "test", command_build)
+        cli::Cmd.new(allocator, "test", command_run)
         .help("Run tests")
+        ->optional_argument(.Str)
         ->add_option(extra_input_opt)
         ->add_option(library_path_opt)
         ->add_option(library_opt)
         ->add_option(merge_mode_opt)
         ->add_option(verbose_opt)
         ->add_option(quiet_opt)
+        ->add_option(release_opt)
+        ->add_option(debug_opt)
         ->add_option(target_opt)
         ->add_option(backend_opt)
         ->add_option(output_opt)
+        ->add_option(stdlib_opt)
+        ->add_option(profile_opt)
         ->add_option(jobs_opt)
         ->add_option(time_opt);
 

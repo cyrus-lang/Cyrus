@@ -286,7 +286,17 @@ fn build_or_run(action: cli::ActionContext, execute: bool) int32 {
 
         const exit_status = command.exec();
 
+        if (exit_status == -1) {
+            return 1;
+        }
+
         const child_status = @cast(uint32, exit_status);
+        const termination_signal = child_status & 0x7f;
+
+        if (termination_signal != 0) {
+            return 128 + @cast(int32, termination_signal);
+        }
+
         return @cast(int32, (child_status >> 8) & 0xff);
     }
 
@@ -802,6 +812,10 @@ fn resolver_opts_from_action_context(action: cli::ActionContext) ErrorOr<Resolve
         opts.free();
         return .Error(());
     }   
+
+    if (action.cmd->name == "test") {
+        opts.profile = .Test;
+    }
 
     return .Value(opts);
 }

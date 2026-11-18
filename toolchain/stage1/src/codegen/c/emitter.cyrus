@@ -85,6 +85,7 @@ pub struct Emitter {
     needs_errno_location_proto: bool,
 
     in_void_main: bool,
+    test_cases: Vec<cir::BuiltinBlock>,
 
     pub fn new(
         allocator: Allocator,
@@ -145,6 +146,7 @@ pub struct Emitter {
             cur_func_name: .None,
             cur_ret_type: .None,
             in_void_main: false,
+            test_cases: Vec.new(allocator),
             tuple_export_id: 0,
             lambda_id: 0,
         };
@@ -161,6 +163,15 @@ pub struct Emitter {
             case .Builtin(builtin) => {
                 switch (builtin) {
                     case .BuiltinBlock(block) => {
+                        if (block.args.len() > 0) {
+                            if (self->types.maps.test_profile && block.is_active &&
+                                block.name.str.as_str_const() == "test")
+                            {
+                                self->test_cases.push(block);
+                            }
+                            return;
+                        }
+
                         if (block.is_active) {
                             self->push_toplevel_block(block.block, out);
                         }
@@ -365,7 +376,48 @@ pub struct Emitter {
             }
         }
 
+        if (self->types.maps.test_profile) {
+            self->emit_test_runner();
+        }
+
         self->assemble(writer);
+    }
+
+    fn emit_test_runner(self: Self*) {
+        for (var test_index: usize = 0; test_index < self->test_cases.len(); test_index += 1) {
+            const test_case = self->test_cases.get_const(test_index).unwrap();
+            var test_name = String.from_str(self->allocator, "__cyrus_test_");
+            push_usize(&test_name, test_index);
+
+            self->body_out.push_str("static void ");
+            self->body_out.push_str(test_name.as_str_const());
+            self->body_out.push_str("(void){");
+
+            var saved_func_name = self->cur_func_name;
+            var saved_method_name = self->cur_method_name;
+            var saved_ret_type = self->cur_ret_type;
+
+            const case_name = test_case->args.get_const(0).unwrap()->literal_const_string_value().unwrap();
+            self->set_name_context(.Some(case_name), .None);
+            self->cur_ret_type = .Some(.Plain(.Void));
+            self->begin_label_scan();
+            self->scan_func_labels(test_case->block, true);
+            self->emit_block_stmts(test_case->block, true);
+
+            self->cur_func_name = saved_func_name;
+            self->cur_method_name = saved_method_name;
+            self->cur_ret_type = saved_ret_type;
+            self->body_out.push('}');
+            test_name.free();
+        }
+
+        self->body_out.push_str("int main(void){");
+        for (var test_index: usize = 0; test_index < self->test_cases.len(); test_index += 1) {
+            self->body_out.push_str("__cyrus_test_");
+            push_usize(&self->body_out, test_index);
+            self->body_out.push_str("();");
+        }
+        self->body_out.push_str("return 0;}");
     }
 
     fn emit_int128_decls(self: Self*, writer: Writer) {
@@ -7488,6 +7540,7 @@ pub struct Emitter {
         self->loop_marks.free();
         self->vtable_emitted.free();
         self->func_proto_emitted.free();
+        self->test_cases.free();
 
         for (var i: usize = 0; i < self->generic_object_names.len(); i += 1) {
             self->generic_object_names.get(i).unwrap()->free();
