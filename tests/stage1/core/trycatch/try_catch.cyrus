@@ -1,0 +1,44 @@
+// @stdout: opt=7 err=15 caught=bad_input default=-1
+
+import std::option{Option};
+import std::errors{ErrorOr};
+import std::libc{printf};
+
+fn get_opt(x: int32) Option<int32> {
+    if (x < 0) {
+        return .None;
+    }
+    return .Some(x);
+}
+
+fn get_err_or(x: int32) ErrorOr<int32, const uint8*> {
+    if (x < 0) {
+        return .Error("bad_input");
+    }
+    return .Value(x);
+}
+
+fn try_catch_with_binding(x: int32) int32 {
+    const v = try get_err_or(x) catch (e) {
+        printf("caught=%s ", e);
+        return -1;
+    };
+
+    return v;
+}
+
+fn try_catch_without_binding(x: int32) int32 {
+    const v = try get_opt(x) catch {
+        return -99;
+    };
+    return v;
+}
+
+pub fn main() {
+    const a = try_catch_without_binding(7);
+    const b = try_catch_with_binding(15);
+    printf("opt=%d err=%d ", a, b);
+
+    const c = try_catch_with_binding(-5);
+    printf("default=%d", c);
+}

@@ -10,29 +10,31 @@ fn safe_div(a: int32, b: int32) ErrorOr<int32, const uint8*> {
     return .Value(a / b);
 }
 
-fn compute(a: int32, b: int32, deferred: int32*) ErrorOr<int32, const uint8*> {
+fn compute(a: int32, b: int32, deferred: int32*) 
+    ErrorOr<int32, const uint8*> 
+{
     defer *deferred += 1;
-    const q = safe_div(a, b)?;
+    const q = try safe_div(a, b);
     return .Value(q + 2);
 }
 
 fn chain_step(x: int32) ErrorOr<int32, const uint8*> {
-    const a = safe_div(x, 2)?;
-    const b = safe_div(a, 1)?;
+    const a = try safe_div(x, 2);
+    const b = try safe_div(a, 1);
     return .Value(b * 2);
 }
 
 pub fn main() {
-    var d1: int32 = 0;
-    switch (compute(80, 2, &d1)) {
+    var x: int32 = 0;
+    switch (compute(80, 2, &x)) {
         case .Value(v) => printf("ok=%d ", v);
         case .Error(e) => printf("unexpected=%s ", e);
     }
 
-    var d2: int32 = 0;
-    switch (compute(10, 0, &d2)) {
+    var y: int32 = 0;
+    switch (compute(10, 0, &y)) {
         case .Value(v) => printf("unexpected=%d ", v);
-        case .Error(e) => printf("err=%s defer=%d ", e, d2);
+        case .Error(e) => printf("err=%s defer=%d ", e, y);
     }
 
     switch (chain_step(100)) {

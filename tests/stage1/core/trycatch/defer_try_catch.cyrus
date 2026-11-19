@@ -1,0 +1,46 @@
+// @stdout: ok_run: [try_defer] [plain_defer] res=50 | err_prop: [catch_defer:div0] [plain_defer] | err_ret: [catch_defer:neg] [plain_defer]
+
+import std::errors{ErrorOr};
+import std::libc{printf};
+
+fn safe_div(a: int32, b: int32) ErrorOr<int32, const uint8*> {
+    if (b == 0) {
+        return .Error("div0");
+    }
+    return .Value(a / b);
+}
+
+fn work(a: int32, b: int32) ErrorOr<int32, const uint8*> {
+    defer printf("[plain_defer] ");
+    defer try printf("[try_defer] ");
+    defer catch (e) {
+        printf("[catch_defer:%s] ", e);
+    }
+
+    if (a < 0) {
+        return .Error("neg");
+    }
+
+    const q = try safe_div(a, b);
+    return .Value(q + 10);
+}
+
+pub fn main() {
+    printf("ok_run: ");
+    switch (work(80, 2)) {
+        case .Value(v) => printf("res=%d | ", v);
+        case .Error(e) => printf("unexpected=%s | ", e);
+    }
+
+    printf("err_prop: ");
+    switch (work(80, 0)) {
+        case .Value(v) => printf("unexpected=%d | ", v);
+        case .Error(_) => printf("| ");
+    }
+
+    printf("err_ret: ");
+    switch (work(-5, 2)) {
+        case .Value(v) => printf("unexpected=%d", v);
+        case .Error(_) => {}
+    }
+}
