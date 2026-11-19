@@ -1,0 +1,42 @@
+import std::option{Option};
+
+fn bad_try_catch_non_try() int32 {
+    const x: int32 = 10;
+    const y = try x catch {
+    //~^ ERROR `try ... catch` cannot be applied to type `int32` because it does not implement `Try<V, E>`
+        return 0;
+    };
+    return y;
+}
+
+fn bad_try_catch_not_diverging() int32 {
+    const opt: Option<int32> = .Some(10);
+
+    const y = try opt catch {
+        const z = 1;
+    };
+    //~^^^ ERROR `catch` block must diverge because `try` produces non-void type `int32`
+    
+    return y;
+}
+
+fn bad_defer_catch_in_non_try_fn() int32 {
+    defer catch {
+    //~^ ERROR `defer catch` cannot be used in a function returning `int32` because it does not implement `Try<V, E>`
+    }
+    return 0;
+}
+
+fn bad_defer_try_in_non_try_fn() int32 {
+    defer try {
+    //~^ ERROR `defer try` cannot be used in a function returning `int32` because it does not implement `Try<V, E>`
+    }
+    return 0;
+}
+
+pub fn main() {
+    bad_try_catch_non_try();
+    bad_try_catch_not_diverging();
+    bad_defer_catch_in_non_try_fn();
+    bad_defer_try_in_non_try_fn();
+}

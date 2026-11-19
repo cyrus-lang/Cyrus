@@ -27,7 +27,7 @@ fn make_outcome(x: int32) Outcome<int32> {
 }
 
 fn propagate(x: int32) Outcome<int32> {
-    const v = make_outcome(x)?;
+    const v = try make_outcome(x);
     return .Ok(v + 1);
 }
 
@@ -42,6 +42,8 @@ pub fn main() {
         case .Fail(e) => printf("err=%d ", e);
     }
 
-    const u = make_outcome(42)!;
+    const u = try make_outcome(42) catch {
+        return;
+    };
     printf("unwrap=%d", u);
 }

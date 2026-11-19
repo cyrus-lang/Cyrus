@@ -12,21 +12,21 @@ fn find_positive(x: int32) Option<int32> {
 
 fn sum_two(a: int32, b: int32, deferred: int32*) Option<int32> {
     defer *deferred += 1;
-    const x = find_positive(a)?;
-    const y = find_positive(b)?;
+    const x = try find_positive(a);
+    const y = try find_positive(b);
     return .Some(x + y);
 }
 
 pub fn main() {
-    var d1: int32 = 0;
-    switch (sum_two(10, 20, &d1)) {
+    var x: int32 = 0;
+    switch (sum_two(10, 20, &x)) {
         case .Some(v) => printf("some=%d ", v);
         case .None => printf("unexpected ");
     }
 
-    var d2: int32 = 0;
-    switch (sum_two(10, -5, &d2)) {
+    var y: int32 = 0;
+    switch (sum_two(10, -5, &y)) {
         case .Some(v) => printf("unexpected=%d", v);
-        case .None => printf("none=1 defer=%d", d2);
+        case .None => printf("none=1 defer=%d", y);
     }
 }
