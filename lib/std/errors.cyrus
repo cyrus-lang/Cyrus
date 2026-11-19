@@ -3,9 +3,32 @@
 
 pub type ErrorStr = const uint8*;
 
-pub enum ErrorOr<V, E = ErrorStr> {
+pub enum ControlFlow<V, E> {
+    Continue(V),
+    Break(E)
+}
+
+pub interface Try<V, E> {
+    fn branch(self: Self) ControlFlow<V, E>;
+    fn from_error(error: E) Self;
+}
+
+pub enum ErrorOr<V, E = ErrorStr> : Try<V, E> {
     Value(V),
     Error(E)
+
+    [[inline]]
+    pub fn branch(self: Self) ControlFlow<V, E> {
+        switch (self) {
+            case .Value(value) => return .Continue(value);
+            case .Error(err) => return .Break(err);
+        }
+    }
+
+    [[inline]]
+    pub fn from_error(error: E) Self {
+        return .Error(error);
+    }
 
     [[inline]]
     pub fn unwrap(self: const Self*) V {

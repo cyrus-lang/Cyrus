@@ -1,0 +1,20 @@
+// @stdout: opt=7 err=15 sum=22
+
+import std::option{Option};
+import std::errors{ErrorOr};
+import std::libc{printf};
+
+fn get_opt(x: int32) Option<int32> {
+    return .Some(x);
+}
+
+fn get_err_or(x: int32) ErrorOr<int32, const uint8*> {
+    return .Value(x);
+}
+
+pub fn main() {
+    const a = get_opt(7)!;
+    const b = get_err_or(15)!;
+    const c = get_opt(10)! + get_err_or(12)!;
+    printf("opt=%d err=%d sum=%d", a, b, c);
+}

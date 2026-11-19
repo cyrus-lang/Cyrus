@@ -56,6 +56,7 @@ import .::exprs{
     check_builtin_form,
     tuple_access_expr,
     analyze_cond_expr,
+    resolve_try_impl,
     analyze_expr,
 };
 import .::normalizer{
@@ -83,9 +84,20 @@ pub fn analyzer_dispatcher() AnalyzerDispatcher {
         adopt_const_matched_type_args_fn: dispatch_adopt_const_matched_type_args,
         create_inference_generic_env_fn: dispatch_create_inference_generic_env,
         analyze_func_body_fn: dispatch_analyze_func_body,
+        analyze_block_stmt_fn: dispatch_analyze_block_stmt,
         check_type_arity_fn: dispatch_check_type_arity,
         analyze_expr_fn: dispatch_analyze_expr,
     };
+}
+
+fn dispatch_analyze_block_stmt(
+    opaque_context: void*,
+    block: cir::BlockStmt*
+) flow::FlowState {
+    return analyze_block_stmt(
+        @cast(AnalyzerContext*, opaque_context),
+        block
+    );
 }
 
 fn dispatch_analyze_func_body(
@@ -618,8 +630,9 @@ fn analyze_stmt(
     }
 
     switch (stmt->kind) {
-        case .Defer(defer_stmt) => {
-            analyze_defer_stmt(context, defer_stmt.operand);
+        case .Defer(var defer_stmt) => {
+            analyze_defer_stmt(context, &defer_stmt);
+            stmt->kind = .Defer(defer_stmt);
             return .Reachable;
         }
 
@@ -709,12 +722,66 @@ fn analyze_stmt(
 
 fn analyze_defer_stmt(
     context: AnalyzerContext*, 
-    operand: cir::Stmt*
+    defer_stmt: cir::DeferStmt*
 ) {
-    analyze_stmt(context, operand);
+    switch (defer_stmt->kind) {
+        case .Always => {}
+        case .OnError | .OnSuccess => {
+            var kw: const uint8* = "defer catch";
+            switch (defer_stmt->kind) {
+                case .OnSuccess => kw = "defer try";
+                else => {}
+            }
+
+            switch (context->func_env.current_func) case .Some(func_type) else {
+                diags::report_conditional_defer_outside_function(
+                    context->dctx,
+                    context->allocator,
+                    defer_stmt->span,
+                    kw
+                );
+                analyze_stmt(context, defer_stmt->operand);
+                return;
+            }
+
+            const ret_type = *func_type.ret_type;
+            const ret_try_opt = resolve_try_impl(context, &ret_type, false, defer_stmt->span);
+            switch (ret_try_opt) case .Some(ret_try) else {
+                var ret_name = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    &ret_type
+                );
+                diags::report_conditional_defer_requires_try_return(
+                    context->dctx,
+                    context->allocator,
+                    defer_stmt->span,
+                    kw,
+                    ret_name.as_str_const()
+                );
+                ret_name.free();
+                analyze_stmt(context, defer_stmt->operand);
+                return;
+            }
+
+            defer_stmt->return_branch_dispatch = ret_try.branch_dispatch;
+            defer_stmt->return_control_flow_type = .Some(ret_try.control_flow_type);
+            defer_stmt->error_type = .Some(ret_try.error_type);
+
+            switch (defer_stmt->error_binding) {
+                case .Some(var_decl_id) => {
+                    var var_entry = context->decl_tables->vars.get(var_decl_id).unwrap();
+                    var_entry->ty = .Some(ret_try.error_type);
+                }
+                case .None => {}
+            }
+        }
+    }
+
+    analyze_stmt(context, defer_stmt->operand);
 }
 
-fn analyze_block_stmt(
+pub fn analyze_block_stmt(
     context: AnalyzerContext*, 
     block: cir::BlockStmt*
 ) flow::FlowState {
@@ -1948,24 +2015,37 @@ fn analyze_interface(
 
         var params_start: usize = 0;
 
+        const is_try_protocol =
+            interface_->name.len() == 3 &&
+            interface_->name.starts_with("Try") &&
+            interface_->generic_params.len() == 2;
+
         switch (func_decl->params.get_self_modifier()) {
             case .Some(self_modifier) => {
                 if (!self_modifier.ty.is_pointer()) {
-                    diags::report_interface_methods_must_use_referenced_self(
-                        context->dctx,
-                        context->allocator,
-                        self_modifier.span
-                    );
+                    if (is_try_protocol) {
+                        is_interface_dynamically_dispatchable = false;
+                    } else {
+                        diags::report_interface_methods_must_use_referenced_self(
+                            context->dctx,
+                            context->allocator,
+                            self_modifier.span
+                        );
+                    }
                 }
 
                 params_start = 1;
             }
             case .None => {
-                diags::report_interface_methods_must_have_self_modifier(
-                    context->dctx,
-                    context->allocator,
-                    func_decl->span
-                );
+                if (is_try_protocol) {
+                    is_interface_dynamically_dispatchable = false;
+                } else {
+                    diags::report_interface_methods_must_have_self_modifier(
+                        context->dctx,
+                        context->allocator,
+                        func_decl->span
+                    );
+                }
             }
         }
 
@@ -2093,7 +2173,18 @@ fn analyze_method_decl(
         );
     }
 
-    analyze_func_decl(context, &method_decl->func_decl);
+    if (object_type_decl_id.is_interface()) {
+        const prev_object = context->func_env.current_object;
+        context->func_env.current_object = .Some(.SelfType(cir::SelfType {
+            span: method_decl->func_decl.span,
+        }));
+
+        analyze_func_decl(context, &method_decl->func_decl);
+
+        context->func_env.current_object = prev_object;
+    } else {
+        analyze_func_decl(context, &method_decl->func_decl);
+    }
 }
 
 fn analyze_method_body(

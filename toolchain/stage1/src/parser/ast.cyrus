@@ -544,6 +544,8 @@ pub enum ASTExpr {
     FuncCall(ASTFuncCall),
     Assign(ASTAssignExpr),
     AddrOf(ASTAddrOfExpr),
+    Try(ASTTryExpr),
+    TryCatch(ASTTryCatchExpr),
     Tuple(ASTTupleValue),
     Infix(ASTInfixExpr),
     Array(ASTArrayExpr),
@@ -729,6 +731,18 @@ pub struct ASTAddrOfExpr {
 
 pub struct ASTDerefExpr {
     pub expr: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTTryExpr {
+    pub expr: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTTryCatchExpr {
+    pub expr: NodeId,
+    pub error_binding: Option<ASTIdent>,
+    pub catch_body: NodeId,
     pub span: Span,
 }
 
@@ -1008,7 +1022,15 @@ pub struct ASTContinue {
     pub span: Span,
 }
 
+pub enum ASTDeferKind {
+    Always,
+    OnError,
+    OnSuccess,
+}
+
 pub struct ASTDefer {
+    pub kind: ASTDeferKind,
+    pub error_binding: Option<ASTIdent>,
     pub operand: NodeId,
     pub span: Span,
 }

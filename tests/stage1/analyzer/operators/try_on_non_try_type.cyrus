@@ -1,0 +1,12 @@
+import std::option{Option};
+
+fn bad_try() Option<int32> {
+    const x: int32 = 10;
+    const y = x?;
+    //~^ ERROR `?` operator cannot be applied to type `int32` because it does not implement `Try<V, E>`
+    return .Some(y);
+}
+
+pub fn main() {
+    bad_try();
+}

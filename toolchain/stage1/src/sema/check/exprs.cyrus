@@ -23,6 +23,7 @@ import .::types{
 import .::specialize{
     check_argument_satisfies_generic_param_bounds,
     monomorphize_interface_object_methods,
+    monomorphize_generic_method_call,
     monomorphize_generic_func_call,
     check_func_variadic_arguments,
     create_inference_generic_env,
@@ -323,6 +324,16 @@ pub fn analyze_expr_non_terminal(
         case .InlineAsm(var inline_asm) => {
             expr_type = analyze_inline_asm_expr(context, &inline_asm);
             expr->kind = .InlineAsm(inline_asm);
+        }
+
+        case .Try(var try_expr) => {
+            expr_type = analyze_try_expr(context, &try_expr);
+            expr->kind = .Try(try_expr);
+        }
+
+        case .TryCatch(var try_catch_expr) => {
+            expr_type = analyze_try_catch_expr(context, &try_catch_expr);
+            expr->kind = .TryCatch(try_catch_expr);
         }
         
         case .SemaType { ty, .. } => {
@@ -6514,7 +6525,9 @@ fn value_category_of_expr(
         | .MethodCall
         | .Literal
         | .Prefix
-        | .Infix => return .RValue;
+        | .Infix
+        | .Try
+        | .TryCatch => return .RValue;
         
         case .SemaType 
         | .Poisoned
@@ -6763,4 +6776,466 @@ pub fn dispatch_analyze_expr(
         expr, 
         *expected_type
     );
+}
+
+struct ResolvedTryMethod {
+    pub dispatch: cir::MethodCallDispatch,
+    pub ret_type: cir::SemaType,
+}
+
+pub struct ResolvedTryImpl {
+    pub control_flow_type: cir::SemaType,
+    pub value_type: cir::SemaType,
+    pub error_type: cir::SemaType,
+    pub branch_dispatch: cir::MethodCallDispatch,
+    pub from_error_dispatch: Option<cir::MethodCallDispatch>,
+}
+
+fn resolve_try_method_dispatch(
+    context: AnalyzerContext*,
+    pure_type: const cir::SemaType*,
+    named_type: const cir::NamedType*,
+    method_decl_id: cir::MethodDeclId,
+    is_instance_method: bool,
+    span: Span
+) Option<ResolvedTryMethod> {
+    const operand_generic_params = *tables::type_decl_generic_params(
+        context->decl_tables,
+        named_type->type_decl_id
+    );
+    var operand_type_args = named_type->type_args;
+
+    var type_name = format::format_sema_type(
+        context->allocator,
+        context->decl_tables,
+        pure_type
+    );
+
+    const generic_env_opt = create_inference_generic_env(
+        context,
+        type_name.as_str_const(),
+        operand_generic_params,
+        &operand_type_args,
+        span
+    );
+    type_name.free();
+
+    switch (generic_env_opt) case .Some(generic_env) else {
+        return .None;
+    }
+
+    const is_generic = !generic_env.params.is_empty();
+
+    var method_decl =
+        context->decl_tables->methods.get_owned(method_decl_id).unwrap();
+    method_decl.func_decl.params = clone::clone_func_params(
+        context->allocator,
+        &method_decl.func_decl.params
+    );
+
+    generics::push_generic_env(context, generic_env);
+
+    var result: Option<ResolvedTryMethod> = .None;
+
+    if (is_generic) {
+        const final_type_args = instantiated_type_args(context, operand_generic_params);
+
+        const func_type = cir::func_decl_as_func_type(
+            context->allocator,
+            &method_decl.func_decl
+        );
+
+        var new_env = create_method_env(
+            context,
+            method_decl_id,
+            func_type,
+            context->func_env.infer
+        );
+        var old_env = context->func_env;
+        context->func_env = new_env;
+
+        // Substitute Self inside the self modifier
+        switch (method_decl.func_decl.params.list.first()) {
+            case .Some(first_kind) => {
+                switch (*first_kind) {
+                    case .SelfModifier(var self_modifier) => {
+                        self_modifier.ty = generics::substitute_self_type(
+                            context,
+                            &self_modifier.ty,
+                            pure_type
+                        );
+                        *first_kind = .SelfModifier(self_modifier);
+                    }
+                    else => {}
+                }
+            }
+            case .None => {}
+        }
+
+        context->func_env.current_object = .Some(*pure_type);
+
+        switch (normalize_sema_type(context, method_decl.func_decl.ret_type, span, 0)) {
+            case .Some(norm_ret) => {
+                method_decl.func_decl.ret_type = norm_ret;
+                generics::substitute_func_params(context, &method_decl.func_decl.params);
+                method_decl.func_decl.ret_type = generics::substitute_type(
+                    context,
+                    &method_decl.func_decl.ret_type
+                );
+                const ret_type = method_decl.func_decl.ret_type;
+
+                switch (monomorphize_generic_method_call(
+                    context,
+                    *pure_type,
+                    method_decl_id,
+                    &method_decl,
+                    &final_type_args,
+                    &operand_generic_params,
+                    false,
+                    span
+                )) {
+                    case .Some(monomorph_id) => {
+                        result = .Some(ResolvedTryMethod {
+                            dispatch: .Monomorph {
+                                monomorph_id,
+                                is_instance_method,
+                            },
+                            ret_type,
+                        });
+                    }
+                    case .None => {}
+                }
+            }
+            case .None => {}
+        }
+
+        restore_func_env(context, &old_env);
+    } else {
+        const old_object = context->func_env.current_object;
+        context->func_env.current_object = .Some(*pure_type);
+
+        switch (normalize_sema_type(context, method_decl.func_decl.ret_type, span, 0)) {
+            case .Some(norm_ret) => {
+                const ret_type = generics::substitute_type(context, &norm_ret);
+                result = .Some(ResolvedTryMethod {
+                    dispatch: .Normal { method_decl_id },
+                    ret_type,
+                });
+            }
+            case .None => {}
+        }
+
+        context->func_env.current_object = old_object;
+    }
+
+    generics::pop_generic_env(context);
+    return result;
+}
+
+pub fn resolve_try_impl(
+    context: AnalyzerContext*,
+    target_type: const cir::SemaType*,
+    need_from_error: bool,
+    span: Span
+) Option<ResolvedTryImpl> {
+    const expanded = expand_sema_type(context, *target_type->const_inner(), span);
+
+    switch (expanded.as_named_type()) case .Some(named_type) else {
+        return .None;
+    }
+
+    // Check that the type implements `Try<V, E>`
+    switch (implement_interfaces_of_named_type(context->decl_tables, &named_type)) case .Some(impls) else {
+        return .None;
+    }
+
+    var implements_try = false;
+    for (var i: usize = 0; i < impls->len(); i += 1) {
+        const impl_iface = impls->get_const(i).unwrap();
+        var maybe_iface_id: Option<cir::InterfaceDeclId> = .None;
+        switch (impl_iface->ty) {
+            case .Named(iface_named) => {
+                switch (iface_named.type_decl_id) {
+                    case .Interface(iface_id) => maybe_iface_id = .Some(iface_id);
+                    else => {}
+                }
+            }
+            case .Unresolved(unresolved) => {
+                switch (unresolved) {
+                    case .GenericInst { base_symbol_id, type_args: _ } => {
+                        switch (context->registry->lookup_symbol_as_decl_id(base_symbol_id)) {
+                            case .Some(decl_id) => {
+                                switch (cir::decl_id_as_type_decl_id(decl_id)) {
+                                    case .Some(type_decl_id) => {
+                                        switch (type_decl_id) {
+                                            case .Interface(iface_id) => maybe_iface_id = .Some(iface_id);
+                                            else => {}
+                                        }
+                                    }
+                                    case .None => {}
+                                }
+                            }
+                            case .None => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        switch (maybe_iface_id) {
+            case .Some(iface_id) => {
+                const iface_decl =
+                    context->decl_tables->interfaces.get_const(iface_id).unwrap();
+                if (iface_decl->name.len() == 3 &&
+                    iface_decl->name.starts_with("Try") &&
+                    iface_decl->generic_params.len() == 2) {
+                    implements_try = true;
+                    break;
+                }
+            }
+            case .None => {}
+        }
+    }
+
+    if (!implements_try) {
+        return .None;
+    }
+
+    // Look up `branch` and (optionally) `from_error` methods on the type
+    switch (method_decls_of_named_type(context->decl_tables, &named_type)) case .Some(method_decls) else {
+        return .None;
+    }
+
+    switch (method_decls->get("branch")) case .Some(branch_method_id) else {
+        return .None;
+    }
+
+    const branch_resolved_opt = resolve_try_method_dispatch(
+        context,
+        &expanded,
+        &named_type,
+        branch_method_id,
+        true,
+        span
+    );
+    switch (branch_resolved_opt) case .Some(branch_resolved) else {
+        return .None;
+    }
+
+    // Extract ControlFlow<V, E> from branch()'s return type
+    const cf_expanded = expand_sema_type(context, branch_resolved.ret_type, span);
+    switch (cf_expanded.as_named_type()) case .Some(cf_named) else {
+        return .None;
+    }
+
+    if (cf_named.type_args.len() != 2) {
+        return .None;
+    }
+
+    switch (*cf_named.type_args.get(0).unwrap()) case .Type(value_type, _) else {
+        return .None;
+    }
+
+    switch (*cf_named.type_args.get(1).unwrap()) case .Type(error_type, _) else {
+        return .None;
+    }
+
+    var from_error_dispatch: Option<cir::MethodCallDispatch> = .None;
+    if (need_from_error) {
+        switch (method_decls->get("from_error")) case .Some(from_error_id) else {
+            return .None;
+        }
+
+        const from_error_opt = resolve_try_method_dispatch(
+            context,
+            &expanded,
+            &named_type,
+            from_error_id,
+            false,
+            span
+        );
+        switch (from_error_opt) case .Some(from_error_resolved) else {
+            return .None;
+        }
+        from_error_dispatch = .Some(from_error_resolved.dispatch);
+    }
+
+    return .Some(ResolvedTryImpl {
+        control_flow_type: cf_expanded,
+        value_type,
+        error_type,
+        branch_dispatch: branch_resolved.dispatch,
+        from_error_dispatch,
+    });
+}
+
+fn analyze_try_expr(
+    context: AnalyzerContext*,
+    try_expr: cir::TryExpr*
+) Option<cir::SemaType> {
+    const operand_type_opt = analyze_expr(context, try_expr->operand, .None);
+
+    switch (operand_type_opt) case .Some(operand_type) else {
+        return .None;
+    }
+
+    if (operand_type.contains_error()) {
+        return .Some(.Err(try_expr->span));
+    }
+
+    // Ensure `?` is inside a function
+    switch (context->func_env.current_func) case .Some(func_type) else {
+        diags::report_try_operator_outside_function(
+            context->dctx,
+            context->allocator,
+            try_expr->span
+        );
+        return .None;
+    }
+
+    // Check operand implements Try<V, E>
+    const operand_try_opt = resolve_try_impl(context, &operand_type, false, try_expr->span);
+    switch (operand_try_opt) case .Some(operand_try) else {
+        var type_name = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &operand_type
+        );
+        diags::report_type_does_not_implement_try(
+            context->dctx,
+            context->allocator,
+            try_expr->span,
+            "try",
+            type_name.as_str_const()
+        );
+        type_name.free();
+        return .None;
+    }
+
+    // Check enclosing function's return type implements Try<RetV, RetE>
+    const ret_type = *func_type.ret_type;
+    const ret_try_opt = resolve_try_impl(context, &ret_type, true, try_expr->span);
+    switch (ret_try_opt) case .Some(ret_try) else {
+        var ret_name = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &ret_type
+        );
+        diags::report_try_return_type_does_not_implement_try(
+            context->dctx,
+            context->allocator,
+            try_expr->span,
+            ret_name.as_str_const()
+        );
+        ret_name.free();
+        return .None;
+    }
+
+    // Check error type compatibility
+    if (!is_assignable_to(context, operand_try.error_type, ret_try.error_type, try_expr->span)) {
+        var got_err = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &operand_try.error_type
+        );
+        var expect_err = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &ret_try.error_type
+        );
+        diags::report_try_incompatible_error_type(
+            context->dctx,
+            context->allocator,
+            try_expr->span,
+            got_err.as_str_const(),
+            expect_err.as_str_const()
+        );
+        got_err.free();
+        expect_err.free();
+        return .None;
+    }
+
+    try_expr->branch_dispatch = operand_try.branch_dispatch;
+    try_expr->from_error_dispatch = ret_try.from_error_dispatch.unwrap();
+    try_expr->control_flow_type = .Some(operand_try.control_flow_type);
+    try_expr->value_type = .Some(operand_try.value_type);
+    try_expr->error_type = .Some(operand_try.error_type);
+    try_expr->return_type = .Some(ret_type);
+
+    return .Some(operand_try.value_type);
+}
+
+fn analyze_try_catch_expr(
+    context: AnalyzerContext*,
+    try_catch_expr: cir::TryCatchExpr*
+) Option<cir::SemaType> {
+    const operand_type_opt = analyze_expr(context, try_catch_expr->operand, .None);
+
+    switch (operand_type_opt) case .Some(operand_type) else {
+        return .None;
+    }
+
+    if (operand_type.contains_error()) {
+        return .Some(.Err(try_catch_expr->span));
+    }
+
+    // Check operand implements Try<V, E>
+    const operand_try_opt = resolve_try_impl(context, &operand_type, false, try_catch_expr->span);
+    switch (operand_try_opt) case .Some(operand_try) else {
+        var type_name = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &operand_type
+        );
+        diags::report_type_does_not_implement_try(
+            context->dctx,
+            context->allocator,
+            try_catch_expr->span,
+            "try ... catch",
+            type_name.as_str_const()
+        );
+        type_name.free();
+        return .None;
+    }
+
+    // Type the optional error binding variable `catch (err)` with E
+    switch (try_catch_expr->error_binding) {
+        case .Some(var_decl_id) => {
+            var var_entry = context->decl_tables->vars.get(var_decl_id).unwrap();
+            var_entry->ty = .Some(operand_try.error_type);
+        }
+        case .None => {}
+    }
+
+    // Analyze catch body
+    const start_diags = context->dctx->diag_count();
+    const catch_flow = context->dispatcher.analyze_block_stmt(context, &try_catch_expr->catch_body);
+
+    if (catch_flow.is_reachable()
+        && !operand_try.value_type.is_void()
+        && !operand_try.value_type.contains_error()
+        && !context->dctx->has_errors_since(start_diags))
+    {
+        var val_name = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &operand_try.value_type
+        );
+        diags::report_try_catch_must_diverge(
+            context->dctx,
+            context->allocator,
+            try_catch_expr->catch_body.span,
+            val_name.as_str_const()
+        );
+        val_name.free();
+    }
+
+    try_catch_expr->branch_dispatch = operand_try.branch_dispatch;
+    try_catch_expr->control_flow_type = .Some(operand_try.control_flow_type);
+    try_catch_expr->value_type = .Some(operand_try.value_type);
+    try_catch_expr->error_type = .Some(operand_try.error_type);
+
+    return .Some(operand_try.value_type);
 }

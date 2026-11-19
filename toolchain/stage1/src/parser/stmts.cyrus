@@ -16,6 +16,7 @@ import .::diags{
     report_duplicate_modifier,
     report_unexpected_token,
     report_local_decl_error,
+    report_expected_ident,
     report_invalid_abi,
 };
 import .::attrs{
@@ -1804,10 +1805,66 @@ pub struct ParserStmts {
         self->state->pending->push(self->program->create_node(.Label(node)));
     }
 
-    /// Grammar: defer Stmt
+    /// Grammar: defer (catch ( '(' Ident ')' )? | try)? (Block | Stmt ';')
     pub fn parse_defer(self: Self*) {
         const start = self->state->current_span();
         self->state->next();
+
+        var kind: ast::ASTDeferKind = .Always;
+        var error_binding: Option<ast::ASTIdent> = .None;
+
+        if (self->state->is(.Catch)) {
+            kind = .OnError;
+            self->state->next();
+
+            if (self->state->is(.LeftParen)) {
+                self->state->next();
+                switch (*self->state->current()->kind) {
+                    case .Ident(str) => {
+                        error_binding = .Some(ast::ASTIdent {
+                            str,
+                            span: self->state->current_span(),
+                        });
+                        self->state->next();
+                    }
+                    else => {
+                        report_expected_ident(
+                            self->allocator,
+                            self->state->dctx,
+                            self->state->current_span(),
+                            *self->state->current()->kind
+                        );
+                        self->state->sync();
+                        return;
+                    }
+                }
+
+                if (!self->state->expect(.RightParen)) {
+                    self->state->sync();
+                    return;
+                }
+            }
+        } else if (self->state->is(.Try)) {
+            kind = .OnSuccess;
+            self->state->next();
+        }
+
+        if (self->state->is(.LeftBrace)) {
+            switch (self->parse_block_node()) case .Some(operand) else {
+                self->state->sync();
+                return;
+            }
+
+            const node = ast::ASTDefer {
+                kind,
+                error_binding,
+                operand,
+                span: start.merge(self->state->current_span()),
+            };
+
+            self->state->pending->push(self->program->create_node(.Defer(node)));
+            return;
+        }
 
         const mark = self->state->pending->len();
 
@@ -1831,6 +1888,8 @@ pub struct ParserStmts {
                 const operand = self->state->pending->pop();
 
                 const node = ast::ASTDefer {
+                    kind,
+                    error_binding,
                     operand,
                     span: start.merge(self->state->current_span()),
                 };

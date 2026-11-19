@@ -612,6 +612,21 @@ pub fn format_typed_expr(
             out.push_str(method_call.name.as_str_const());
             return out;
         }
+        case .Try(try_expr) => {
+            var out = String.from_str(allocator, "try ");
+            var op = format_typed_expr(allocator, registry, tables, try_expr.operand);
+            out.push_str(op.as_str_const());
+            op.free();
+            return out;
+        }
+        case .TryCatch(try_catch_expr) => {
+            var out = String.from_str(allocator, "try ");
+            var op = format_typed_expr(allocator, registry, tables, try_catch_expr.operand);
+            out.push_str(op.as_str_const());
+            op.free();
+            out.push_str(" catch { ... }");
+            return out;
+        }
         case .FuncCall(func_call) => {
             var out = format_typed_expr(allocator, registry, tables, func_call.operand);
             out.push_str("(");

@@ -2137,6 +2137,8 @@ pub enum ExprKind {
     Array(ArrayExpr),
     Tuple(TupleExpr),
     Slice(SliceExpr),
+    Try(TryExpr),
+    TryCatch(TryCatchExpr),
     SemaType {
         ty: SemaType,
         span: Span
@@ -2237,6 +2239,8 @@ pub enum ExprKind {
             | .EnumStructVariantInit
             | .UnionInit
             | .EnumInit
+            | .Try
+            | .TryCatch
             | .SemaType => return false;
         }
     }
@@ -2533,6 +2537,28 @@ pub enum InterfaceCallDispatch {
     Dynamic,
 }
 
+pub struct TryExpr {
+    pub operand: Expr*,
+    pub branch_dispatch: MethodCallDispatch,
+    pub from_error_dispatch: MethodCallDispatch,
+    pub control_flow_type: Option<SemaType>,
+    pub value_type: Option<SemaType>,
+    pub error_type: Option<SemaType>,
+    pub return_type: Option<SemaType>,
+    pub span: Span,
+}
+
+pub struct TryCatchExpr {
+    pub operand: Expr*,
+    pub error_binding: Option<VarDeclId>,
+    pub catch_body: BlockStmt,
+    pub branch_dispatch: MethodCallDispatch,
+    pub control_flow_type: Option<SemaType>,
+    pub value_type: Option<SemaType>,
+    pub error_type: Option<SemaType>,
+    pub span: Span,
+}
+
 pub struct UnnamedStructValue {
     pub struct_decl_id: Option<StructDeclId>,
     pub fields: Vec<UnnamedStructValueField>,
@@ -2710,7 +2736,18 @@ pub enum TupleExportPatternKind {
     Ignore,
 }
 
+pub enum DeferKind {
+    Always,
+    OnError,
+    OnSuccess,
+}
+
 pub struct DeferStmt {
+    pub kind: DeferKind,
+    pub error_binding: Option<VarDeclId>,
+    pub error_type: Option<SemaType>,
+    pub return_branch_dispatch: MethodCallDispatch,
+    pub return_control_flow_type: Option<SemaType>,
     pub operand: Stmt*,
     pub span: Span,
 }

@@ -1,0 +1,47 @@
+// @stdout: ok=21 err=99 unwrap=42
+
+import std::errors{ControlFlow, Try};
+import std::libc{printf};
+
+enum Outcome<T> : Try<T, int32> {
+    Ok(T),
+    Fail(int32),
+
+    pub fn branch(self: Self) ControlFlow<T, int32> {
+        switch (self) {
+            case .Ok(v) => return .Continue(v);
+            case .Fail(code) => return .Break(code);
+        }
+    }
+
+    pub fn from_error(code: int32) Self {
+        return .Fail(code);
+    }
+}
+
+fn make_outcome(x: int32) Outcome<int32> {
+    if (x < 0) {
+        return .Fail(99);
+    }
+    return .Ok(x);
+}
+
+fn propagate(x: int32) Outcome<int32> {
+    const v = make_outcome(x)?;
+    return .Ok(v + 1);
+}
+
+pub fn main() {
+    switch (propagate(20)) {
+        case .Ok(v) => printf("ok=%d ", v);
+        case .Fail(e) => printf("unexpected=%d ", e);
+    }
+
+    switch (propagate(-1)) {
+        case .Ok(v) => printf("unexpected=%d ", v);
+        case .Fail(e) => printf("err=%d ", e);
+    }
+
+    const u = make_outcome(42)!;
+    printf("unwrap=%d", u);
+}
