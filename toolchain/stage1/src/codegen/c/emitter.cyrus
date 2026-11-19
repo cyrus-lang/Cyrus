@@ -1150,13 +1150,18 @@ pub struct Emitter {
 
                 switch (ty) {
                     case .Array(array) => {
-                        // Arrays are passed as a pointer. The body copies
-                        // that pointer into a local array named after the
-                        // parameter (see emit_param_prologue), so the
-                        // pointer parameter itself gets a `__p`
-                        // suffix to avoid a redeclaration
-                        ty = .Pointer(array.element_type);
-                        name.push_str("__p");
+                        switch (array.capacity) {
+                            case .Fixed => {
+                                // Arrays are passed as a pointer. The body copies
+                                // that pointer into a local array named after the
+                                // parameter (see emit_param_prologue), so the
+                                // pointer parameter itself gets a `__p`
+                                // suffix to avoid a redeclaration
+                                ty = .Pointer(array.element_type);
+                                name.push_str("__p");
+                            }
+                            case .Slice | .TerminatedSlice => {}
+                        }
                     }
                     else => {}
                 }
@@ -1194,17 +1199,22 @@ pub struct Emitter {
         // a generated struct
         // wrapper instead
         switch (ret_type->as_array_type()) {
-            case .Some => {
-                var ret_name = self->types.array_return_struct_name(ret_type);
+            case .Some(array) => {
+                switch (array.capacity) {
+                    case .Fixed => {
+                        var ret_name = self->types.array_return_struct_name(ret_type);
 
-                var decl = String.new(self->allocator);
-                decl.push_str(ret_name.as_str_const());
-                decl.push(' ');
-                decl.push_str(full_name.as_str_const());
+                        var decl = String.new(self->allocator);
+                        decl.push_str(ret_name.as_str_const());
+                        decl.push(' ');
+                        decl.push_str(full_name.as_str_const());
 
-                ret_name.free();
-                full_name.free();
-                return decl;
+                        ret_name.free();
+                        full_name.free();
+                        return decl;
+                    }
+                    case .Slice | .TerminatedSlice => {}
+                }
             }
             else => {}
         }
@@ -1354,6 +1364,56 @@ pub struct Emitter {
         src_expr: const cir::Expr*,
         dest_ty: const cir::SemaType*
     ) String {
+        switch (src_expr->ty) {
+            case .Some(src_ty) => {
+                switch (src_ty.as_array_type()) {
+                    case .Some(src_arr) => {
+                        switch (src_arr.capacity) {
+                            case .Fixed => {
+                                switch (dest_ty->as_array_type()) {
+                                    case .Some(dst_arr) => {
+                                        switch (dst_arr.capacity) {
+                                            case .Slice | .TerminatedSlice => {
+                                                self->types.ensure_slice();
+                                                const len = self->types.tctx.array_capacity_len(&src_arr);
+                                                var out = String.from_str(self->allocator, "((__slice){.ptr=(void*)(");
+                                                out.push_str(value.as_str_const());
+                                                out.push_str("),.len=");
+                                                push_usize(&out, len);
+                                                out.push_str("})");
+                                                value.free();
+                                                return out;
+                                            }
+                                            case .Fixed => {}
+                                        }
+                                    }
+                                    else => {}
+                                }
+                            }
+                            case .Slice | .TerminatedSlice => {
+                                switch (*dest_ty->const_inner()) {
+                                    case .Pointer => {
+                                        var ptr_type = self->types.build_decl(dest_ty, "");
+                                        var out = String.from_str(self->allocator, "((");
+                                        out.push_str(ptr_type.as_str_const());
+                                        out.push_str(")(");
+                                        out.push_str(value.as_str_const());
+                                        out.push_str(").ptr)");
+                                        ptr_type.free();
+                                        value.free();
+                                        return out;
+                                    }
+                                    else => {}
+                                }
+                            }
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .None => {}
+        }
+
         var dest_128 = self->int128_kind_of(dest_ty);
         var src_128 = self->expr_int128_kind(src_expr);
 
@@ -1487,41 +1547,41 @@ pub struct Emitter {
 
             switch (ty) {
                 case .Array(array) => {
-                    var name = mangle::sanitized(self->allocator, param->name_str());
-                    var capacity: usize = 1;
-                    
                     switch (array.capacity) {
                         case .Fixed(capacity_expr) => {
+                            var name = mangle::sanitized(self->allocator, param->name_str());
+                            var capacity: usize = 1;
+
                             switch (ciri::fold_const_expr_int(self->tables, self->registry, capacity_expr)) {
                                 case .Some(literal) => {
                                     capacity = cir::integer_literal_as_usize(literal);
                                 }
                                 else => {}
                             }
+
+                            var type_name = self->types.type_name(array.element_type);
+
+                            self->body_out.push_str(type_name.as_str_const());
+                            self->body_out.push(' ');
+                            self->body_out.push_str(name.as_str_const());
+                            self->body_out.push('[');
+                            push_usize(&self->body_out, capacity);
+                            self->body_out.push_str("];");
+
+                            self->ensure_memcpy_proto();
+                            self->body_out.push_str("memcpy(");
+                            self->body_out.push_str(name.as_str_const());
+                            self->body_out.push(',');
+                            self->body_out.push_str(name.as_str_const());
+                            self->body_out.push_str("__p,sizeof(");
+                            self->body_out.push_str(name.as_str_const());
+                            self->body_out.push_str("));");
+
+                            type_name.free();
+                            name.free();
                         }
-                        else => {}
+                        case .Slice | .TerminatedSlice => {}
                     }
-
-                    var type_name = self->types.type_name(array.element_type);
-                    
-                    self->body_out.push_str(type_name.as_str_const());
-                    self->body_out.push(' ');
-                    self->body_out.push_str(name.as_str_const());
-                    self->body_out.push('[');
-                    push_usize(&self->body_out, capacity);
-                    self->body_out.push_str("];");
-                    
-                    self->ensure_memcpy_proto();
-                    self->body_out.push_str("memcpy(");
-                    self->body_out.push_str(name.as_str_const());
-                    self->body_out.push(',');
-                    self->body_out.push_str(name.as_str_const());
-                    self->body_out.push_str("__p,sizeof(");
-                    self->body_out.push_str(name.as_str_const());
-                    self->body_out.push_str("));");
-
-                    type_name.free();
-                    name.free();
                 }
                 else => {}
             }
@@ -1959,11 +2019,22 @@ pub struct Emitter {
                         // distinct types are not assignable even when their
                         // layouts match. Both cases are lowered explicitly.
                         var copy_array = false;
+                        var is_fixed_array = false;
+
+                        switch (ty.as_array_type()) {
+                            case .Some(arr) => {
+                                switch (arr.capacity) {
+                                    case .Fixed => is_fixed_array = true;
+                                    case .Slice | .TerminatedSlice => {}
+                                }
+                            }
+                            else => {}
+                        }
 
                         switch (rhs.kind) {
                             case .Array => {}
                             else => {
-                                if (ty.is_array()) {
+                                if (is_fixed_array) {
                                     copy_array = true;
                                 }
                             }
@@ -2012,9 +2083,16 @@ pub struct Emitter {
 
                             switch (rhs.kind) {
                                 case .Array(array) => {
-                                    var braces = self->emit_array_braces(&array);
-                                    self->body_out.push_str(braces.as_str_const());
-                                    braces.free();
+                                    if (is_fixed_array) {
+                                        var braces = self->emit_array_braces(&array);
+                                        self->body_out.push_str(braces.as_str_const());
+                                        braces.free();
+                                    } else {
+                                        var expr = self->emit_expr(&rhs);
+                                        expr = self->coerce_value(expr, &rhs, &ty);
+                                        self->body_out.push_str(expr.as_str_const());
+                                        expr.free();
+                                    }
                                 }
                                 else => {
                                     var expr = self->emit_expr(&rhs);
@@ -2029,19 +2107,9 @@ pub struct Emitter {
                                         cast_name.free();
                                         expr.free();
                                     } else {
-                                        var dest_128 = self->int128_kind_of(&ty);
-                                        var src_128 = self->expr_int128_kind(&rhs);
-
-                                        if (dest_128.is_some() && !(src_128.is_some() && src_128.unwrap() == dest_128.unwrap())) {
-                                            var coerce = self->coerce_to_int128(&rhs, expr.as_str_const(), dest_128.unwrap());
-                                            self->body_out.push_str(coerce.as_str_const());
-                                            coerce.free();
-                                            expr.free();
-                                        } else {
-                                            var coerce = self->coerce_float16(expr, &ty);
-                                            self->body_out.push_str(coerce.as_str_const());
-                                            coerce.free();
-                                        }
+                                        expr = self->coerce_value(expr, &rhs, &ty);
+                                        self->body_out.push_str(expr.as_str_const());
+                                        expr.free();
                                     }
                                 }
                             }
@@ -2167,34 +2235,44 @@ pub struct Emitter {
                 // Array-returning functions dont really return a plain array. They return
                 // a generated struct wrapper. So we copy the
                 // array value into that wrapper's storage.
-                switch (arg.ty) {
+                var ret_check_ty = self->cur_ret_type;
+                if (ret_check_ty.is_none()) {
+                    ret_check_ty = arg.ty;
+                }
+
+                switch (ret_check_ty) {
                     case .Some(ty) => {
                         switch (ty.as_array_type()) {
-                            case .Some => {
-                                var struct_name = self->types.array_return_struct_name(&ty);
-                                self->ensure_memcpy_proto();
+                            case .Some(arr) => {
+                                switch (arr.capacity) {
+                                    case .Fixed => {
+                                        var struct_name = self->types.array_return_struct_name(&ty);
+                                        self->ensure_memcpy_proto();
 
-                                var expr = self->emit_expr(&arg);
+                                        var expr = self->emit_expr(&arg);
 
-                                if (has_defers) {
-                                    self->body_out.push('{');
-                                    self->body_out.push_str(struct_name.as_str_const());
-                                    self->body_out.push_str(" __cyrus_ret_val;memcpy(__cyrus_ret_val.data,");
-                                    self->body_out.push_str(expr.as_str_const());
-                                    self->body_out.push_str(",sizeof(__cyrus_ret_val.data));");
-                                    self->emit_all_defers();
-                                    self->body_out.push_str("return __cyrus_ret_val;}");
-                                } else {
-                                    self->body_out.push_str("return({");
-                                    self->body_out.push_str(struct_name.as_str_const());
-                                    self->body_out.push_str(" __cyrus_ret;memcpy(__cyrus_ret.data,");
-                                    self->body_out.push_str(expr.as_str_const());
-                                    self->body_out.push_str(",sizeof(__cyrus_ret.data));__cyrus_ret;});");
+                                        if (has_defers) {
+                                            self->body_out.push('{');
+                                            self->body_out.push_str(struct_name.as_str_const());
+                                            self->body_out.push_str(" __cyrus_ret_val;memcpy(__cyrus_ret_val.data,");
+                                            self->body_out.push_str(expr.as_str_const());
+                                            self->body_out.push_str(",sizeof(__cyrus_ret_val.data));");
+                                            self->emit_all_defers();
+                                            self->body_out.push_str("return __cyrus_ret_val;}");
+                                        } else {
+                                            self->body_out.push_str("return({");
+                                            self->body_out.push_str(struct_name.as_str_const());
+                                            self->body_out.push_str(" __cyrus_ret;memcpy(__cyrus_ret.data,");
+                                            self->body_out.push_str(expr.as_str_const());
+                                            self->body_out.push_str(",sizeof(__cyrus_ret.data));__cyrus_ret;});");
+                                        }
+
+                                        expr.free();
+                                        struct_name.free();
+                                        return;
+                                    }
+                                    case .Slice | .TerminatedSlice => {}
                                 }
-
-                                expr.free();
-                                struct_name.free();
-                                return;
                             }
                             else => {}
                         }
@@ -2204,11 +2282,18 @@ pub struct Emitter {
 
                 var expr = self->emit_expr(&arg);
 
-                switch (arg.ty) {
-                    case .Some(ty) => {
-                        expr = self->coerce_float16(expr, &ty);
+                switch (self->cur_ret_type) {
+                    case .Some(ret_ty) => {
+                        expr = self->coerce_value(expr, &arg, &ret_ty);
                     }
-                    else => {}
+                    case .None => {
+                        switch (arg.ty) {
+                            case .Some(ty) => {
+                                expr = self->coerce_float16(expr, &ty);
+                            }
+                            else => {}
+                        }
+                    }
                 }
 
                 if (has_defers) {
@@ -4007,18 +4092,23 @@ pub struct Emitter {
         switch (expr->ty) {
             case .Some(ty) => {
                 switch (ty.as_array_type()) {
-                    case .Some => {
-                        var struct_name = self->types.array_return_struct_name(&ty);
+                    case .Some(arr) => {
+                        switch (arr.capacity) {
+                            case .Fixed => {
+                                var struct_name = self->types.array_return_struct_name(&ty);
 
-                        var out = String.from_str(self->allocator, "({ ");
-                        out.push_str(struct_name.as_str_const());
-                        out.push_str(" __cyrus_arr = ");
-                        out.push_str(value.as_str_const());
-                        out.push_str("; __cyrus_arr.data; })");
+                                var out = String.from_str(self->allocator, "({ ");
+                                out.push_str(struct_name.as_str_const());
+                                out.push_str(" __cyrus_arr = ");
+                                out.push_str(value.as_str_const());
+                                out.push_str("; __cyrus_arr.data; })");
 
-                        struct_name.free();
-                        value.free();
-                        return out;
+                                struct_name.free();
+                                value.free();
+                                return out;
+                            }
+                            case .Slice | .TerminatedSlice => {}
+                        }
                     }
                     else => {}
                 }
@@ -4126,14 +4216,144 @@ pub struct Emitter {
                 var base = self->emit_expr(array_index.operand);
                 var idx = self->emit_expr(array_index.index);
 
-                out.push('(');
-                out.push_str(base.as_str_const());
-                out.push('[');
-                out.push_str(idx.as_str_const());
-                out.push_str("])");
+                var is_slice = false;
+                var elem_ptr_decl = String.new(self->allocator);
+
+                switch (array_index.operand->ty) {
+                    case .Some(op_ty) => {
+                        switch (op_ty.as_array_type()) {
+                            case .Some(arr) => {
+                                switch (arr.capacity) {
+                                    case .Slice | .TerminatedSlice => {
+                                        is_slice = true;
+                                        const ptr_ty: cir::SemaType = .Pointer(arr.element_type);
+                                        elem_ptr_decl.free();
+                                        elem_ptr_decl = self->types.build_decl(&ptr_ty, "");
+                                    }
+                                    case .Fixed => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    case .None => {}
+                }
+
+                if (is_slice) {
+                    out.push_str("(((");
+                    out.push_str(elem_ptr_decl.as_str_const());
+                    out.push_str(")(");
+                    out.push_str(base.as_str_const());
+                    out.push_str(").ptr)[");
+                    out.push_str(idx.as_str_const());
+                    out.push_str("])");
+                } else {
+                    out.push('(');
+                    out.push_str(base.as_str_const());
+                    out.push('[');
+                    out.push_str(idx.as_str_const());
+                    out.push_str("])");
+                }
+
+                elem_ptr_decl.free();
                 base.free();
                 idx.free();
                 
+                return out;
+            }
+
+            case .Slice(slice_expr) => {
+                self->types.ensure_slice();
+                var base = self->emit_expr(slice_expr.operand);
+                var start_str = String.from_str(self->allocator, "0");
+                switch (slice_expr.start) {
+                    case .Some(s) => {
+                        start_str.free();
+                        start_str = self->emit_expr(s);
+                    }
+                    case .None => {}
+                }
+
+                var is_slice_op = false;
+                var fixed_len: usize = 0;
+                var elem_ptr_decl = String.new(self->allocator);
+
+                switch (slice_expr.operand->ty) {
+                    case .Some(op_ty) => {
+                        if (op_ty.is_pointer()) {
+                            elem_ptr_decl.free();
+                            elem_ptr_decl = self->types.build_decl(&op_ty, "");
+                        } else {
+                            switch (op_ty.as_array_type()) {
+                                case .Some(arr) => {
+                                    const ptr_ty: cir::SemaType = .Pointer(arr.element_type);
+                                    elem_ptr_decl.free();
+                                    elem_ptr_decl = self->types.build_decl(&ptr_ty, "");
+                                    switch (arr.capacity) {
+                                        case .Fixed => {
+                                            fixed_len = self->types.tctx.array_capacity_len(&arr);
+                                        }
+                                        case .Slice | .TerminatedSlice => {
+                                            is_slice_op = true;
+                                        }
+                                    }
+                                }
+                                else => {}
+                            }
+                        }
+                    }
+                    case .None => {}
+                }
+
+                var out = String.from_str(self->allocator, "({ ");
+                if (is_slice_op) {
+                    out.push_str("__slice __s=(");
+                    out.push_str(base.as_str_const());
+                    out.push_str("); uintptr_t __start=(uintptr_t)(");
+                    out.push_str(start_str.as_str_const());
+                    out.push_str("); uintptr_t __end=");
+                    switch (slice_expr.end) {
+                        case .Some(e) => {
+                            var end_str = self->emit_expr(e);
+                            out.push_str("(uintptr_t)(");
+                            out.push_str(end_str.as_str_const());
+                            out.push(')');
+                            end_str.free();
+                        }
+                        case .None => {
+                            out.push_str("__s.len");
+                        }
+                    }
+                    out.push_str("; ((__slice){.ptr=(void*)(((");
+                    out.push_str(elem_ptr_decl.as_str_const());
+                    out.push_str(")(__s.ptr))+__start),.len=__end-__start}); })");
+                } else {
+                    out.push_str(elem_ptr_decl.as_str_const());
+                    out.push_str(" __p=(");
+                    out.push_str(elem_ptr_decl.as_str_const());
+                    out.push_str(")(");
+                    out.push_str(base.as_str_const());
+                    out.push_str("); uintptr_t __start=(uintptr_t)(");
+                    out.push_str(start_str.as_str_const());
+                    out.push_str("); uintptr_t __end=");
+                    switch (slice_expr.end) {
+                        case .Some(e) => {
+                            var end_str = self->emit_expr(e);
+                            out.push_str("(uintptr_t)(");
+                            out.push_str(end_str.as_str_const());
+                            out.push(')');
+                            end_str.free();
+                        }
+                        case .None => {
+                            push_usize(&out, fixed_len);
+                        }
+                    }
+                    out.push_str("; ((__slice){.ptr=(void*)(__p+__start),.len=__end-__start}); })");
+                }
+
+                elem_ptr_decl.free();
+                start_str.free();
+                base.free();
                 return out;
             }
 
@@ -4177,16 +4397,83 @@ pub struct Emitter {
             }
 
             case .Array(array) => {
-                var type_name: String;
+                var is_slice_lit = false;
+                var type_name = String.new(self->allocator);
+                var resolved_array_ty = array.ty;
+                if (expr->ty.is_some()) {
+                    resolved_array_ty = expr->ty;
+                }
 
-                switch (array.ty) {
+                switch (resolved_array_ty) {
                     case .Some(ty) => {
-                        self->types.ensure_named(&ty);
-                        type_name = self->types.type_name(&ty);
+                        switch (ty.as_array_type()) {
+                            case .Some(arr) => {
+                                switch (arr.capacity) {
+                                    case .Slice | .TerminatedSlice => {
+                                        is_slice_lit = true;
+                                        self->types.ensure_slice();
+                                        self->types.ensure_named(arr.element_type);
+                                        type_name.free();
+                                        type_name = self->types.type_name(arr.element_type);
+                                    }
+                                    case .Fixed => {
+                                        self->types.ensure_named(&ty);
+                                        type_name.free();
+                                        type_name = self->types.type_name(&ty);
+                                    }
+                                }
+                            }
+                            else => {
+                                self->types.ensure_named(&ty);
+                                type_name.free();
+                                type_name = self->types.type_name(&ty);
+                            }
+                        }
                     }
                     case .None => {
+                        type_name.free();
                         type_name = String.from_str(self->allocator, "void*");
                     }
+                }
+
+                if (is_slice_lit) {
+                    if (array.elements.len() == 0) {
+                        type_name.free();
+                        return String.from_str(self->allocator, "((__slice){.ptr=(void*)0,.len=0})");
+                    }
+
+                    var out = String.from_str(self->allocator, "((__slice){.ptr=(void*)((");
+                    out.push_str(type_name.as_str_const());
+                    out.push('[');
+                    push_usize(&out, array.elements.len());
+                    out.push_str("]){");
+
+                    for (var i: usize = 0; i < array.elements.len(); i += 1) {
+                        const element_type = array.elements.get_const(i).unwrap();
+
+                        switch (element_type->kind) {
+                            case .Array(array2) => {
+                                var braces = self->emit_array_braces(&array2);
+                                out.push_str(braces.as_str_const());
+                                braces.free();
+                            }
+                            else => {
+                                var elem_expr = self->emit_expr(element_type);
+                                out.push_str(elem_expr.as_str_const());
+                                elem_expr.free();
+                            }
+                        }
+
+                        if (i + 1 < array.elements.len()) {
+                            out.push(',');
+                        }
+                    }
+
+                    out.push_str("}),.len=");
+                    push_usize(&out, array.elements.len());
+                    out.push_str("})");
+                    type_name.free();
+                    return out;
                 }
 
                 var out = String.from_str(self->allocator, "((");
@@ -5058,7 +5345,7 @@ pub struct Emitter {
 
                 switch (assign->lhs->ty) {
                     case .Some(lhs_ty) => {
-                        rhs = self->coerce_float16(rhs, &lhs_ty);
+                        rhs = self->coerce_value(rhs, assign->rhs, &lhs_ty);
                     }
                     else => {}
                 }
@@ -6716,6 +7003,109 @@ pub struct Emitter {
         switch (cir::lookup_builtin(builtin_func->name.str.as_str_const())) {
             case .Some(kind) => {
                 switch (kind) {
+                    case .Len => {
+                        switch (builtin_func->args.get_const(0)) {
+                            case .Some(operand) => {
+                                switch (operand->ty) {
+                                    case .Some(ty) => {
+                                        switch (ty.as_array_type()) {
+                                            case .Some(arr) => {
+                                                switch (arr.capacity) {
+                                                    case .Fixed => {
+                                                        const len = self->types.tctx.array_capacity_len(&arr);
+                                                        var out = String.from_str(self->allocator, "((uintptr_t)");
+                                                        push_usize(&out, len);
+                                                        out.push(')');
+                                                        return out;
+                                                    }
+                                                    case .Slice | .TerminatedSlice => {
+                                                        var op_str = self->emit_expr(operand);
+                                                        var out = String.from_str(self->allocator, "((");
+                                                        out.push_str(op_str.as_str_const());
+                                                        out.push_str(").len)");
+                                                        op_str.free();
+                                                        return out;
+                                                    }
+                                                }
+                                            }
+                                            else => {}
+                                        }
+                                    }
+                                    case .None => {}
+                                }
+                            }
+                            else => {}
+                        }
+
+                        return String.from_str(self->allocator, "((uintptr_t)0)");
+                    }
+
+                    case .Ptr => {
+                        switch (builtin_func->args.get_const(0)) {
+                            case .Some(operand) => {
+                                switch (operand->ty) {
+                                    case .Some(ty) => {
+                                        switch (ty.const_inner()->as_array_type()) {
+                                            case .Some(arr) => {
+                                                var op_str = self->emit_expr(operand);
+                                                const ptr_ty: cir::SemaType = .Pointer(arr.element_type);
+                                                var ptr_decl = self->types.build_decl(&ptr_ty, "");
+                                                var out = String.from_str(self->allocator, "((");
+                                                out.push_str(ptr_decl.as_str_const());
+                                                switch (arr.capacity) {
+                                                    case .Fixed => {
+                                                        out.push_str(")(");
+                                                        out.push_str(op_str.as_str_const());
+                                                        out.push_str("))");
+                                                    }
+                                                    case .Slice | .TerminatedSlice => {
+                                                        out.push_str(")((");
+                                                        out.push_str(op_str.as_str_const());
+                                                        out.push_str(").ptr))");
+                                                    }
+                                                }
+                                                ptr_decl.free();
+                                                op_str.free();
+                                                return out;
+                                            }
+                                            else => {}
+                                        }
+                                    }
+                                    case .None => {}
+                                }
+                            }
+                            else => {}
+                        }
+
+                        return String.from_str(self->allocator, "((void*)0)");
+                    }
+
+                    case .Slice => {
+                        self->types.ensure_slice();
+                        switch (builtin_func->args.get_const(0)) {
+                            case .Some(ptr_arg) => {
+                                switch (builtin_func->args.get_const(1)) {
+                                    case .Some(len_arg) => {
+                                        var ptr_str = self->emit_expr(ptr_arg);
+                                        var len_str = self->emit_expr(len_arg);
+                                        var out = String.from_str(self->allocator, "((__slice){.ptr=(void*)(");
+                                        out.push_str(ptr_str.as_str_const());
+                                        out.push_str("),.len=(uintptr_t)(");
+                                        out.push_str(len_str.as_str_const());
+                                        out.push_str(")})");
+                                        len_str.free();
+                                        ptr_str.free();
+                                        return out;
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+
+                        return String.from_str(self->allocator, "((__slice){.ptr=(void*)0,.len=0})");
+                    }
+
                     case .SizeOf => {
                         switch (builtin_func->args.get_const(0)) {
                             case .Some(operand) => {
@@ -6842,10 +7232,41 @@ pub struct Emitter {
                                                     return cast_out;
                                                 }
 
+                                                var expr = self->emit_expr(value_arg);
+
+                                                switch (value_arg->ty) {
+                                                    case .Some(src_type) => {
+                                                        switch (src_type.as_array_type()) {
+                                                            case .Some(src_arr) => {
+                                                                switch (src_arr.capacity) {
+                                                                    case .Slice | .TerminatedSlice => {
+                                                                        switch (*ty.const_inner()) {
+                                                                            case .Pointer => {
+                                                                                return self->coerce_value(expr, value_arg, &ty);
+                                                                            }
+                                                                            case .Array(dst_arr) => {
+                                                                                switch (dst_arr.capacity) {
+                                                                                    case .Slice | .TerminatedSlice => {
+                                                                                        return expr;
+                                                                                    }
+                                                                                    case .Fixed => {}
+                                                                                }
+                                                                            }
+                                                                            else => {}
+                                                                        }
+                                                                    }
+                                                                    case .Fixed => {}
+                                                                }
+                                                            }
+                                                            else => {}
+                                                        }
+                                                    }
+                                                    case .None => {}
+                                                }
+
                                                 self->types.ensure_named(&ty);
 
                                                 var type_name = self->types.type_name(&ty);
-                                                var expr = self->emit_expr(value_arg);
                                                 var out = String.new(self->allocator);
 
                                                 if (self->needs_signed_cast(&ty, value_arg)) {
@@ -7292,12 +7713,18 @@ pub struct Emitter {
 
             case .String { value, .. } => {
                 var is_array = false;
+                var is_slice = false;
                 var is_mut_ptr = false;
 
                 switch (literal->ty) {
                     case .Some(ty) => {
                         switch (*ty.const_inner()) {
-                            case .Array => is_array = true;
+                            case .Array(arr) => {
+                                switch (arr.capacity) {
+                                    case .Slice | .TerminatedSlice => is_slice = true;
+                                    case .Fixed => is_array = true;
+                                }
+                            }
                             case .Pointer(inner) => {
                                 switch (*inner) {
                                     case .Const => {}
@@ -7311,6 +7738,16 @@ pub struct Emitter {
                 }
 
                 var out = String.new(self->allocator);
+
+                if (is_slice) {
+                    self->types.ensure_slice();
+                    out.push_str("((__slice){.ptr=(void*)(\"");
+                    push_c_escaped(&out, value.as_str_const());
+                    out.push_str("\"),.len=");
+                    push_usize(&out, value.len());
+                    out.push_str("})");
+                    return out;
+                }
                 
                 if (!is_array) {
                     if (is_mut_ptr) {

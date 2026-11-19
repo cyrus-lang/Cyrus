@@ -733,6 +733,18 @@ fn specialize_expr(
         case .Dynamic(dynamic_) => {
             specialize_expr(context, dynamic_.operand, decl_map);
         }
+
+        case .Slice(slice_expr) => {
+            specialize_expr(context, slice_expr.operand, decl_map);
+            switch (slice_expr.start) {
+                case .Some(start) => specialize_expr(context, start, decl_map);
+                case .None => {}
+            }
+            switch (slice_expr.end) {
+                case .Some(end) => specialize_expr(context, end, decl_map);
+                case .None => {}
+            }
+        }
         
         case .Lambda(var lambda) => {
             specialize_func_params(context, &lambda.params, decl_map);

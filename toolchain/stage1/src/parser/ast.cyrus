@@ -548,6 +548,7 @@ pub enum ASTExpr {
     Infix(ASTInfixExpr),
     Array(ASTArrayExpr),
     Dynamic(ASTDynamic),
+    Slice(ASTSliceExpr),
     Builtin(ASTBuiltin),
     Deref(ASTDerefExpr),
     Lambda(ASTLambda),
@@ -711,6 +712,13 @@ pub struct ASTUntypedArrayExpr {
 pub struct ASTArrayIndexExpr {
     pub operand: NodeId,
     pub index: NodeId,
+    pub span: Span,
+}
+
+pub struct ASTSliceExpr {
+    pub operand: NodeId,
+    pub start: Option<NodeId>,
+    pub end: Option<NodeId>,
     pub span: Span,
 }
 
@@ -1361,6 +1369,7 @@ pub struct ASTArrayType {
 }
 
 pub enum ASTArrayCapacity {
+    TerminatedSlice,
     Fixed(NodeId),
     Dynamic,
 }

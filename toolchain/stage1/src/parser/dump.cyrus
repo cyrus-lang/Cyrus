@@ -1172,6 +1172,7 @@ pub struct ASTDump {
             case .MethodCall(var node) => self->dump_expr_method_call(&node);
             case .StructInit(var node) => self->dump_expr_struct_init(&node);
             case .ArrayIndex(var node) => self->dump_expr_array_index(&node);
+            case .Slice(var node) => self->dump_expr_slice(&node);
             case .InlineAsm(var node) => self->dump_expr_inline_asm(&node);
             case .FuncCall(var node) => self->dump_expr_func_call(&node);
             case .Literal(var node) => self->dump_expr_literal(&node);
@@ -1285,6 +1286,7 @@ pub struct ASTDump {
         switch (node->capacity) {
             case .Fixed(capacity) => self->dump_subtree("size", capacity);
             case .Dynamic => self->dump_str("size", "dynamic");
+            case .TerminatedSlice => self->dump_str("size", "terminated_slice");
         }
 
         self->dump_subtree("element_type", node->element_type);
@@ -1306,6 +1308,22 @@ pub struct ASTDump {
         self->indent += 1;
         self->dump_subtree("operand", node->operand);
         self->dump_subtree("index", node->index);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_slice(self: Self*, node: const ast::ASTSliceExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Slice");
+        self->indent += 1;
+        self->dump_subtree("operand", node->operand);
+        switch (node->start) {
+            case .Some(s) => self->dump_subtree("start", s);
+            case .None => {}
+        }
+        switch (node->end) {
+            case .Some(e) => self->dump_subtree("end", e);
+            case .None => {}
+        }
         self->indent -= 1;
     }
 
@@ -1473,6 +1491,7 @@ pub struct ASTDump {
         switch (node->size) {
             case .Fixed(capacity) => self->dump_subtree("size", capacity);
             case .Dynamic => self->dump_str("size", "dynamic");
+            case .TerminatedSlice => self->dump_str("size", "terminated_slice");
         }
 
         self->dump_type_node("element_type", node->element_type);
