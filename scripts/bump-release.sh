@@ -37,7 +37,7 @@ fi
 
 printf '%s\n' "$NEW_VERSION" > "$VERSION_FILE"
 sed -i "s/^version = \".*\"/version = \"${NEW_VERSION}\"/" "$PROJECT_TOML"
-sed -i "s/pub const COMPILER_VERSION = \".*\";/pub const COMPILER_VERSION = \"${NEW_VERSION}-selfhost\";/" "$VERSION_CYRUS"
+sed -i "s/pub const COMPILER_VERSION = \".*\";/pub const COMPILER_VERSION = \"${NEW_VERSION}\";/" "$VERSION_CYRUS"
 
 git add "$VERSION_FILE" "$PROJECT_TOML" "$VERSION_CYRUS"
 git commit -m "chore: bump version to ${TAG}"
