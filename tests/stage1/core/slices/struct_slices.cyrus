@@ -1,0 +1,43 @@
+// @stdout: len=3:(1,2),(3,4),(5,6) sub=2:(3,4),(5,6) mutated=(99,4)
+
+import std::libc{printf};
+
+struct Point {
+    pub x: int32,
+    pub y: int32
+}
+
+fn print_points(label: const uint8*, points: Point[]) {
+    printf("%s=%zu", label, @len(points));
+
+    if (@len(points) > 0) {
+        printf(":");
+
+        for (var i: usize = 0; i < @len(points); i += 1) {
+            if (i > 0) {
+                printf(",");
+            }
+
+            printf("(%d,%d)", points[i].x, points[i].y);
+        }
+    }
+
+    printf(" ");
+}
+
+pub fn main() {
+    var points = Point[3] {
+        Point { x: 1, y: 2 },
+        Point { x: 3, y: 4 },
+        Point { x: 5, y: 6 }
+    };
+
+    const full: Point[] = points[..];
+    print_points("len", full);
+
+    var sub: Point[] = full[1..];
+    print_points("sub", sub);
+
+    sub[0].x = 99;
+    printf("mutated=(%d,%d)", points[1].x, points[1].y);
+}
