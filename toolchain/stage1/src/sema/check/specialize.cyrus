@@ -425,6 +425,15 @@ fn specialize_stmt(
             *kind = .Variable(var_stmt);
         }
         case .Defer(var defer_stmt) => {
+            switch (defer_stmt.error_binding) {
+                case .Some(var_decl_id) => {
+                    switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
+                        case .Some(new_id) => defer_stmt.error_binding = .Some(new_id);
+                        else => {}
+                    }
+                }
+                case .None => {}
+            }
             specialize_stmt(context, &defer_stmt.operand->kind, decl_map);
             *kind = .Defer(defer_stmt);
         }
@@ -734,6 +743,27 @@ fn specialize_expr(
             specialize_expr(context, dynamic_.operand, decl_map);
         }
 
+        case .Try(try_expr) => {
+            specialize_expr(context, try_expr.operand, decl_map);
+        }
+
+        case .TryCatch(var try_catch_expr) => {
+            specialize_expr(context, try_catch_expr.operand, decl_map);
+            switch (try_catch_expr.error_binding) {
+                case .Some(var_decl_id) => {
+                    instantiate_fresh_var_decl_from_tables(context, var_decl_id, decl_map);
+                    switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
+                        case .Some(new_id) => try_catch_expr.error_binding = .Some(new_id);
+                        else => {}
+                    }
+                }
+                case .None => {}
+            }
+            collect_fresh_var_decls_in_block(context, &try_catch_expr.catch_body, decl_map);
+            specialize_block(context, &try_catch_expr.catch_body, decl_map);
+            expr->kind = .TryCatch(try_catch_expr);
+        }
+
         case .Slice(slice_expr) => {
             specialize_expr(context, slice_expr.operand, decl_map);
             switch (slice_expr.start) {
@@ -888,6 +918,12 @@ fn collect_and_instantiate_fresh_var_decls(
             }
         }
         case .Defer(defer_stmt) => {
+            switch (defer_stmt.error_binding) {
+                case .Some(var_decl_id) => {
+                    instantiate_fresh_var_decl_from_tables(context, var_decl_id, decl_map);
+                }
+                case .None => {}
+            }
             collect_and_instantiate_fresh_var_decls(context, &defer_stmt.operand->kind, decl_map);
         }
         case .TupleExport(tuple_export) => {
@@ -926,6 +962,13 @@ fn collect_fresh_var_decls_in_block(
 
     for (var i: usize = 0; i < block->defers.len(); i += 1) {
         const defer_stmt = block->defers.get_const(i).unwrap();
+
+        switch (defer_stmt->error_binding) {
+            case .Some(var_decl_id) => {
+                instantiate_fresh_var_decl_from_tables(context, var_decl_id, decl_map);
+            }
+            case .None => {}
+        }
 
         collect_and_instantiate_fresh_var_decls(
             context, 
@@ -1737,7 +1780,7 @@ pub fn monomorphize_generic_func_call(
     return .Some(func_decl->ret_type);
 }
 
-fn monomorphize_generic_method_call(
+pub fn monomorphize_generic_method_call(
     context: AnalyzerContext*,
     pure_operand_type: cir::SemaType,
     method_decl_id: cir::MethodDeclId,

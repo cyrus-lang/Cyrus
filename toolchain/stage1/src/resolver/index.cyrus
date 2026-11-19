@@ -4,10 +4,10 @@
 import std::mem::arena{ArenaAllocator};
 import std::mem{Allocator, alloc_init};
 import std::io{Writer, StdoutWriter};
+import std::path{Path, join_path};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
-import std::path{Path};
 import std::os;
 
 import cir{ProgramTree, Stmt, StmtArena, StmtList};
@@ -162,7 +162,58 @@ pub struct Resolver {
         }
 
         self->resolve_module_recursive(&graph, 0, &states);
+        self->bind_core_symbols(&graph);
         self->adopt_discovered_modules(&graph);
+    }
+
+    fn bind_core_symbols(self: Self*, graph: const ModuleGraph*) {
+        switch (self->opts->stdlib_path) case .Some(stdlib_path) else {
+            return;
+        }
+
+        var errors_path = join_path(self->allocator, stdlib_path.as_str_const(), "errors.cyrus");
+        defer errors_path.free();
+
+        var expected_key = modules::visit_key(self->allocator, errors_path.as_str_const());
+        defer expected_key.free();
+
+        for (var i: usize = 0; i < graph->nodes.len(); i += 1) {
+            const node = graph->nodes.get_const(i).unwrap();
+
+            if (node->key.as_str_const() != expected_key.as_str_const()) {
+                continue;
+            }
+
+            switch (node->symbol) case .Some(module_symbol_id) else {
+                continue;
+            }
+
+            switch (self->global_symbols.lookup_symbol_id_in_scope(module_symbol_id, "Try")) {
+                case .Some(symbol_id) => {
+                    switch (self->global_symbols.lookup_symbol_as_decl_id(symbol_id)) {
+                        case .Some(.Interface(interface_id)) => {
+                            self->decl_tables.try_interface_id = .Some(interface_id);
+                        }
+                        else => {}
+                    }
+                }
+                case .None => {}
+            }
+
+            switch (self->global_symbols.lookup_symbol_id_in_scope(module_symbol_id, "ControlFlow")) {
+                case .Some(symbol_id) => {
+                    switch (self->global_symbols.lookup_symbol_as_decl_id(symbol_id)) {
+                        case .Some(.Enum(enum_id)) => {
+                            self->decl_tables.control_flow_enum_id = .Some(enum_id);
+                        }
+                        else => {}
+                    }
+                }
+                case .None => {}
+            }
+
+            break;
+        }
     }
 
     fn adopt_discovered_modules(self: Self*, graph: ModuleGraph*) {

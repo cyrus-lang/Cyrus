@@ -1172,7 +1172,6 @@ pub struct ASTDump {
             case .MethodCall(var node) => self->dump_expr_method_call(&node);
             case .StructInit(var node) => self->dump_expr_struct_init(&node);
             case .ArrayIndex(var node) => self->dump_expr_array_index(&node);
-            case .Slice(var node) => self->dump_expr_slice(&node);
             case .InlineAsm(var node) => self->dump_expr_inline_asm(&node);
             case .FuncCall(var node) => self->dump_expr_func_call(&node);
             case .Literal(var node) => self->dump_expr_literal(&node);
@@ -1180,6 +1179,7 @@ pub struct ASTDump {
             case .Builtin(var node) => self->dump_expr_builtin(&node);
             case .Prefix(var node) => self->dump_expr_prefix(&node);
             case .AddrOf(var node) => self->dump_expr_addr_of(&node);
+            case .TryCatch(var node) => self->dump_expr_try_catch(&node);
             case .Assign(var node) => self->dump_expr_assign(&node);
             case .Lambda(var node) => self->dump_expr_lambda(&node);
             case .Deref(var node) => self->dump_expr_deref(&node);
@@ -1188,6 +1188,8 @@ pub struct ASTDump {
             case .Infix(var node) => self->dump_expr_infix(&node);
             case .Array(var node) => self->dump_expr_array(&node);
             case .Type(var node) => self->dump_type("Type", node);
+            case .Slice(var node) => self->dump_expr_slice(&node);
+            case .Try(var node) => self->dump_expr_try(&node);
         }
     }
 
@@ -1332,6 +1334,23 @@ pub struct ASTDump {
         self->writer.writeln("ASTExpr::AddrOf");
         self->indent += 1;
         self->dump_subtree("expr", node->expr);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_try(self: Self*, node: const ast::ASTTryExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::Try");
+        self->indent += 1;
+        self->dump_subtree("expr", node->expr);
+        self->indent -= 1;
+    }
+
+    fn dump_expr_try_catch(self: Self*, node: const ast::ASTTryCatchExpr*) {
+        self->write_indent();
+        self->writer.writeln("ASTExpr::TryCatch");
+        self->indent += 1;
+        self->dump_subtree("expr", node->expr);
+        self->dump_subtree("catch_body", node->catch_body);
         self->indent -= 1;
     }
 

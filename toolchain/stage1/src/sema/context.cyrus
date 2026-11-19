@@ -158,12 +158,25 @@ pub struct AnalyzerDispatcher {
         cir::BlockStmt*, 
         const cir::SemaType*
     ) void,
+
+    pub analyze_block_stmt_fn: fn(
+        void*,
+        cir::BlockStmt*
+    ) flow::FlowState,
     
     pub check_type_arity_fn: fn(
         void*, 
         const cir::SemaType*, 
         const Span*
     ) bool,
+
+    pub fn analyze_block_stmt(
+        self: const Self*,
+        context: AnalyzerContext*,
+        block: cir::BlockStmt*
+    ) flow::FlowState {
+        return (self->analyze_block_stmt_fn)(@cast(void*, context), block);
+    }
 
     pub fn adopt_const_matched_type_args(
         self: const Self*,

@@ -20,7 +20,7 @@ import std::format{
 import abi::helpers{extract_typedef_inner_type};
 import abi::typectx{is_enum_scalar_optimizable};
 import resolver::symbols{GlobalSymbolRegistry};
-import tokens{push_c_escaped, push_c_char};
+import tokens{Span, push_c_escaped, push_c_char};
 import codegen::c::types{TypeEmitter};
 import sema::vtables{VTableRegistry};
 import cir::tables{DeclTables};
@@ -1305,7 +1305,11 @@ pub struct Emitter {
     /// - <line>
     /// - <col>
     fn push_builtin_location(self: Self*, out: String*, builtin_func: const cir::BuiltinFunc*) {
-        switch (self->tree_for_source(builtin_func->span.source_id)) {
+        self->push_span_location(out, builtin_func->span);
+    }
+
+    fn push_span_location(self: Self*, out: String*, span: Span) {
+        switch (self->tree_for_source(span.source_id)) {
             case .Some(tree) => {
                 var path = self->quoted_cstr(tree->file_name.as_str_const());
                 out->push_str(path.as_str_const());
@@ -1316,17 +1320,417 @@ pub struct Emitter {
 
         out->push(',');
 
-        switch (self->builtin_line_column(builtin_func, false)) {
-            case .Some(line) => push_usize(out, line);
-            else => out->push('0');
+        var line: usize = 0;
+        var col: usize = 0;
+        if (self->sctx != null) {
+            const source = self->sctx->get(span.source_id);
+            const offset = span.loc.start;
+            switch (source->nearest_line(offset)) {
+                case .Some(l) => {
+                    line = l;
+                    col = source->line_offset_to_column(l, offset);
+                }
+                else => {}
+            }
         }
 
+        push_usize(out, line);
         out->push(',');
+        push_usize(out, col);
+    }
 
-        switch (self->builtin_line_column(builtin_func, true)) {
-            case .Some(col) => push_usize(out, col);
-            else => out->push('0');
+    fn emit_try_dispatch_branch_call(
+        self: Self*,
+        dispatch: const cir::MethodCallDispatch*,
+        operand: const cir::Expr*
+    ) String {
+        switch (*dispatch) {
+            case .Normal { method_decl_id } => {
+                switch (self->tables->methods.get_const(method_decl_id)) {
+                    case .Some(method) => {
+                        var name = mangle::mangle_method(
+                            self->allocator,
+                            &self->types.maps,
+                            method_decl_id,
+                            method
+                        );
+                        var out = String.new(self->allocator);
+                        out.push_str(name.as_str_const());
+                        out.push('(');
+                        self->emit_method_self_argument(&out, method, operand);
+                        out.push(')');
+                        name.free();
+                        return out;
+                    }
+                    else => {}
+                }
+            }
+            case .Monomorph { monomorph_id, .. } => {
+                switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                    case .Some(inst) => {
+                        switch (inst->template_id) {
+                            case .Method(method_decl_id) => {
+                                switch (self->tables->methods.get_const(method_decl_id)) {
+                                    case .Some(method) => {
+                                        var name = mangle::mangle_monomorphized_method(
+                                            self->allocator,
+                                            &self->types.maps,
+                                            self->tables,
+                                            method_decl_id,
+                                            method,
+                                            &inst->type_args
+                                        );
+                                        var out = String.new(self->allocator);
+                                        out.push_str(name.as_str_const());
+                                        out.push('(');
+                                        self->emit_method_self_argument(&out, method, operand);
+                                        out.push(')');
+                                        name.free();
+                                        return out;
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
         }
+
+        return String.from_str(self->allocator, "((void)0)");
+    }
+
+    fn emit_try_dispatch_from_error_call(
+        self: Self*,
+        dispatch: const cir::MethodCallDispatch*,
+        err_expr: const uint8*
+    ) String {
+        switch (*dispatch) {
+            case .Normal { method_decl_id } => {
+                switch (self->tables->methods.get_const(method_decl_id)) {
+                    case .Some(method) => {
+                        var name = mangle::mangle_method(
+                            self->allocator,
+                            &self->types.maps,
+                            method_decl_id,
+                            method
+                        );
+                        var out = String.new(self->allocator);
+                        out.push_str(name.as_str_const());
+                        out.push('(');
+                        out.push_str(err_expr);
+                        out.push(')');
+                        name.free();
+                        return out;
+                    }
+                    else => {}
+                }
+            }
+            case .Monomorph { monomorph_id, .. } => {
+                switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                    case .Some(inst) => {
+                        switch (inst->template_id) {
+                            case .Method(method_decl_id) => {
+                                switch (self->tables->methods.get_const(method_decl_id)) {
+                                    case .Some(method) => {
+                                        var name = mangle::mangle_monomorphized_method(
+                                            self->allocator,
+                                            &self->types.maps,
+                                            self->tables,
+                                            method_decl_id,
+                                            method,
+                                            &inst->type_args
+                                        );
+                                        var out = String.new(self->allocator);
+                                        out.push_str(name.as_str_const());
+                                        out.push('(');
+                                        out.push_str(err_expr);
+                                        out.push(')');
+                                        name.free();
+                                        return out;
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        return String.from_str(self->allocator, "((void)0)");
+    }
+
+    fn emit_try_dispatch_branch_call_on_var(
+        self: Self*,
+        dispatch: const cir::MethodCallDispatch*,
+        var_name: const uint8*
+    ) String {
+        switch (*dispatch) {
+            case .Normal { method_decl_id } => {
+                switch (self->tables->methods.get_const(method_decl_id)) {
+                    case .Some(method) => {
+                        var name = mangle::mangle_method(
+                            self->allocator,
+                            &self->types.maps,
+                            method_decl_id,
+                            method
+                        );
+                        var out = String.new(self->allocator);
+                        out.push_str(name.as_str_const());
+                        out.push('(');
+                        if (!method->is_self_by_value()) {
+                            out.push('&');
+                        }
+                        out.push_str(var_name);
+                        out.push(')');
+                        name.free();
+                        return out;
+                    }
+                    else => {}
+                }
+            }
+            case .Monomorph { monomorph_id, .. } => {
+                switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                    case .Some(inst) => {
+                        switch (inst->template_id) {
+                            case .Method(method_decl_id) => {
+                                switch (self->tables->methods.get_const(method_decl_id)) {
+                                    case .Some(method) => {
+                                        var name = mangle::mangle_monomorphized_method(
+                                            self->allocator,
+                                            &self->types.maps,
+                                            self->tables,
+                                            method_decl_id,
+                                            method,
+                                            &inst->type_args
+                                        );
+                                        var out = String.new(self->allocator);
+                                        out.push_str(name.as_str_const());
+                                        out.push('(');
+                                        if (!method->is_self_by_value()) {
+                                            out.push('&');
+                                        }
+                                        out.push_str(var_name);
+                                        out.push(')');
+                                        name.free();
+                                        return out;
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        return String.from_str(self->allocator, "((void)0)");
+    }
+
+    fn emit_error_binding_decl(
+        self: Self*,
+        out: String*,
+        var_decl_id: cir::VarDeclId,
+        err_type: const cir::SemaType*,
+        err_expr: const uint8*
+    ) {
+        switch (self->tables->vars.get_const(var_decl_id)) {
+            case .Some(var_decl) => {
+                var base_name = mangle::sanitized(self->allocator, var_decl->name.as_str_const());
+                var name = self->declare_fn_scope_name(base_name.as_str_const());
+                if (name.as_str_const() != base_name.as_str_const()) {
+                    self->register_fn_rename(var_decl_id, name.as_str_const());
+                }
+                base_name.free();
+
+                const decl_ty = *err_type->const_inner();
+                self->types.ensure_named(&decl_ty);
+                var decl = self->types.build_decl(&decl_ty, name.as_str_const());
+                out->push_str(decl.as_str_const());
+                out->push('=');
+                out->push_str(err_expr);
+                out->push(';');
+                decl.free();
+                name.free();
+            }
+            else => {}
+        }
+    }
+
+    fn emit_try_expr(self: Self*, try_expr: const cir::TryExpr*) String {
+        switch (try_expr->control_flow_type) case .Some(cf_type) else {
+            return String.from_str(self->allocator, "((void)0)");
+        }
+        switch (try_expr->value_type) case .Some(val_type) else {
+            return String.from_str(self->allocator, "((void)0)");
+        }
+        switch (try_expr->return_type) case .Some(ret_type) else {
+            return String.from_str(self->allocator, "((void)0)");
+        }
+
+        const temp_id = self->tuple_export_id;
+        self->tuple_export_id += 1;
+
+        var cf_var = String.from_str(self->allocator, "__cyrus_try_cf_");
+        push_usize(&cf_var, temp_id);
+
+        var ret_var = String.from_str(self->allocator, "__cyrus_try_ret_");
+        push_usize(&ret_var, temp_id);
+
+        var cf_decl = self->types.build_decl(&cf_type, cf_var.as_str_const());
+        var branch_call = self->emit_try_dispatch_branch_call(
+            &try_expr->branch_dispatch,
+            try_expr->operand
+        );
+
+        var err_field = self->enum_tuple_payload_base(cf_var.as_str_const(), 1, 0);
+        var from_error_call = self->emit_try_dispatch_from_error_call(
+            &try_expr->from_error_dispatch,
+            err_field.as_str_const()
+        );
+
+        var defer_code = String.new(self->allocator);
+        if (self->has_active_defers()) {
+            const saved_body = self->body_out;
+            self->body_out = defer_code;
+            self->emit_all_defers_on_error(err_field.as_str_const());
+            defer_code = self->body_out;
+            self->body_out = saved_body;
+        }
+        err_field.free();
+
+        var out = String.from_str(self->allocator, "({");
+        out.push_str(cf_decl.as_str_const());
+        out.push('=');
+        out.push_str(branch_call.as_str_const());
+        out.push_str(";if(");
+        out.push_str(cf_var.as_str_const());
+        out.push_str(".tag==1){");
+
+        if (defer_code.len() > 0) {
+            var ret_decl = self->types.build_decl(&ret_type, ret_var.as_str_const());
+            out.push_str(ret_decl.as_str_const());
+            ret_decl.free();
+            out.push('=');
+            out.push_str(from_error_call.as_str_const());
+            out.push(';');
+            out.push_str(defer_code.as_str_const());
+            out.push_str("return ");
+            out.push_str(ret_var.as_str_const());
+            out.push(';');
+        } else {
+            out.push_str("return ");
+            out.push_str(from_error_call.as_str_const());
+            out.push(';');
+        }
+
+        out.push('}');
+
+        if (val_type.is_void()) {
+            out.push_str("(void)0;");
+        } else {
+            var ok_field = self->enum_tuple_payload_base(cf_var.as_str_const(), 0, 0);
+            out.push_str(ok_field.as_str_const());
+            out.push(';');
+            ok_field.free();
+        }
+
+        out.push_str("})");
+
+        defer_code.free();
+        from_error_call.free();
+        branch_call.free();
+        cf_decl.free();
+        ret_var.free();
+        cf_var.free();
+        return out;
+    }
+
+    fn emit_try_catch_expr(self: Self*, try_catch_expr: const cir::TryCatchExpr*) String {
+        switch (try_catch_expr->control_flow_type) case .Some(cf_type) else {
+            return String.from_str(self->allocator, "((void)0)");
+        }
+        switch (try_catch_expr->value_type) case .Some(val_type) else {
+            return String.from_str(self->allocator, "((void)0)");
+        }
+
+        const temp_id = self->tuple_export_id;
+        self->tuple_export_id += 1;
+
+        var cf_var = String.from_str(self->allocator, "__cyrus_try_catch_cf_");
+        push_usize(&cf_var, temp_id);
+
+        var cf_decl = self->types.build_decl(&cf_type, cf_var.as_str_const());
+        var branch_call = self->emit_try_dispatch_branch_call(
+            &try_catch_expr->branch_dispatch,
+            try_catch_expr->operand
+        );
+
+        var catch_code = String.new(self->allocator);
+        {
+            const saved_body = self->body_out;
+            self->body_out = catch_code;
+
+            switch (try_catch_expr->error_binding) {
+                case .Some(var_decl_id) => {
+                    switch (try_catch_expr->error_type) {
+                        case .Some(err_type) => {
+                            var err_field = self->enum_tuple_payload_base(cf_var.as_str_const(), 1, 0);
+                            self->emit_error_binding_decl(
+                                &self->body_out,
+                                var_decl_id,
+                                &err_type,
+                                err_field.as_str_const()
+                            );
+                            err_field.free();
+                        }
+                        case .None => {}
+                    }
+                }
+                case .None => {}
+            }
+
+            self->emit_block_stmts(&try_catch_expr->catch_body, true);
+            catch_code = self->body_out;
+            self->body_out = saved_body;
+        }
+
+        var out = String.from_str(self->allocator, "({");
+        out.push_str(cf_decl.as_str_const());
+        out.push('=');
+        out.push_str(branch_call.as_str_const());
+        out.push_str(";if(");
+        out.push_str(cf_var.as_str_const());
+        out.push_str(".tag==1){");
+        out.push_str(catch_code.as_str_const());
+        out.push('}');
+
+        if (val_type.is_void()) {
+            out.push_str("(void)0;");
+        } else {
+            var ok_field = self->enum_tuple_payload_base(cf_var.as_str_const(), 0, 0);
+            out.push_str(ok_field.as_str_const());
+            out.push(';');
+            ok_field.free();
+        }
+
+        out.push_str("})");
+
+        catch_code.free();
+        branch_call.free();
+        cf_decl.free();
+        cf_var.free();
+        return out;
     }
 
     fn is_float16_type(self: Self*, ty: const cir::SemaType*) bool {
@@ -2321,7 +2725,7 @@ pub struct Emitter {
                                 self->body_out.push_str(expr.as_str_const());
                                 self->body_out.push(';');
                                 decl.free();
-                                self->emit_all_defers();
+                                self->emit_all_defers_for_return("__cyrus_ret_val");
                                 self->body_out.push_str("return __cyrus_ret_val;}");
                                 emitted_ret = true;
                             }
@@ -4619,6 +5023,14 @@ pub struct Emitter {
 
             case .InlineAsm(asm) => {
                 return self->emit_inline_asm(asm);
+            }
+
+            case .Try(try_expr) => {
+                return self->emit_try_expr(&try_expr);
+            }
+
+            case .TryCatch(try_catch_expr) => {
+                return self->emit_try_catch_expr(&try_catch_expr);
             }
         }
     }
@@ -7841,6 +8253,24 @@ pub struct Emitter {
         return false;
     }
 
+    fn find_conditional_defer(self: const Self*) Option<const cir::DeferStmt*> {
+        for (var s: usize = self->defer_scopes.len(); s > 0; s -= 1) {
+            switch (self->defer_scopes.get_const(s - 1)) {
+                case .Some(scope) => {
+                    for (var i: usize = scope->len(); i > 0; i -= 1) {
+                        const stmt = scope->get_const(i - 1).unwrap();
+                        switch (stmt->kind) {
+                            case .OnError | .OnSuccess => return .Some(stmt);
+                            case .Always => {}
+                        }
+                    }
+                }
+                else => {}
+            }
+        }
+        return .None;
+    }
+
     fn emit_all_defers(self: Self*) {
         for (var s: usize = self->defer_scopes.len(); s > 0; s -= 1) {
             switch (self->defer_scopes.get_const(s - 1)) {
@@ -7851,6 +8281,136 @@ pub struct Emitter {
                     }
                 }
                 else => {}
+            }
+        }
+    }
+
+    fn emit_all_defers_on_error(self: Self*, err_expr: const uint8*) {
+        for (var s: usize = self->defer_scopes.len(); s > 0; s -= 1) {
+            switch (self->defer_scopes.get_const(s - 1)) {
+                case .Some(scope) => {
+                    for (var i: usize = scope->len(); i > 0; i -= 1) {
+                        const stmt = scope->get_const(i - 1).unwrap();
+                        switch (stmt->kind) {
+                            case .Always => {
+                                self->emit_stmt(stmt->operand);
+                            }
+                            case .OnError => {
+                                switch (stmt->error_binding) {
+                                    case .Some(var_decl_id) => {
+                                        switch (stmt->error_type) {
+                                            case .Some(err_type) => {
+                                                self->body_out.push('{');
+                                                self->emit_error_binding_decl(
+                                                    &self->body_out,
+                                                    var_decl_id,
+                                                    &err_type,
+                                                    err_expr
+                                                );
+                                                self->emit_stmt(stmt->operand);
+                                                self->body_out.push('}');
+                                            }
+                                            case .None => {
+                                                self->emit_stmt(stmt->operand);
+                                            }
+                                        }
+                                    }
+                                    case .None => {
+                                        self->emit_stmt(stmt->operand);
+                                    }
+                                }
+                            }
+                            case .OnSuccess => {}
+                        }
+                    }
+                }
+                else => {}
+            }
+        }
+    }
+
+    fn emit_all_defers_for_return(self: Self*, ret_var_name: const uint8*) {
+        switch (self->find_conditional_defer()) {
+            case .None => {
+                self->emit_all_defers();
+                return;
+            }
+            case .Some(cond_defer) => {
+                switch (cond_defer->return_control_flow_type) case .Some(cf_type) else {
+                    self->emit_all_defers();
+                    return;
+                }
+
+                const temp_id = self->tuple_export_id;
+                self->tuple_export_id += 1;
+
+                var cf_var = String.from_str(self->allocator, "__cyrus_ret_cf_");
+                push_usize(&cf_var, temp_id);
+
+                var cf_decl = self->types.build_decl(&cf_type, cf_var.as_str_const());
+                var branch_call = self->emit_try_dispatch_branch_call_on_var(
+                    &cond_defer->return_branch_dispatch,
+                    ret_var_name
+                );
+
+                self->body_out.push_str(cf_decl.as_str_const());
+                self->body_out.push('=');
+                self->body_out.push_str(branch_call.as_str_const());
+                self->body_out.push(';');
+
+                cf_decl.free();
+                branch_call.free();
+
+                var err_field = self->enum_tuple_payload_base(cf_var.as_str_const(), 1, 0);
+
+                for (var s: usize = self->defer_scopes.len(); s > 0; s -= 1) {
+                    switch (self->defer_scopes.get_const(s - 1)) {
+                        case .Some(scope) => {
+                            for (var i: usize = scope->len(); i > 0; i -= 1) {
+                                const stmt = scope->get_const(i - 1).unwrap();
+                                switch (stmt->kind) {
+                                    case .Always => {
+                                        self->emit_stmt(stmt->operand);
+                                    }
+                                    case .OnError => {
+                                        self->body_out.push_str("if(");
+                                        self->body_out.push_str(cf_var.as_str_const());
+                                        self->body_out.push_str(".tag==1){");
+                                        switch (stmt->error_binding) {
+                                            case .Some(var_decl_id) => {
+                                                switch (stmt->error_type) {
+                                                    case .Some(err_type) => {
+                                                        self->emit_error_binding_decl(
+                                                            &self->body_out,
+                                                            var_decl_id,
+                                                            &err_type,
+                                                            err_field.as_str_const()
+                                                        );
+                                                    }
+                                                    case .None => {}
+                                                }
+                                            }
+                                            case .None => {}
+                                        }
+                                        self->emit_stmt(stmt->operand);
+                                        self->body_out.push('}');
+                                    }
+                                    case .OnSuccess => {
+                                        self->body_out.push_str("if(");
+                                        self->body_out.push_str(cf_var.as_str_const());
+                                        self->body_out.push_str(".tag==0){");
+                                        self->emit_stmt(stmt->operand);
+                                        self->body_out.push('}');
+                                    }
+                                }
+                            }
+                        }
+                        else => {}
+                    }
+                }
+
+                err_field.free();
+                cf_var.free();
             }
         }
     }
@@ -7875,7 +8435,10 @@ pub struct Emitter {
     }
 
     fn emit_defer_stmt(self: Self*, defer_stmt: const cir::DeferStmt*) {
-        self->emit_stmt(defer_stmt->operand);
+        switch (defer_stmt->kind) {
+            case .Always => self->emit_stmt(defer_stmt->operand);
+            case .OnError | .OnSuccess => {}
+        }
     }
 
     /* ************* Types Helpers ************* */

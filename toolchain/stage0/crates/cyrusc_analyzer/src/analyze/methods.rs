@@ -58,7 +58,18 @@ impl<'a> AnalysisContext<'a> {
 
         self.nameconv_check_method_name(&method_decl.func_decl.name, method_decl.func_decl.loc);
 
-        self.analyze_func_decl(&mut method_decl.func_decl);
+        if object_type_decl_id.is_interface() {
+            self.with_object(
+                Some(SemaType::SelfType(cyrusc_typed_ast::exprs::TypedSelfType {
+                    loc: method_decl.func_decl.loc,
+                })),
+                |this| {
+                    this.analyze_func_decl(&mut method_decl.func_decl);
+                },
+            );
+        } else {
+            self.analyze_func_decl(&mut method_decl.func_decl);
+        }
     }
 
     pub(crate) fn analyze_method_body(

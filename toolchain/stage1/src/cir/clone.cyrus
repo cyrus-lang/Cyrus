@@ -48,6 +48,11 @@ fn clone_stmt_kind(
         }
         
         case .Defer(defer_stmt) => return .Defer(cir::DeferStmt {
+            kind: defer_stmt.kind,
+            error_binding: defer_stmt.error_binding,
+            error_type: defer_stmt.error_type,
+            return_branch_dispatch: defer_stmt.return_branch_dispatch,
+            return_control_flow_type: defer_stmt.return_control_flow_type,
             operand: clone_stmt_alloc(allocator, defer_stmt.operand),
             span: defer_stmt.span,
         });
@@ -70,6 +75,11 @@ pub fn clone_typed_block(
     for (var i: usize = 0; i < src->defers.len(); i += 1) {
         const defer_stmt = src->defers.get_const(i).unwrap();
         defers.push(cir::DeferStmt {
+            kind: defer_stmt->kind,
+            error_binding: defer_stmt->error_binding,
+            error_type: defer_stmt->error_type,
+            return_branch_dispatch: defer_stmt->return_branch_dispatch,
+            return_control_flow_type: defer_stmt->return_control_flow_type,
             operand: clone_stmt_alloc(allocator, defer_stmt->operand),
             span: defer_stmt->span,
         });
@@ -534,6 +544,32 @@ fn clone_expr_kind(
                 dispatch: method_call.dispatch,
                 is_thin_arrow: method_call.is_thin_arrow,
                 span: method_call.span,
+            });
+        }
+
+        case .Try(try_expr) => {
+            return .Try(cir::TryExpr {
+                operand: clone_expr_alloc(allocator, try_expr.operand),
+                branch_dispatch: try_expr.branch_dispatch,
+                from_error_dispatch: try_expr.from_error_dispatch,
+                control_flow_type: try_expr.control_flow_type,
+                value_type: try_expr.value_type,
+                error_type: try_expr.error_type,
+                return_type: try_expr.return_type,
+                span: try_expr.span,
+            });
+        }
+
+        case .TryCatch(try_catch_expr) => {
+            return .TryCatch(cir::TryCatchExpr {
+                operand: clone_expr_alloc(allocator, try_catch_expr.operand),
+                error_binding: try_catch_expr.error_binding,
+                catch_body: clone_typed_block(allocator, &try_catch_expr.catch_body),
+                branch_dispatch: try_catch_expr.branch_dispatch,
+                control_flow_type: try_catch_expr.control_flow_type,
+                value_type: try_catch_expr.value_type,
+                error_type: try_catch_expr.error_type,
+                span: try_catch_expr.span,
             });
         }
 

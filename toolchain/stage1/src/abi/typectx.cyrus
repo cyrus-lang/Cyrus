@@ -859,11 +859,15 @@ pub struct TypeContext {
             allocator.free(owned_layout);
         }
 
-        // FIXME Use helper methof from HashMap instead of acessing via values_data
-        const tag_values = self->enum_tags.values_data();
-        
-        for (var i: usize = 0; i < self->enum_tags.len(); i += 1) {
-            tag_values[i].free();
+        var tag_iter = self->enum_tags.iter_owned();
+        while (true) {
+            switch (tag_iter.next()) {
+                case .Some(entry) => {
+                    var tags = entry.1;
+                    tags.free();
+                }
+                case .None => break;
+            }
         }
 
         self->owned_layouts.free();

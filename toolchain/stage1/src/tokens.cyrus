@@ -125,6 +125,8 @@ pub enum TokenKind : Format {
     Dynamic,
     Goto,
     Defer,
+    Try,
+    Catch,
     Union,
     Interface,
     Function,
@@ -267,6 +269,8 @@ pub enum TokenKind : Format {
             case 0x0015061b1b653b24 => if (len == 8 && memcmp(ptr, "continue",  8) == 0) { return .Some(.Continue); }
             case 0x000000015063b776 => if (len == 4 && memcmp(ptr, "goto",      4) == 0) { return .Some(.Goto); }
             case 0x0000002b5c2039d5 => if (len == 5 && memcmp(ptr, "defer",     5) == 0) { return .Some(.Defer); }
+            case 0x000000000ad5ff9a => if (len == 3 && memcmp(ptr, "try",       3) == 0) { return .Some(.Try); }
+            case 0x0000002b5c526198 => if (len == 5 && memcmp(ptr, "catch",     5) == 0) { return .Some(.Catch); }
             case 0x00000001506a0d33 => if (len == 4 && memcmp(ptr, "true",      4) == 0) { return .Some(.True); }
             case 0x0000002b5c020398 => if (len == 5 && memcmp(ptr, "false",     5) == 0) { return .Some(.False); }
             case 0x000000015067795e => if (len == 4 && memcmp(ptr, "null",      4) == 0) { return .Some(.Null); }
@@ -395,6 +399,8 @@ pub enum TokenKind : Format {
             case .Const => writer.write("const");
             case .Goto => writer.write("goto");
             case .Defer => writer.write("defer");
+            case .Try => writer.write("try");
+            case .Catch => writer.write("catch");
             case .Union => writer.write("union");
             case .While => writer.write("while");
             case .Extern => writer.write("extern");
@@ -429,7 +435,7 @@ pub enum TokenKind : Format {
             | .Int32 | .Int64 | .Int128 | .UInt8 | .UInt16
             | .UInt32 | .UInt64 | .UInt128 | .Float16 | .Float32
             | .Float64 | .Float128 | .Bool | .Void | .Enum
-            | .Public | .Const | .Goto | .Defer | .Union
+            | .Public | .Const | .Goto | .Defer | .Try | .Catch | .Union
             | .While | .Extern
             => return "KEYWORD";
 

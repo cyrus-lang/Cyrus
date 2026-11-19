@@ -134,6 +134,65 @@ pub struct ParserExprs {
                 return self->finish_path_expr(.Ident(ident), start);
             }
 
+            case .Try => {
+                self->state->next();
+
+                switch (self->parse_expr_with_precedence(.Prefix))
+                case .Some(operand) else {
+                    return .None;
+                }
+
+                if (self->state->is(.Catch)) {
+                    self->state->next();
+
+                    var error_binding: Option<ast::ASTIdent> = .None;
+                    if (self->state->is(.LeftParen)) {
+                        self->state->next();
+                        switch (*self->state->current()->kind) {
+                            case .Ident(str) => {
+                                error_binding = .Some(ast::ASTIdent {
+                                    str,
+                                    span: self->state->current_span(),
+                                });
+                                self->state->next();
+                            }
+                            else => {
+                                report_expected_ident(
+                                    self->state->allocator,
+                                    self->state->dctx,
+                                    self->state->current_span(),
+                                    *self->state->current()->kind
+                                );
+                                return .None;
+                            }
+                        }
+
+                        if (!self->state->expect(.RightParen)) {
+                            return .None;
+                        }
+                    }
+
+                    const block_parser = self->block_parser.unwrap();
+                    switch ((block_parser.handler)(block_parser.context)) case .Some(catch_body) else {
+                        return .None;
+                    }
+
+                    const node = ast::ASTTryCatchExpr {
+                        expr: operand,
+                        error_binding,
+                        catch_body,
+                        span: start.merge(self->state->current_span()),
+                    };
+                    return .Some(self->create_expr(.TryCatch(node)));
+                }
+
+                const node = ast::ASTTryExpr {
+                    expr: operand,
+                    span: start.merge(self->state->current_span()),
+                };
+                return .Some(self->create_expr(.Try(node)));
+            }
+
             case .Minus | .Bang | .Tilde => {
                 switch (map_prefix_operator(*self->state->current()->kind)) 
                 case .Some(operator) else {
@@ -3098,9 +3157,9 @@ fn next_precedence(p: Prec) Prec {
 /// Precedence of a token when it appears between two operands.
 fn precedence_of_token_kind(kind: TokenKind) Option<Prec> {
     switch (kind) {
+        case .Dot | .ThinArrow => return .Some(.Field);
         case .Asterisk | .Slash | .Percent => return .Some(.Product);
         case .Equal | .NotEqual => return .Some(.Equals);
-        case .Dot | .ThinArrow => return .Some(.Field);
         case .LeftBracket => return .Some(.Index);
         case .Plus | .Minus => return .Some(.Sum);
         case .LeftParen => return .Some(.Call);

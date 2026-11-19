@@ -2804,3 +2804,128 @@ pub fn append_uint32(out: String*, value: uint32) {
     var writer: Writer = dynamic StringWriter.new(out);
     format_uint32(writer, value);
 }
+
+pub fn report_try_operator_outside_function(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    const diag = Diag.new(
+        allocator,
+        .Error,
+        "`try` expression can only be used inside a function",
+        span
+    );
+    dctx->report(diag);
+}
+
+pub fn report_type_does_not_implement_try(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    op: const uint8*,
+    type_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("`");
+    mesg.push_str(op);
+    mesg.push_str("` cannot be applied to type `");
+    mesg.push_str(type_name);
+    mesg.push_str("` because it does not implement `Try<V, E>`");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_try_return_type_does_not_implement_try(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    return_type_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("`try` expression cannot be used in a function returning `");
+    mesg.push_str(return_type_name);
+    mesg.push_str("` because it does not implement `Try<V, E>`");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_try_incompatible_error_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    got_error_type: const uint8*,
+    expected_error_type: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("`try` expression error type `");
+    mesg.push_str(got_error_type);
+    mesg.push_str("` is not assignable to enclosing function's error type `");
+    mesg.push_str(expected_error_type);
+    mesg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_try_catch_must_diverge(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    value_type_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("`catch` block must diverge because `try` produces non-void type `");
+    mesg.push_str(value_type_name);
+    mesg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_conditional_defer_outside_function(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    keyword: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("`");
+    mesg.push_str(keyword);
+    mesg.push_str("` can only be used inside a function");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_conditional_defer_requires_try_return(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    keyword: const uint8*,
+    return_type_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("`");
+    mesg.push_str(keyword);
+    mesg.push_str("` cannot be used in a function returning `");
+    mesg.push_str(return_type_name);
+    mesg.push_str("` because it does not implement `Try<V, E>`");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}

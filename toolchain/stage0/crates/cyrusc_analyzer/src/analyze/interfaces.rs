@@ -35,21 +35,11 @@ impl<'a> AnalysisContext<'a> {
 
             let params_start = if let Some(self_modifier) = func_decl.params.get_self_modifier() {
                 if !self_modifier.is_referenced() {
-                    self.reporter.report(Diag {
-                        level: DiagLevel::Error,
-                        kind: Box::new(AnalyzerDiagKind::InterfaceMethodsMustUseReferencedSelf),
-                        loc: Some(self_modifier.loc),
-                        hint: None,
-                    });
+                    is_interface_dynamically_dispatchable = false;
                 }
                 1
             } else {
-                self.reporter.report(Diag {
-                    level: DiagLevel::Error,
-                    kind: Box::new(AnalyzerDiagKind::InterfaceMethodsMustHaveSelfModifier),
-                    loc: Some(func_decl.loc),
-                    hint: None,
-                });
+                is_interface_dynamically_dispatchable = false;
                 0
             };
 
@@ -242,11 +232,15 @@ impl<'a> AnalysisContext<'a> {
                     // interface method
                     let interface_method_decl = &mut this.decl_tables.method_decl(*method_decl_id).func_decl;
 
-                    let self_modifier = interface_method_decl.params.get_self_modifier_mut().unwrap();
-                    self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), object_type);
+                    if let Some(self_modifier) = interface_method_decl.params.get_self_modifier_mut() {
+                        self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), object_type);
+                    }
 
                     interface_method_decl.params = this.substitute_func_params(interface_method_decl.params.clone());
-                    interface_method_decl.ret_type = this.substitute_type(&interface_method_decl.ret_type);
+                    interface_method_decl.ret_type = this.substitute_self_type(
+                        this.substitute_type(&interface_method_decl.ret_type),
+                        object_type,
+                    );
 
                     // object method
                     let Some(method_decl_id) = method_decls.get(&interface_method_decl.name) else {
@@ -261,11 +255,15 @@ impl<'a> AnalysisContext<'a> {
                         continue;
                     }
 
-                    let self_modifier = method_decl.params.get_self_modifier_mut().unwrap();
-                    self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), object_type);
+                    if let Some(self_modifier) = method_decl.params.get_self_modifier_mut() {
+                        self_modifier.ty = this.substitute_self_type(self_modifier.ty.clone(), object_type);
+                    }
 
                     method_decl.params = this.substitute_func_params(method_decl.params.clone());
-                    method_decl.ret_type = this.substitute_type(&method_decl.ret_type);
+                    method_decl.ret_type = this.substitute_self_type(
+                        this.substitute_type(&method_decl.ret_type),
+                        object_type,
+                    );
 
                     // check method declaration mismatch
                     if method_decl != interface_method_decl {

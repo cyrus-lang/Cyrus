@@ -1,0 +1,21 @@
+import std::option{Option};
+import std::errors{ErrorOr};
+
+fn returns_int() int32 {
+    const opt: Option<int32> = .Some(5);
+    const v = opt?;
+    //~^ ERROR `?` operator cannot be used in a function returning `int32` because it does not implement `Try<V, E>`
+    return v;
+}
+
+fn returns_error_or() ErrorOr<int32, int32> {
+    const opt: Option<int32> = .Some(5);
+    const v = opt?;
+    //~^ ERROR `?` operator error type `()` is not assignable to enclosing function's error type `int32`
+    return .Value(v);
+}
+
+pub fn main() {
+    returns_int();
+    returns_error_or();
+}

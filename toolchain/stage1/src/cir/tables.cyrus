@@ -2,6 +2,7 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::collections{Vec};
+import std::option{Option};
 import std::mem{Allocator};
 
 import cir;
@@ -19,6 +20,8 @@ pub struct DeclTables {
     pub typedefs: Vec<cir::TypedefDecl>,
     pub generic_params: Vec<cir::GenericParam>,
     pub bodies: Vec<cir::BlockStmt>,
+    pub try_interface_id: Option<cir::InterfaceDeclId>,
+    pub control_flow_enum_id: Option<cir::EnumDeclId>,
 
     pub fn new(allocator: Allocator) Self {
         return Self {
@@ -34,6 +37,8 @@ pub struct DeclTables {
             typedefs: Vec.new(allocator),
             generic_params: Vec.new(allocator),
             bodies: Vec.new(allocator),
+            control_flow_enum_id: .None,
+            try_interface_id: .None,
         };
     }
 

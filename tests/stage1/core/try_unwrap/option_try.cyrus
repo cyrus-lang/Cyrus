@@ -1,0 +1,32 @@
+// @stdout: some=30 none=1 defer=1
+
+import std::option{Option};
+import std::libc{printf};
+
+fn find_positive(x: int32) Option<int32> {
+    if (x > 0) {
+        return .Some(x);
+    }
+    return .None;
+}
+
+fn sum_two(a: int32, b: int32, deferred: int32*) Option<int32> {
+    defer *deferred += 1;
+    const x = find_positive(a)?;
+    const y = find_positive(b)?;
+    return .Some(x + y);
+}
+
+pub fn main() {
+    var d1: int32 = 0;
+    switch (sum_two(10, 20, &d1)) {
+        case .Some(v) => printf("some=%d ", v);
+        case .None => printf("unexpected ");
+    }
+
+    var d2: int32 = 0;
+    switch (sum_two(10, -5, &d2)) {
+        case .Some(v) => printf("unexpected=%d", v);
+        case .None => printf("none=1 defer=%d", d2);
+    }
+}

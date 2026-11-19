@@ -1,9 +1,24 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-pub enum Option<T> {
+import std::errors{ControlFlow, Try};
+
+pub enum Option<T> : Try<T, ()> {
     Some(T),
     None,
+
+    [[inline]]
+    pub fn branch(self: Self) ControlFlow<T, ()> {
+        switch (self) {
+            case .Some(value) => return .Continue(value);
+            case .None => return .Break(());
+        }
+    }
+
+    [[inline]]
+    pub fn from_error(err: ()) Self {
+        return .None;
+    }
 
     [[inline]]
     pub fn unwrap(self: const Self*) T {

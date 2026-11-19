@@ -130,6 +130,11 @@ pub fn analyze_object_implements_monomorphized_interfaces(
                 context, 
                 &interface_func.ret_type
             );
+            interface_func.ret_type = generics::substitute_self_type(
+                context,
+                &interface_func.ret_type,
+                object_type
+            );
 
             // Object method
             switch (method_decls->get(
@@ -179,6 +184,11 @@ pub fn analyze_object_implements_monomorphized_interfaces(
                 object_func.ret_type = generics::substitute_type(
                     context, 
                     &object_func.ret_type
+                );
+                object_func.ret_type = generics::substitute_self_type(
+                    context,
+                    &object_func.ret_type,
+                    object_type
                 );
 
                 // Check method declaration mismatch

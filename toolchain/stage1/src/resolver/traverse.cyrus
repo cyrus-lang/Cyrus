@@ -374,11 +374,56 @@ fn resolve_stmt(
             }
         }
         case .Defer(defer_stmt) => {
-            switch (resolve_stmt(ctx, program, operand_node(program, defer_stmt.operand))) {
+            var kind: cir::DeferKind = .Always;
+            switch (defer_stmt.kind) {
+                case .Always => kind = .Always;
+                case .OnError => kind = .OnError;
+                case .OnSuccess => kind = .OnSuccess;
+            }
+
+            var error_binding: Option<cir::VarDeclId> = .None;
+            var opened_scope = false;
+
+            switch (defer_stmt.error_binding) {
+                case .Some(ident) => {
+                    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+                    opened_scope = true;
+
+                    const name = ident.str.as_str_const();
+                    const var_decl_id = insert_variable_decl(
+                        ctx,
+                        name,
+                        ident.span,
+                        .None,
+                        .None,
+                        true
+                    );
+
+                    if (!insert_variable_symbol_to_current_scope(ctx, name, ident.span, var_decl_id)) {
+                        ctx->exit_local_scope();
+                        return .None;
+                    }
+
+                    error_binding = .Some(var_decl_id);
+                }
+                case .None => {}
+            }
+
+            const resolved_operand = resolve_stmt(ctx, program, operand_node(program, defer_stmt.operand));
+            if (opened_scope) {
+                ctx->exit_local_scope();
+            }
+
+            switch (resolved_operand) {
                 case .Some(operand) => {
                     const typed_operand = alloc_init(ctx->allocator, operand);
 
                     return .Some(cir::Stmt.new(.Defer(cir::DeferStmt {
+                        kind,
+                        error_binding,
+                        error_type: .None,
+                        return_branch_dispatch: .Unresolved,
+                        return_control_flow_type: .None,
                         operand: typed_operand,
                         span: defer_stmt.span,
                     })));
@@ -817,6 +862,8 @@ fn expr_span(
         case .Infix(n) => return n.span;
         case .Array(n) => return n.span;
         case .Deref(n) => return n.span;
+        case .Try(n) => return n.span;
+        case .TryCatch(n) => return n.span;
         case .Ident(n) => return n.span;
         
     }
@@ -3097,6 +3144,12 @@ fn resolve_expr(
         case .Infix(infix) => {
             return resolve_infix_expr(ctx, program, &infix);
         }
+        case .Try(try_expr) => {
+            return resolve_try_expr(ctx, program, &try_expr);
+        }
+        case .TryCatch(try_catch_expr) => {
+            return resolve_try_catch_expr(ctx, program, &try_catch_expr);
+        }
         case .Literal(token) => {
             return resolve_literal_expr(ctx, &token);
         }
@@ -3828,6 +3881,92 @@ fn resolve_deref_expr(
     }
 
     return .None;
+}
+
+fn resolve_try_expr(
+    ctx: TraverseContext*,
+    program: const ast::ASTProgram*,
+    try_expr: const ast::ASTTryExpr*
+) Option<cir::Expr> {
+    switch (resolve_expr_node(ctx, program, try_expr->expr)) {
+        case .Some(operand) => {
+            return .Some(cir::Expr.new(.Try(cir::TryExpr {
+                operand: alloc_init(ctx->allocator, operand),
+                branch_dispatch: .Unresolved,
+                from_error_dispatch: .Unresolved,
+                control_flow_type: .None,
+                value_type: .None,
+                error_type: .None,
+                return_type: .None,
+                span: try_expr->span,
+            }), try_expr->span));
+        }
+        else => {}
+    }
+
+    return .None;
+}
+
+fn resolve_try_catch_expr(
+    ctx: TraverseContext*,
+    program: const ast::ASTProgram*,
+    try_catch_expr: const ast::ASTTryCatchExpr*
+) Option<cir::Expr> {
+    switch (resolve_expr_node(ctx, program, try_catch_expr->expr)) case .Some(operand) else {
+        return .None;
+    }
+
+    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+
+    var error_binding: Option<cir::VarDeclId> = .None;
+    switch (try_catch_expr->error_binding) {
+        case .Some(ident) => {
+            const name = ident.str.as_str_const();
+            const var_decl_id = insert_variable_decl(
+                ctx,
+                name,
+                ident.span,
+                .None,
+                .None,
+                true
+            );
+
+            if (!insert_variable_symbol_to_current_scope(ctx, name, ident.span, var_decl_id)) {
+                ctx->exit_local_scope();
+                return .None;
+            }
+
+            error_binding = .Some(var_decl_id);
+        }
+        case .None => {}
+    }
+
+    const catch_node = operand_node(program, try_catch_expr->catch_body);
+    var resolved_block: Option<cir::BlockStmt> = .None;
+    switch (*catch_node) {
+        case .Block(block_stmt) => {
+            resolved_block = resolve_block_stmt(ctx, program, &block_stmt);
+        }
+        else => {}
+    }
+
+    ctx->exit_local_scope();
+
+    switch (resolved_block) {
+        case .Some(catch_body) => {
+            return .Some(cir::Expr.new(.TryCatch(cir::TryCatchExpr {
+                operand: alloc_init(ctx->allocator, operand),
+                error_binding,
+                catch_body,
+                branch_dispatch: .Unresolved,
+                control_flow_type: .None,
+                value_type: .None,
+                error_type: .None,
+                span: try_catch_expr->span,
+            }), try_catch_expr->span));
+        }
+        case .None => return .None;
+    }
 }
 
 fn resolve_literal_expr(

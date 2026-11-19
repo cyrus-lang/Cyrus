@@ -463,6 +463,26 @@ fn detect_const_cycle_in_expr(
                 cycle_ids_out
             );
         }
+        case .Try(try_expr) => {
+            return detect_const_cycle_in_expr(
+                decl_tables,
+                registry,
+                try_expr.operand,
+                visiting,
+                allocator,
+                cycle_ids_out
+            );
+        }
+        case .TryCatch(try_catch_expr) => {
+            return detect_const_cycle_in_expr(
+                decl_tables,
+                registry,
+                try_catch_expr.operand,
+                visiting,
+                allocator,
+                cycle_ids_out
+            );
+        }
         case .AddrOf(addr_expr) => {
             return detect_const_cycle_in_expr(
                 decl_tables, 
