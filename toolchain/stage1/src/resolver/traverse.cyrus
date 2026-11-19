@@ -375,6 +375,7 @@ fn resolve_stmt(
         }
         case .Defer(defer_stmt) => {
             var kind: cir::DeferKind = .Always;
+
             switch (defer_stmt.kind) {
                 case .Always => kind = .Always;
                 case .OnError => kind = .OnError;
@@ -390,6 +391,7 @@ fn resolve_stmt(
                     opened_scope = true;
 
                     const name = ident.str.as_str_const();
+
                     const var_decl_id = insert_variable_decl(
                         ctx,
                         name,
@@ -399,7 +401,12 @@ fn resolve_stmt(
                         true
                     );
 
-                    if (!insert_variable_symbol_to_current_scope(ctx, name, ident.span, var_decl_id)) {
+                    if (!insert_variable_symbol_to_current_scope(
+                        ctx, 
+                        name, 
+                        ident.span, 
+                        var_decl_id
+                    )) {
                         ctx->exit_local_scope();
                         return .None;
                     }
@@ -409,7 +416,12 @@ fn resolve_stmt(
                 case .None => {}
             }
 
-            const resolved_operand = resolve_stmt(ctx, program, operand_node(program, defer_stmt.operand));
+            const resolved_operand = resolve_stmt(
+                ctx, 
+                program, 
+                operand_node(program, defer_stmt.operand)
+            );
+
             if (opened_scope) {
                 ctx->exit_local_scope();
             }
@@ -432,7 +444,9 @@ fn resolve_stmt(
             }
         }
         case .InlineAsm(asm) => {
-            return .Some(cir::Stmt.new(.InlineAsm(resolve_inline_asm(ctx, program, &asm))));
+            return .Some(cir::Stmt.new(.InlineAsm(
+                resolve_inline_asm(ctx, program, &asm)
+            )));
         }
         else => {
             diags::report_invalid_statement(
@@ -3922,6 +3936,7 @@ fn resolve_try_catch_expr(
     switch (try_catch_expr->error_binding) {
         case .Some(ident) => {
             const name = ident.str.as_str_const();
+
             const var_decl_id = insert_variable_decl(
                 ctx,
                 name,
@@ -3931,7 +3946,12 @@ fn resolve_try_catch_expr(
                 true
             );
 
-            if (!insert_variable_symbol_to_current_scope(ctx, name, ident.span, var_decl_id)) {
+            if (!insert_variable_symbol_to_current_scope(
+                ctx, 
+                name, 
+                ident.span, 
+                var_decl_id
+            )) {
                 ctx->exit_local_scope();
                 return .None;
             }
@@ -3942,7 +3962,9 @@ fn resolve_try_catch_expr(
     }
 
     const catch_node = operand_node(program, try_catch_expr->catch_body);
+
     var resolved_block: Option<cir::BlockStmt> = .None;
+    
     switch (*catch_node) {
         case .Block(block_stmt) => {
             resolved_block = resolve_block_stmt(ctx, program, &block_stmt);

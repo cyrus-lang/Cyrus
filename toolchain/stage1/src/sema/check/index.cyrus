@@ -726,10 +726,12 @@ fn analyze_defer_stmt(
 ) {
     switch (defer_stmt->kind) {
         case .Always => {}
+
         case .OnError | .OnSuccess => {
-            var kw: const uint8* = "defer catch";
+            var keyword: const uint8* = "defer catch";
+
             switch (defer_stmt->kind) {
-                case .OnSuccess => kw = "defer try";
+                case .OnSuccess => keyword = "defer try";
                 else => {}
             }
 
@@ -738,27 +740,35 @@ fn analyze_defer_stmt(
                     context->dctx,
                     context->allocator,
                     defer_stmt->span,
-                    kw
+                    keyword
                 );
                 analyze_stmt(context, defer_stmt->operand);
                 return;
             }
 
             const ret_type = *func_type.ret_type;
-            const ret_try_opt = resolve_try_impl(context, &ret_type, false, defer_stmt->span);
+            const ret_try_opt = resolve_try_impl(
+                context, 
+                &ret_type, 
+                false, 
+                defer_stmt->span
+            );
+
             switch (ret_try_opt) case .Some(ret_try) else {
                 var ret_name = format::format_sema_type(
                     context->allocator,
                     context->decl_tables,
                     &ret_type
                 );
+
                 diags::report_conditional_defer_requires_try_return(
                     context->dctx,
                     context->allocator,
                     defer_stmt->span,
-                    kw,
+                    keyword,
                     ret_name.as_str_const()
                 );
+
                 ret_name.free();
                 analyze_stmt(context, defer_stmt->operand);
                 return;
@@ -2015,7 +2025,7 @@ fn analyze_interface(
 
         var params_start: usize = 0;
 
-        const is_try_protocol =
+        const is_try =
             interface_->name.len() == 3 &&
             interface_->name.starts_with("Try") &&
             interface_->generic_params.len() == 2;
@@ -2023,7 +2033,7 @@ fn analyze_interface(
         switch (func_decl->params.get_self_modifier()) {
             case .Some(self_modifier) => {
                 if (!self_modifier.ty.is_pointer()) {
-                    if (is_try_protocol) {
+                    if (is_try) {
                         is_interface_dynamically_dispatchable = false;
                     } else {
                         diags::report_interface_methods_must_use_referenced_self(
@@ -2037,7 +2047,7 @@ fn analyze_interface(
                 params_start = 1;
             }
             case .None => {
-                if (is_try_protocol) {
+                if (is_try) {
                     is_interface_dynamically_dispatchable = false;
                 } else {
                     diags::report_interface_methods_must_have_self_modifier(
@@ -2104,8 +2114,6 @@ fn analyze_interface(
     
     interface_decl->is_interface_dynamically_dispatchable = is_interface_dynamically_dispatchable;
 }
-
-
 
 fn analyze_object_methods(
     context: AnalyzerContext*, 

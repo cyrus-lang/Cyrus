@@ -3157,9 +3157,9 @@ fn next_precedence(p: Prec) Prec {
 /// Precedence of a token when it appears between two operands.
 fn precedence_of_token_kind(kind: TokenKind) Option<Prec> {
     switch (kind) {
-        case .Dot | .ThinArrow => return .Some(.Field);
         case .Asterisk | .Slash | .Percent => return .Some(.Product);
         case .Equal | .NotEqual => return .Some(.Equals);
+        case .Dot | .ThinArrow => return .Some(.Field);
         case .LeftBracket => return .Some(.Index);
         case .Plus | .Minus => return .Some(.Sum);
         case .LeftParen => return .Some(.Call);

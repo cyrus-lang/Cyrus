@@ -6938,25 +6938,34 @@ pub fn resolve_try_impl(
     need_from_error: bool,
     span: Span
 ) Option<ResolvedTryImpl> {
-    const expanded = expand_sema_type(context, *target_type->const_inner(), span);
+    const expanded = expand_sema_type(
+        context, 
+        *target_type->const_inner(), 
+        span
+    );
 
     switch (expanded.as_named_type()) case .Some(named_type) else {
         return .None;
     }
 
     // Check that the type implements `Try<V, E>`
-    switch (implement_interfaces_of_named_type(context->decl_tables, &named_type)) case .Some(impls) else {
+    switch (implement_interfaces_of_named_type(
+        context->decl_tables, 
+        &named_type
+    )) case .Some(impls) else {
         return .None;
     }
 
     var implements_try = false;
     for (var i: usize = 0; i < impls->len(); i += 1) {
-        const impl_iface = impls->get_const(i).unwrap();
-        var maybe_iface_id: Option<cir::InterfaceDeclId> = .None;
-        switch (impl_iface->ty) {
-            case .Named(iface_named) => {
-                switch (iface_named.type_decl_id) {
-                    case .Interface(iface_id) => maybe_iface_id = .Some(iface_id);
+        const implement_interface = impls->get_const(i).unwrap();
+        
+        var interface_id_opt: Option<cir::InterfaceDeclId> = .None;
+
+        switch (implement_interface->ty) {
+            case .Named(named_type) => {
+                switch (named_type.type_decl_id) {
+                    case .Interface(interface_id) => interface_id_opt = .Some(interface_id);
                     else => {}
                 }
             }
@@ -6968,7 +6977,9 @@ pub fn resolve_try_impl(
                                 switch (cir::decl_id_as_type_decl_id(decl_id)) {
                                     case .Some(type_decl_id) => {
                                         switch (type_decl_id) {
-                                            case .Interface(iface_id) => maybe_iface_id = .Some(iface_id);
+                                            case .Interface(interface_id) => {
+                                                interface_id_opt = .Some(interface_id);
+                                            }
                                             else => {}
                                         }
                                     }
@@ -6984,13 +6995,14 @@ pub fn resolve_try_impl(
             else => {}
         }
 
-        switch (maybe_iface_id) {
-            case .Some(iface_id) => {
-                const iface_decl =
-                    context->decl_tables->interfaces.get_const(iface_id).unwrap();
-                if (iface_decl->name.len() == 3 &&
-                    iface_decl->name.starts_with("Try") &&
-                    iface_decl->generic_params.len() == 2) {
+        switch (interface_id_opt) {
+            case .Some(interface_id) => {
+                const interface_decl =
+                    context->decl_tables->interfaces.get_const(interface_id).unwrap();
+
+                if (interface_decl->name.len() == 3 &&
+                    interface_decl->name.starts_with("Try") &&
+                    interface_decl->generic_params.len() == 2) {
                     implements_try = true;
                     break;
                 }
@@ -7003,8 +7015,12 @@ pub fn resolve_try_impl(
         return .None;
     }
 
-    // Look up `branch` and (optionally) `from_error` methods on the type
-    switch (method_decls_of_named_type(context->decl_tables, &named_type)) case .Some(method_decls) else {
+    // Look up `branch` and (optionally) 
+    // `from_error` methods on the type
+    switch (method_decls_of_named_type(
+        context->decl_tables, 
+        &named_type
+    )) case .Some(method_decls) else {
         return .None;
     }
 
@@ -7024,7 +7040,8 @@ pub fn resolve_try_impl(
         return .None;
     }
 
-    // Extract ControlFlow<V, E> from branch()'s return type
+    // Extract ControlFlow<V, E> from 
+    // branch()'s return type
     const cf_expanded = expand_sema_type(context, branch_resolved.ret_type, span);
     switch (cf_expanded.as_named_type()) case .Some(cf_named) else {
         return .None;
@@ -7043,6 +7060,7 @@ pub fn resolve_try_impl(
     }
 
     var from_error_dispatch: Option<cir::MethodCallDispatch> = .None;
+
     if (need_from_error) {
         switch (method_decls->get("from_error")) case .Some(from_error_id) else {
             return .None;
@@ -7056,9 +7074,11 @@ pub fn resolve_try_impl(
             false,
             span
         );
+
         switch (from_error_opt) case .Some(from_error_resolved) else {
             return .None;
         }
+        
         from_error_dispatch = .Some(from_error_resolved.dispatch);
     }
 
@@ -7096,13 +7116,20 @@ fn analyze_try_expr(
     }
 
     // Check operand implements Try<V, E>
-    const operand_try_opt = resolve_try_impl(context, &operand_type, false, try_expr->span);
+    const operand_try_opt = resolve_try_impl(
+        context, 
+        &operand_type, 
+        false, 
+        try_expr->span
+    );
+
     switch (operand_try_opt) case .Some(operand_try) else {
         var type_name = format::format_sema_type(
             context->allocator,
             context->decl_tables,
             &operand_type
         );
+
         diags::report_type_does_not_implement_try(
             context->dctx,
             context->allocator,
@@ -7110,50 +7137,67 @@ fn analyze_try_expr(
             "try",
             type_name.as_str_const()
         );
+        
         type_name.free();
         return .None;
     }
 
-    // Check enclosing function's return type implements Try<RetV, RetE>
+    // Check enclosing function's 
+    // return type implements Try<RetV, RetE>
     const ret_type = *func_type.ret_type;
-    const ret_try_opt = resolve_try_impl(context, &ret_type, true, try_expr->span);
+    const ret_try_opt = resolve_try_impl(
+        context, 
+        &ret_type, 
+        true, 
+        try_expr->span
+    );
+
     switch (ret_try_opt) case .Some(ret_try) else {
         var ret_name = format::format_sema_type(
             context->allocator,
             context->decl_tables,
             &ret_type
         );
+
         diags::report_try_return_type_does_not_implement_try(
             context->dctx,
             context->allocator,
             try_expr->span,
             ret_name.as_str_const()
         );
+
         ret_name.free();
         return .None;
     }
 
     // Check error type compatibility
-    if (!is_assignable_to(context, operand_try.error_type, ret_try.error_type, try_expr->span)) {
-        var got_err = format::format_sema_type(
+    if (!is_assignable_to(
+        context, 
+        operand_try.error_type, 
+        ret_try.error_type, 
+        try_expr->span
+    )) {
+        var got = format::format_sema_type(
             context->allocator,
             context->decl_tables,
             &operand_try.error_type
         );
-        var expect_err = format::format_sema_type(
+        var expect = format::format_sema_type(
             context->allocator,
             context->decl_tables,
             &ret_try.error_type
         );
+
         diags::report_try_incompatible_error_type(
             context->dctx,
             context->allocator,
             try_expr->span,
-            got_err.as_str_const(),
-            expect_err.as_str_const()
+            got.as_str_const(),
+            expect.as_str_const()
         );
-        got_err.free();
-        expect_err.free();
+
+        got.free();
+        expect.free();
         return .None;
     }
 
@@ -7171,7 +7215,11 @@ fn analyze_try_catch_expr(
     context: AnalyzerContext*,
     try_catch_expr: cir::TryCatchExpr*
 ) Option<cir::SemaType> {
-    const operand_type_opt = analyze_expr(context, try_catch_expr->operand, .None);
+    const operand_type_opt = analyze_expr(
+        context, 
+        try_catch_expr->operand, 
+        .None
+    );
 
     switch (operand_type_opt) case .Some(operand_type) else {
         return .None;
@@ -7182,13 +7230,20 @@ fn analyze_try_catch_expr(
     }
 
     // Check operand implements Try<V, E>
-    const operand_try_opt = resolve_try_impl(context, &operand_type, false, try_catch_expr->span);
+    const operand_try_opt = resolve_try_impl(
+        context, 
+        &operand_type, 
+        false, 
+        try_catch_expr->span
+    );
+
     switch (operand_try_opt) case .Some(operand_try) else {
         var type_name = format::format_sema_type(
             context->allocator,
             context->decl_tables,
             &operand_type
         );
+
         diags::report_type_does_not_implement_try(
             context->dctx,
             context->allocator,
@@ -7196,6 +7251,7 @@ fn analyze_try_catch_expr(
             "try ... catch",
             type_name.as_str_const()
         );
+
         type_name.free();
         return .None;
     }
@@ -7203,15 +7259,19 @@ fn analyze_try_catch_expr(
     // Type the optional error binding variable `catch (err)` with E
     switch (try_catch_expr->error_binding) {
         case .Some(var_decl_id) => {
-            var var_entry = context->decl_tables->vars.get(var_decl_id).unwrap();
-            var_entry->ty = .Some(operand_try.error_type);
+            var var_ = context->decl_tables->vars.get(var_decl_id).unwrap();
+            var_->ty = .Some(operand_try.error_type);
         }
         case .None => {}
     }
 
     // Analyze catch body
     const start_diags = context->dctx->diag_count();
-    const catch_flow = context->dispatcher.analyze_block_stmt(context, &try_catch_expr->catch_body);
+
+    const catch_flow = context->dispatcher.analyze_block_stmt(
+        context, 
+        &try_catch_expr->catch_body
+    );
 
     if (catch_flow.is_reachable()
         && !operand_try.value_type.is_void()
@@ -7223,12 +7283,14 @@ fn analyze_try_catch_expr(
             context->decl_tables,
             &operand_try.value_type
         );
+
         diags::report_try_catch_must_diverge(
             context->dctx,
             context->allocator,
             try_catch_expr->catch_body.span,
             val_name.as_str_const()
         );
+
         val_name.free();
     }
 

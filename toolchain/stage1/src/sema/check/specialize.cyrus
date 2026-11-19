@@ -749,9 +749,11 @@ fn specialize_expr(
 
         case .TryCatch(var try_catch_expr) => {
             specialize_expr(context, try_catch_expr.operand, decl_map);
+
             switch (try_catch_expr.error_binding) {
                 case .Some(var_decl_id) => {
                     instantiate_fresh_var_decl_from_tables(context, var_decl_id, decl_map);
+
                     switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
                         case .Some(new_id) => try_catch_expr.error_binding = .Some(new_id);
                         else => {}
@@ -759,6 +761,7 @@ fn specialize_expr(
                 }
                 case .None => {}
             }
+
             collect_fresh_var_decls_in_block(context, &try_catch_expr.catch_body, decl_map);
             specialize_block(context, &try_catch_expr.catch_body, decl_map);
             expr->kind = .TryCatch(try_catch_expr);
