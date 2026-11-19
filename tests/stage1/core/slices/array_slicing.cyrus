@@ -1,0 +1,33 @@
+// @stdout: full=5:[10,20,30,40,50] r1=3:[20,30,40] r2=3:[10,20,30] r3=3:[30,40,50] empty=0
+
+import std::libc{printf};
+
+fn print_slice(label: const uint8*, s: int32[]) {
+    printf("%s=%zu", label, @len(s));
+
+    if (@len(s) > 0) {
+        printf(":[");
+
+        for (var i: usize = 0; i < @len(s); i += 1) {
+            if (i > 0) {
+                printf(",");
+            }
+
+            printf("%d", s[i]);
+        }
+
+        printf("]");
+    }
+
+    printf(" ");
+}
+
+pub fn main() {
+    var arr = int32[5] {10, 20, 30, 40, 50};
+
+    print_slice("full", arr[..]);
+    print_slice("r1", arr[1..4]);
+    print_slice("r2", arr[..3]);
+    print_slice("r3", arr[2..]);
+    print_slice("empty", arr[2..2]);
+}

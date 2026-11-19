@@ -1,0 +1,29 @@
+// @stdout: ptr=3:[20,30,40]
+
+import std::libc{printf};
+
+fn print_slice(label: const uint8*, s: int32[]) {
+    printf("%s=%zu", label, @len(s));
+
+    if (@len(s) > 0) {
+        printf(":[");
+
+        for (var i: usize = 0; i < @len(s); i += 1) {
+            if (i > 0) {
+                printf(",");
+            }
+
+            printf("%d", s[i]);
+        }
+
+        printf("]");
+    }
+}
+
+pub fn main() {
+    var arr = int32[5] {10, 20, 30, 40, 50};
+    var ptr: int32* = &arr[0];
+
+    const ptr_slice = ptr[1..4];
+    print_slice("ptr", ptr_slice);
+}
