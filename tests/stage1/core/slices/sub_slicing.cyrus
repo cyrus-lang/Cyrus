@@ -2,18 +2,18 @@
 
 import std::libc{printf};
 
-fn print_slice(label: const uint8*, s: int32[]) {
-    printf("%s=%zu", label, @len(s));
+fn print_slice(label: const uint8*, slice: const int32[]) {
+    printf("%s=%zu", label, @len(slice));
 
-    if (@len(s) > 0) {
+    if (@len(slice) > 0) {
         printf(":[");
 
-        for (var i: usize = 0; i < @len(s); i += 1) {
+        for (var i: usize = 0; i < @len(slice); i += 1) {
             if (i > 0) {
                 printf(",");
             }
 
-            printf("%d", s[i]);
+            printf("%d", slice[i]);
         }
 
         printf("]");
@@ -23,8 +23,8 @@ fn print_slice(label: const uint8*, s: int32[]) {
 }
 
 pub fn main() {
-    var arr = int32[5] {10, 20, 30, 40, 50};
-    const full: int32[] = arr[..];
+    const array = int32[5] {10, 20, 30, 40, 50};
+    const full: const int32[] = array[..];
 
     print_slice("sub", full[1..3]);
     print_slice("sub_p", full[..2]);

@@ -3,12 +3,13 @@
 import std::libc{printf};
 
 pub fn main() {
-    var arr = int32[5] {10, 20, 30, 40, 50};
-    var s: int32[] = arr[..];
+    var array = int32[5] {10, 20, 30, 40, 50};
+    var slice: int32[] = array[..];
 
-    s[1] = 200;
-    var sub: int32[] = s[2..4];
+    slice[1] = 200;
+
+    var sub: int32[] = slice[2..4];
     sub[1] = 400;
 
-    printf("arr1=%d s1=%d arr3=%d", arr[1], s[1], arr[3]);
+    printf("arr1=%d s1=%d arr3=%d", array[1], slice[1], array[3]);
 }

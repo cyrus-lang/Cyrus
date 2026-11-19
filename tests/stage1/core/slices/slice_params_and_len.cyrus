@@ -2,19 +2,19 @@
 
 import std::libc{printf};
 
-fn sum_slice(s: int32[]) int32 {
+fn sum_slice(slice: const int32[]) int32 {
     var total: int32 = 0;
 
-    for (var i: usize = 0; i < @len(s); i += 1) {
-        total += s[i];
+    for (var i: usize = 0; i < @len(slice); i += 1) {
+        total += slice[i];
     }
 
     return total;
 }
 
 pub fn main() {
-    var arr = int32[5] {10, 20, 30, 40, 50};
-    const s: int32[] = arr[..];
+    const array = int32[5] {10, 20, 30, 40, 50};
+    const slice: const int32[] = array[..];
 
-    printf("len=%zu sum=%d\n", @len(s), sum_slice(s));
+    printf("len=%zu sum=%d\n", @len(slice), sum_slice(slice));
 }
