@@ -75,7 +75,7 @@ pub struct TypeContext {
                     case .None => @panic("non-constant array capacity in abi layout");
                 }
             }
-            case .Slice => @panic("slice layout not supported");
+            case .Slice | .TerminatedSlice => @panic("slice layout has no fixed element count");
         }
     }
 
@@ -201,27 +201,40 @@ pub struct TypeContext {
             }
 
             case .Array(array) => {
-                const element_layout = self->layout_of(array.element_type);
+                switch (array.capacity) {
+                    case .Slice | .TerminatedSlice => {
+                        const pointer_size = self->target_info.pointer_size();
 
-                const element_count = self->array_capacity_len(&array);
-                const total_size = element_layout->size * @cast(uint32, element_count);
+                        return self->own_layout(ABITypeLayout.normal(
+                            pointer_size * 2,
+                            pointer_size,
+                            Vec.new(self->allocator())
+                        ));
+                    }
+                    case .Fixed => {
+                        const element_layout = self->layout_of(array.element_type);
 
-                var element_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+                        const element_count = self->array_capacity_len(&array);
+                        const total_size = element_layout->size * @cast(uint32, element_count);
 
-                for (var i: usize = 0; i < element_count; i += 1) {
-                    element_offsets.push(ABIFieldOffsetInfo.normal(
-                        @cast(uint32, i),
-                        element_layout->size * @cast(uint32, i),
-                        i,
-                        @cast(usize, element_layout->size)
-                    ));
+                        var element_offsets: Vec<ABIFieldOffsetInfo> = Vec.new(self->allocator());
+
+                        for (var i: usize = 0; i < element_count; i += 1) {
+                            element_offsets.push(ABIFieldOffsetInfo.normal(
+                                @cast(uint32, i),
+                                element_layout->size * @cast(uint32, i),
+                                i,
+                                @cast(usize, element_layout->size)
+                            ));
+                        }
+
+                        return self->own_layout(ABITypeLayout.aggregate(
+                            total_size,
+                            element_layout->align,
+                            element_offsets
+                        ));
+                    }
                 }
-
-                return self->own_layout(ABITypeLayout.aggregate(
-                    total_size,
-                    element_layout->align,
-                    element_offsets
-                ));
             }
 
             case .Tuple(tuple) => {

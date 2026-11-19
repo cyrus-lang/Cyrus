@@ -812,6 +812,7 @@ fn expr_span(
         case .Assign(n) => return n.span;
         case .Lambda(n) => return n.span;
         case .AddrOf(n) => return n.span;
+        case .Slice(n) => return n.span;
         case .Tuple(n) => return n.span;
         case .Infix(n) => return n.span;
         case .Array(n) => return n.span;
@@ -3063,6 +3064,9 @@ fn resolve_expr(
         case .ArrayIndex(array_index) => {
             return resolve_array_index_expr(ctx, program, &array_index);
         }
+        case .Slice(slice_expr) => {
+            return resolve_slice_expr(ctx, program, &slice_expr);
+        }
         case .Dynamic(dynamic_expr) => {
             return resolve_dynamic_expr(ctx, program, &dynamic_expr);
         }
@@ -3738,6 +3742,58 @@ fn resolve_array_index_expr(
     }), array_index->span));
 }
 
+fn resolve_slice_expr(
+    ctx: TraverseContext*,
+    program: const ast::ASTProgram*,
+    slice_expr: const ast::ASTSliceExpr*
+) Option<cir::Expr> {
+    const operand = resolve_expr_or_poisoned(
+        ctx, 
+        program, 
+        slice_expr->operand, 
+        slice_expr->span
+    );
+
+    var start: Option<cir::Expr*> = .None;
+
+    switch (slice_expr->start) {
+        case .Some(id) => {
+            const expr = resolve_expr_or_poisoned(
+                ctx, 
+                program,
+                id, 
+                slice_expr->span
+            );
+
+            start = .Some(alloc_init(ctx->allocator, expr));
+        }
+        case .None => {}
+    }
+
+    var end: Option<cir::Expr*> = .None;
+
+    switch (slice_expr->end) {
+        case .Some(id) => {
+            const expr = resolve_expr_or_poisoned(
+                ctx, 
+                program, 
+                id, 
+                slice_expr->span
+            );
+
+            end = .Some(alloc_init(ctx->allocator, expr));
+        }
+        case .None => {}
+    }
+
+    return .Some(cir::Expr.new(.Slice(cir::SliceExpr {
+        operand: alloc_init(ctx->allocator, operand),
+        start,
+        end,
+        span: slice_expr->span,
+    }), slice_expr->span));
+}
+
 fn resolve_addr_of_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
@@ -4188,8 +4244,11 @@ fn resolve_array_type(
                         else => {}
                     }
                 }
+                case .TerminatedSlice => {
+                    capacity = .TerminatedSlice;
+                }
                 case .Dynamic => {
-                    // TODO: Slices!
+                    capacity = .Slice;
                 }
             }
 

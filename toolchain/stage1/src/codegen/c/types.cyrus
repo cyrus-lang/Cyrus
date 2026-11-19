@@ -92,6 +92,7 @@ pub struct TypeEmitter {
     pub generic_inst_names: Vec<String>,
     pub deferred: Vec<cir::TypeDeclId>,
     pub fat_ptr_emitted: bool,
+    pub slice_emitted: bool,
     pub used_stdint: bool,
     pub used_int128: bool,
     pub used_bool: bool,
@@ -120,6 +121,7 @@ pub struct TypeEmitter {
             tuple_sigs: Vec.new(allocator),
             deferred: Vec.new(allocator),
             fat_ptr_emitted: false,
+            slice_emitted: false,
             used_stdint: false,
             used_int128: false,
             used_bool: false,
@@ -207,23 +209,31 @@ pub struct TypeEmitter {
             }
 
             case .Array(array) => {
-                var out = String.new(self->allocator);
-                
-                var inner_name = self->type_name(array.element_type);
-                out.push_str(inner_name.as_str_const());
-                inner_name.free();
-                
-                out.push('[');
-                push_capacity(
-                    &out, 
-                    self->allocator, 
-                    self->tables, 
-                    self->registry, 
-                    &array
-                );
-                out.push(']');
-                
-                return out;
+                switch (array.capacity) {
+                    case .Slice | .TerminatedSlice => {
+                        self->ensure_slice();
+                        return String.from_str(self->allocator, "__slice");
+                    }
+                    case .Fixed => {
+                        var out = String.new(self->allocator);
+                        
+                        var inner_name = self->type_name(array.element_type);
+                        out.push_str(inner_name.as_str_const());
+                        inner_name.free();
+                        
+                        out.push('[');
+                        push_capacity(
+                            &out, 
+                            self->allocator, 
+                            self->tables, 
+                            self->registry, 
+                            &array
+                        );
+                        out.push(']');
+                        
+                        return out;
+                    }
+                }
             }
 
             case .Tuple(tuple) => return self->tuple_type_name(&tuple);
@@ -377,20 +387,53 @@ pub struct TypeEmitter {
                 }
 
                 case .Array(array) => {
-                    var out = String.new(self->allocator);
-                    out.push_str(decl.as_str_const());
-                    out.push('[');
-                    push_capacity(
-                        &out, 
-                        self->allocator, 
-                        self->tables, 
-                        self->registry, 
-                        &array
-                    );
-                    out.push(']');
-                    decl.free();
-                    decl = out;
-                    ty = array.element_type;
+                    switch (array.capacity) {
+                        case .Slice | .TerminatedSlice => {
+                            self->ensure_slice();
+                            var base = String.from_str(self->allocator, "__slice");
+
+                            if (base_const) {
+                                var const_base = String.from_str(self->allocator, "const ");
+                                const_base.push_str(base.as_str_const());
+                                base.free();
+                                base = const_base;
+                            }
+
+                            if (decl.len() > 0) {
+                                const first_char = decl.as_str_const()[0];
+
+                                if (first_char != '*' && 
+                                    first_char != '(' && 
+                                    first_char != '[') 
+                                {
+                                    base.push(' ');
+                                }
+                                
+                                base.push_str(decl.as_str_const());
+                            }
+
+                            decl.free();
+                            return base;
+                        }
+                        case .Fixed => {
+                            var out = String.new(self->allocator);
+                            
+                            out.push_str(decl.as_str_const());
+                            out.push('[');
+                            push_capacity(
+                                &out, 
+                                self->allocator, 
+                                self->tables, 
+                                self->registry, 
+                                &array
+                            );
+                            out.push(']');
+                            decl.free();
+                            decl = out;
+
+                            ty = array.element_type;
+                        }
+                    }
                 }
 
                 case .FuncType(func) => {
@@ -445,10 +488,15 @@ pub struct TypeEmitter {
                     }
 
                     if (decl.len() > 0) {
-                        const first_ch = decl.as_str_const()[0];
-                        if (first_ch != '*' && first_ch != '(' && first_ch != '[') {
+                        const first_char = decl.as_str_const()[0];
+
+                        if (first_char != '*' && 
+                            first_char != '(' && 
+                            first_char != '[') 
+                        {
                             base.push(' ');
                         }
+
                         base.push_str(decl.as_str_const());
                     }
 
@@ -481,7 +529,15 @@ pub struct TypeEmitter {
             }
             
             case .Array(array) => {
-                self->ensure_named(array.element_type);
+                switch (array.capacity) {
+                    case .Slice | .TerminatedSlice => {
+                        self->ensure_slice();
+                        self->shell_named_types(array.element_type);
+                    }
+                    case .Fixed => {
+                        self->ensure_named(array.element_type);
+                    }
+                }
             }
             
             case .Tuple(tuple) => {
@@ -534,6 +590,16 @@ pub struct TypeEmitter {
 
         self->fat_ptr_emitted = true;
         self->type_out.push_str("typedef struct __fat_ptr{void*data;void*vtable;}__fat_ptr;");
+    }
+
+    pub fn ensure_slice(self: Self*) {
+        if (self->slice_emitted) {
+            return;
+        }
+
+        self->slice_emitted = true;
+        self->used_stdint = true;
+        self->type_out.push_str("typedef struct __slice{void*ptr;uintptr_t len;}__slice;");
     }
 
     /// Emits only a forward `typedef struct X X;` for an object that is
@@ -604,12 +670,8 @@ pub struct TypeEmitter {
         }
     }
 
-    /// Forward-declares every named struct/union reachable from `ty`,
+    /// Forward-declares every named type reachable from `ty`,
     /// queueing their bodies for `drain_deferred()`.
-    ///
-    /// Used when an alias has to be emitted before the types it mentions
-    /// (see `ensure_typedef`), because a function-pointer alias only needs
-    /// the pointee's name, never its layout.
     fn shell_named_types(self: Self*, ty: const cir::SemaType*) {
         switch (*ty->const_inner()) {
             case .Named(named) => {
@@ -720,7 +782,8 @@ pub struct TypeEmitter {
 
         if (state == .InProgress) {
             // Recursive: 
-            // the forward typedef is already emitted
+            // the forward typedef
+            // is already emitted
             return;
         }
 
@@ -2173,7 +2236,7 @@ fn push_capacity(
                 }
             }
         }
-        case .Slice => {
+        case .Slice | .TerminatedSlice => {
             out->push('1');
         }
     }

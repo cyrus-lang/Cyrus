@@ -323,6 +323,9 @@ pub enum BuiltinKind {
     AlignOf,
     OffsetOf,
     TypeOf,
+    Len,
+    Ptr,
+    Slice,
 
     Cast,
     Memcpy,
@@ -373,6 +376,9 @@ pub fn lookup_builtin(name: const uint8*) Option<BuiltinKind> {
         case "debug" => return .Some(.Debug);
         case "test" => return .Some(.Test);
         case "line" => return .Some(.Line);
+        case "len" => return .Some(.Len);
+        case "ptr" => return .Some(.Ptr);
+        case "slice" => return .Some(.Slice);
         case "cast" => return .Some(.Cast);
         case "todo" => return .Some(.Todo);
         else => return .None;
@@ -577,6 +583,39 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
             unreachable: true,
             min_args: 0,
             max_args: .Some(1),
+        };
+
+        case .Len => return BuiltinSpec {
+            kind,
+            name: "len",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: false,
+            min_args: 1,
+            max_args: .Some(1),
+        };
+
+        case .Ptr => return BuiltinSpec {
+            kind,
+            name: "ptr",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: false,
+            min_args: 1,
+            max_args: .Some(1),
+        };
+
+        case .Slice => return BuiltinSpec {
+            kind,
+            name: "slice",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: false,
+            min_args: 2,
+            max_args: .Some(2),
         };
         
         case .Debug => return BuiltinSpec {
@@ -1816,6 +1855,7 @@ pub struct ArrayType {
 }
 
 pub enum ArrayCapacity {
+    TerminatedSlice,
     Fixed(Expr*),
     Slice,
 }
@@ -2096,6 +2136,7 @@ pub enum ExprKind {
     Deref(DerefExpr),
     Array(ArrayExpr),
     Tuple(TupleExpr),
+    Slice(SliceExpr),
     SemaType {
         ty: SemaType,
         span: Span
@@ -2188,6 +2229,7 @@ pub enum ExprKind {
             | .Array
             | .Lambda
             | .Tuple
+            | .Slice
             | .Dynamic
             | .UnnamedUnionValue
             | .Builtin
@@ -2347,6 +2389,13 @@ pub struct ArrayExpr {
 pub struct ArrayIndexExpr {
     pub operand: Expr*,
     pub index: Expr*,
+    pub span: Span,
+}
+
+pub struct SliceExpr {
+    pub operand: Expr*,
+    pub start: Option<Expr*>,
+    pub end: Option<Expr*>,
     pub span: Span,
 }
 
@@ -4532,6 +4581,12 @@ pub fn array_capacity_eq(a: const ArrayCapacity*, b: const ArrayCapacity*) bool 
         case .Slice => {
             switch (*b) {
                 case .Slice => return true;
+                else => return false;
+            }
+        }
+        case .TerminatedSlice => {
+            switch (*b) {
+                case .TerminatedSlice => return true;
                 else => return false;
             }
         }

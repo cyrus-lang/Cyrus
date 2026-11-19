@@ -304,6 +304,11 @@ pub fn analyze_expr_non_terminal(
             expr_type = analyze_array_index(context, &array_index);
             expr->kind = .ArrayIndex(array_index);
         }
+
+        case .Slice(var slice_expr) => {
+            expr_type = analyze_slice_expr(context, &slice_expr);
+            expr->kind = .Slice(slice_expr);
+        }
         
         case .FieldAccess(var field_access) => {
             expr_type = analyze_field_access(context, &field_access);
@@ -573,10 +578,42 @@ fn analyze_literal(
                     }
                 }
                 case .None => {
-                    type_opt = .Some(.Pointer(alloc_init(
-                        context->allocator,
-                        uint8_type
-                    )));
+                    var as_slice = false;
+
+                    switch (expected_type) {
+                        case .Some(ty) => {
+                            switch (ty.as_array_type()) {
+                                case .Some(array) => {
+                                    switch (array.capacity) {
+                                        case .Slice | .TerminatedSlice => {
+                                            switch (*array.element_type->const_inner()) {
+                                                case .Plain(.UInt8) => {
+                                                    as_slice = true;
+                                                }
+                                                else => {}
+                                            }
+                                        }
+                                        case .Fixed => {}
+                                    }
+                                }
+                                else => {}
+                            }
+                        }
+                        case .None => {}
+                    }
+
+                    if (as_slice) {
+                        type_opt = .Some(.Array(cir::ArrayType {
+                            element_type: alloc_init(context->allocator, const_uint8_type),
+                            capacity: .TerminatedSlice,
+                            span,
+                        }));
+                    } else {
+                        type_opt = .Some(.Pointer(alloc_init(
+                            context->allocator,
+                            uint8_type
+                        )));
+                    }
                 }
             }
         }
@@ -1496,7 +1533,7 @@ fn analyze_array(
         }
     }
 
-    const array_type = array->ty.unwrap().as_array_type().unwrap();
+    var array_type = array->ty.unwrap().as_array_type().unwrap();
 
     for (var i: usize = 0; i < array->elements.len(); i += 1) {
         const element = array->elements.get(i).unwrap();
@@ -1585,6 +1622,19 @@ fn analyze_array(
             }
         }
         case .Slice => {
+            array_capacity = array->elements.len();
+
+            const capacity_expr = cir::const_untyped_integer_expr(
+                @cast(uint128, array_capacity),
+                array->span
+            );
+
+            array_type.capacity = .Fixed(alloc_init(
+                context->allocator, 
+                capacity_expr
+            ));
+        }
+        case .TerminatedSlice => {
             diags::report_unimplemented_feature_slice(
                 context->dctx,
                 context->allocator,
@@ -1698,6 +1748,143 @@ fn analyze_array_index(
     }
 
     return .Some(element_type);
+}
+
+fn analyze_slice_expr(
+    context: AnalyzerContext*,
+    slice_expr: cir::SliceExpr*
+) Option<cir::SemaType> {
+    var operand_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_expr(context, slice_expr->operand, .None)) {
+        case .Some(ty) => operand_type = ty;
+        case .None => return .None;
+    }
+
+    if (operand_type.contains_error()) {
+        return .Some(.Err(slice_expr->span));
+    }
+
+    const is_operand_array = operand_type.const_inner()->is_array();
+    const is_operand_pointer = operand_type.is_pointer();
+
+    if (!is_operand_pointer && !is_operand_array) {
+        var operand_str = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &operand_type
+        );
+
+        diags::report_array_index_on_non_array_operand(
+            context->dctx,
+            context->allocator,
+            operand_str.as_str_const(),
+            slice_expr->span
+        );
+
+        operand_str.free();
+        return .None;
+    }
+
+    const usize_type: cir::SemaType = .Plain(.USize);
+
+    switch (slice_expr->start) {
+        case .Some(start_expr) => {
+            switch (analyze_expr(context, start_expr, .Some(usize_type))) {
+                case .Some(start_ty) => {
+                    if (!start_ty.contains_error() && !start_ty.const_inner()->as_plain_type().is_some()) {
+                        var found_str = format::format_sema_type(
+                            context->allocator,
+                            context->decl_tables,
+                            &start_ty
+                        );
+
+                        diags::report_array_non_integer_index(
+                            context->dctx,
+                            context->allocator,
+                            slice_expr->span,
+                            found_str.as_str_const()
+                        );
+                        
+                        found_str.free();
+                        return .None;
+                    }
+                }
+                case .None => return .None;
+            }
+        }
+        case .None => {}
+    }
+
+    switch (slice_expr->end) {
+        case .Some(end_expr) => {
+            switch (analyze_expr(context, end_expr, .Some(usize_type))) {
+                case .Some(end_ty) => {
+                    if (!end_ty.contains_error() && !end_ty.const_inner()->as_plain_type().is_some()) {
+                        var found_str = format::format_sema_type(
+                            context->allocator,
+                            context->decl_tables,
+                            &end_ty
+                        );
+
+                        diags::report_array_non_integer_index(
+                            context->dctx,
+                            context->allocator,
+                            slice_expr->span,
+                            found_str.as_str_const()
+                        );
+
+                        found_str.free();
+                        return .None;
+                    }
+                }
+                case .None => return .None;
+            }
+        }
+        case .None => {
+            if (is_operand_pointer) {
+                var operand_str = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    &operand_type
+                );
+                diags::report_array_index_on_non_array_operand(
+                    context->dctx,
+                    context->allocator,
+                    operand_str.as_str_const(),
+                    slice_expr->span
+                );
+                operand_str.free();
+                return .None;
+            }
+        }
+    }
+
+    const ty = slice_expr->operand->ty.unwrap();
+    
+    var element_type: cir::SemaType = .Placeholder;
+
+    if (is_operand_array) {
+        const array_type = ty.as_array_type().unwrap();
+        element_type = *array_type.element_type;
+    } else {
+        element_type = *ty.pointer_inner();
+
+        if (element_type.is_void()) {
+            diags::report_deref_void_pointer_value(
+                context->dctx,
+                context->allocator,
+                slice_expr->span
+            );
+            return .None;
+        }
+    }
+
+    return .Some(.Array(cir::ArrayType {
+        element_type: alloc_init(context->allocator, element_type),
+        capacity: .Slice,
+        span: slice_expr->span,
+    }));
 }
 
 fn analyze_field_access(
@@ -2646,7 +2833,10 @@ fn analyze_builtin_func_semantics(
         case .SizeOf => return analyze_builtin_sizeof(context, builtin_func);
         case .TypeOf => return analyze_builtin_typeof(context, builtin_func);
         case .Assert => return analyze_builtin_assert(context, builtin_func);
+        case .Slice => return analyze_builtin_slice(context, builtin_func);
         case .Cast => return analyze_builtin_cast(context, builtin_func);
+        case .Len => return analyze_builtin_len(context, builtin_func);
+        case .Ptr => return analyze_builtin_ptr(context, builtin_func);
 
         case .FuncName | .MethodName | .ModuleName | .FileName => {
             return analyze_builtin_name_ret(context, builtin_func);
@@ -2680,6 +2870,170 @@ fn analyze_builtin_usize_ret(
     builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     const ret_type: cir::SemaType = .Plain(.USize);
+    builtin_func->ret_type = .Some(ret_type);
+    return .Some(ret_type);
+}
+
+fn analyze_builtin_len(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*
+) Option<cir::SemaType> {
+    const arg = builtin_func->args.get(0).unwrap();
+
+    var arg_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_expr(context, arg, .None)) {
+        case .Some(ty) => arg_type = ty;
+        case .None => return .None;
+    }
+
+    if (arg_type.contains_error()) {
+        return .Some(.Err(builtin_func->span));
+    }
+
+    if (!arg_type.const_inner()->is_array()) {
+        var operand_str = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            &arg_type
+        );
+
+        diags::report_array_index_on_non_array_operand(
+            context->dctx,
+            context->allocator,
+            operand_str.as_str_const(),
+            builtin_func->span
+        );
+
+        operand_str.free();
+        return .None;
+    }
+
+    const ret_type: cir::SemaType = .Plain(.USize);
+    builtin_func->ret_type = .Some(ret_type);
+    return .Some(ret_type);
+}
+
+fn analyze_builtin_ptr(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*
+) Option<cir::SemaType> {
+    const arg = builtin_func->args.get(0).unwrap();
+
+    var arg_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_expr(context, arg, .None)) {
+        case .Some(ty) => arg_type = ty;
+        case .None => return .None;
+    }
+
+    if (arg_type.contains_error()) {
+        return .Some(.Err(builtin_func->span));
+    }
+
+    switch (arg_type.const_inner()->as_array_type()) {
+        case .Some(array) => {
+            const ret_type: cir::SemaType = .Pointer(array.element_type);
+            builtin_func->ret_type = .Some(ret_type);
+            return .Some(ret_type);
+        }
+        case .None => {
+            var operand_str = format::format_sema_type(
+                context->allocator,
+                context->decl_tables,
+                &arg_type
+            );
+
+            diags::report_array_index_on_non_array_operand(
+                context->dctx,
+                context->allocator,
+                operand_str.as_str_const(),
+                builtin_func->span
+            );
+
+            operand_str.free();
+            return .None;
+        }
+    }
+}
+
+fn analyze_builtin_slice(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*
+) Option<cir::SemaType> {
+    const ptr_arg = builtin_func->args.get(0).unwrap();
+    const len_arg = builtin_func->args.get(1).unwrap();
+
+    var ptr_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_expr(context, ptr_arg, .None)) {
+        case .Some(ty) => ptr_type = ty;
+        case .None => return .None;
+    }
+
+    if (ptr_type.contains_error()) {
+        return .Some(.Err(builtin_func->span));
+    }
+
+    var element_type: cir::SemaType* = null;
+
+    switch (*ptr_type.const_inner()) {
+        case .Pointer(inner) => element_type = inner;
+        else => {
+            var found_str = format::format_sema_type(
+                context->allocator,
+                context->decl_tables,
+                &ptr_type
+            );
+
+            diags::report_func_call_param_type_mismatch(
+                context->dctx,
+                context->allocator,
+                ptr_arg->span,
+                0,
+                found_str.as_str_const(),
+                "pointer"
+            );
+
+            found_str.free();
+            return .None;
+        }
+    }
+
+    const usize_type: cir::SemaType = .Plain(.USize);
+
+    switch (analyze_expr(context, len_arg, .Some(usize_type))) {
+        case .Some(len_ty) => {
+            if (len_ty.contains_error()) {
+                return .Some(.Err(builtin_func->span));
+            }
+            if (!len_ty.const_inner()->is_integer()) {
+                var found_str = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    &len_ty
+                );
+
+                diags::report_array_non_integer_index(
+                    context->dctx,
+                    context->allocator,
+                    len_arg->span,
+                    found_str.as_str_const()
+                );
+
+                found_str.free();
+                return .None;
+            }
+        }
+        case .None => return .None;
+    }
+
+    const ret_type: cir::SemaType = .Array(cir::ArrayType {
+        element_type: element_type,
+        capacity: .Slice,
+        span: builtin_func->span,
+    });
+
     builtin_func->ret_type = .Some(ret_type);
     return .Some(ret_type);
 }
@@ -6109,7 +6463,39 @@ fn value_category_of_expr(
         
         case .TupleAccess(tuple_access) => return tuple_access.operand->value_category;
         
-        case .ArrayIndex(array_index) => return array_index.operand->value_category;
+        case .ArrayIndex(array_index) => {
+            switch (array_index.operand->ty) {
+                case .Some(op_ty) => {
+                    switch (*op_ty.const_inner()) {
+                        case .Pointer(inner) => {
+                            if (inner->is_const()) {
+                                return .LValue(.Const);
+                            }
+                            return .LValue(.Var);
+                        }
+                        case .Array(arr_ty) => {
+                            switch (arr_ty.capacity) {
+                                case .Slice | .TerminatedSlice => {
+                                    if (arr_ty.element_type->is_const()) {
+                                        return .LValue(.Const);
+                                    }
+                                    return .LValue(.Var);
+                                }
+                                case .Fixed => {
+                                    if (arr_ty.element_type->is_const()) {
+                                        return .LValue(.Const);
+                                    }
+                                    return array_index.operand->value_category;
+                                }
+                            }
+                        }
+                        else => {}
+                    }
+                }
+                case .None => {}
+            }
+            return array_index.operand->value_category;
+        }
 
         case .Builtin => return .RValue;
 
@@ -6119,6 +6505,7 @@ fn value_category_of_expr(
         | .Lambda
         | .Array
         | .Tuple
+        | .Slice
         | .Dynamic
         | .EnumInit
         | .StructInit

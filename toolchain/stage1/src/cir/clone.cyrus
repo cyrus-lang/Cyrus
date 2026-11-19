@@ -459,6 +459,27 @@ fn clone_expr_kind(
             });
         }
 
+        case .Slice(slice_expr) => {
+            var cloned_start: Option<cir::Expr*> = .None;
+            switch (slice_expr.start) {
+                case .Some(s) => cloned_start = .Some(clone_expr_alloc(allocator, s));
+                case .None => {}
+            }
+
+            var cloned_end: Option<cir::Expr*> = .None;
+            switch (slice_expr.end) {
+                case .Some(e) => cloned_end = .Some(clone_expr_alloc(allocator, e));
+                case .None => {}
+            }
+
+            return .Slice(cir::SliceExpr {
+                operand: clone_expr_alloc(allocator, slice_expr.operand),
+                start: cloned_start,
+                end: cloned_end,
+                span: slice_expr.span,
+            });
+        }
+
         case .TupleAccess(tuple_access) => {
             return .TupleAccess(cir::TupleAccessExpr {
                 operand: clone_expr_alloc(allocator, tuple_access.operand),

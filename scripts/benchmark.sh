@@ -7,7 +7,7 @@ usage() {
     echo "This script executes the provided command and measures its running time"
     echo "using the 'time' utility. It outputs real, user, and sys time."
     echo ""
-    echo "Example: $0 ./my_fibonacci_program"
+    echo "Example: $0 ./program"
     echo "Example: $0 python my_script.py arg1 arg2"
     exit 1
 }
@@ -16,7 +16,7 @@ if [ "$#" -eq 0 ]; then
     usage
 fi
 
-echo "--- Starting Benchmark ---"
+echo "===== Starting Benchmark ====="
 echo "Command to run: $*"
 echo ""
 
@@ -28,4 +28,4 @@ else
 fi
 
 echo ""
-echo "--- Benchmark Finished ---"
+echo "===== Benchmark Finished ====="

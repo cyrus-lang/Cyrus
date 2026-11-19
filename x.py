@@ -1811,17 +1811,7 @@ def run_single_test(
                     md = extract_test_metadata(content)
 
             if has_runtime:
-                if stage == "stage0":
-                    build_and_run_stage0(
-                        cfg,
-                        file_path,
-                        md,
-                        compiler=compiler,
-                        compiler_flags=compiler_flags,
-                        run_number=run_num,
-                        total_runs=repeat,
-                    )
-                elif (
+                if (
                     stage == "stage1"
                     and md.error_annotations
                     and not (
@@ -1837,9 +1827,14 @@ def run_single_test(
                         cfg, file_path, md, compiler=compiler
                     )
                 else:
-                    raise RuntimeError(
-                        "runtime checks (@stdout/@stderr/...) are only supported "
-                        "for stage0 tests (stage1 has no codegen yet)"
+                    build_and_run_stage0(
+                        cfg,
+                        file_path,
+                        md,
+                        compiler=compiler,
+                        compiler_flags=compiler_flags,
+                        run_number=run_num,
+                        total_runs=repeat,
                     )
 
             if repeat > 1:

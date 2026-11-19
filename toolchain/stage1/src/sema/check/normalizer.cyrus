@@ -595,14 +595,7 @@ fn normalize_array(
                 }
             }
         }
-        case .Slice => {
-            diags::report_unimplemented_feature_slice(
-                context->dctx, 
-                context->allocator, 
-                span
-            );
-            return .None;
-        }
+        case .Slice | .TerminatedSlice => {}
     }
 
     switch (normalize_sema_type(

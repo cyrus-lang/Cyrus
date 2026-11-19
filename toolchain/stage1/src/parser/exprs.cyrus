@@ -1178,8 +1178,54 @@ pub struct ParserExprs {
     ) Option<ast::NodeId> {
         self->state->next();
 
+        if (self->state->is(.DoubleDot)) {
+            self->state->next();
+
+            var end_expr: Option<ast::NodeId> = .None;
+            if (!self->state->is(.RightBracket)) {
+                switch (self->parse_expr()) case .Some(e) else {
+                    return .None;
+                }
+                end_expr = .Some(e);
+            }
+
+            if (!self->state->expect(.RightBracket)) {
+                return .None;
+            }
+
+            return .Some(self->create_expr(.Slice(ast::ASTSliceExpr {
+                operand: lhs,
+                start: .None,
+                end: end_expr,
+                span: start.merge(self->state->last_parsed_span()),
+            })));
+        }
+
         switch (self->parse_expr()) case .Some(index) else {
             return .None;
+        }
+
+        if (self->state->is(.DoubleDot)) {
+            self->state->next();
+
+            var end_expr: Option<ast::NodeId> = .None;
+            if (!self->state->is(.RightBracket)) {
+                switch (self->parse_expr()) case .Some(e) else {
+                    return .None;
+                }
+                end_expr = .Some(e);
+            }
+
+            if (!self->state->expect(.RightBracket)) {
+                return .None;
+            }
+
+            return .Some(self->create_expr(.Slice(ast::ASTSliceExpr {
+                operand: lhs,
+                start: .Some(index),
+                end: end_expr,
+                span: start.merge(self->state->last_parsed_span()),
+            })));
         }
 
         if (!self->state->expect(.RightBracket)) {
@@ -2840,11 +2886,38 @@ pub struct ParserExprs {
             var capacity: ast::ASTArrayCapacity = .Dynamic;
 
             if (!self->state->is(.RightBracket)) {
-                switch (self->parse_expr()) case .Some(size_id) else {
-                    return .None;
-                }
+                if (self->state->is(.Colon)) {
+                    self->state->next();
 
-                capacity = .Fixed(size_id);
+                    const tok = self->state->current();
+                    var is_zero = false;
+                    switch (*tok->kind) {
+                        case .Literal(.Integer { value, .. }) => switch (value) {
+                            case .Unsigned(raw) => is_zero = raw == 0;
+                            case .Signed(raw) => is_zero = raw == 0;
+                        }
+                        else => {}
+                    }
+
+                    if (!is_zero) {
+                        self->state->dctx->report(Diag.new(
+                            self->state->allocator,
+                            .Error,
+                            "only ':0' sentinel-terminated slices are supported",
+                            self->state->current_span()
+                        ));
+                        return .None;
+                    }
+
+                    self->state->next();
+                    capacity = .TerminatedSlice;
+                } else {
+                    switch (self->parse_expr()) case .Some(size_id) else {
+                        return .None;
+                    }
+
+                    capacity = .Fixed(size_id);
+                }
             }
 
             dims.push(capacity);

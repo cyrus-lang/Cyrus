@@ -919,6 +919,17 @@ pub fn is_assignable_to(
                         return false;
                     }
 
+                    switch (array_type2.capacity) {
+                        case .Slice | .TerminatedSlice => {
+                            if (array_type1.element_type->is_const() && 
+                                !array_type2.element_type->is_const()) 
+                            {
+                                return false;
+                            }
+                        }
+                        case .Fixed => {}
+                    }
+
                     return is_assignable_to(context, 
                         *array_type1.element_type,
                         *array_type2.element_type,
@@ -927,13 +938,19 @@ pub fn is_assignable_to(
                 }
                 
                 // Array-to-pointer decay
+                // (fixed arrays and zero-terminated slices)
                 case .Pointer(inner) => {
-                    return is_assignable_to(
-                        context, 
-                        *array_type1.element_type, 
-                        *inner, 
-                        span
-                    );
+                    switch (array_type1.capacity) {
+                        case .Fixed | .TerminatedSlice => {
+                            return is_assignable_to(
+                                context, 
+                                *array_type1.element_type, 
+                                *inner, 
+                                span
+                            );
+                        }
+                        case .Slice => return false;
+                    }
                 }
 
                 else => return false;
@@ -1568,6 +1585,7 @@ fn is_const_str_assignable_to_array(
                         context->registry, 
                         value_capacity
                     );
+
                     const target = ciri::fold_const_expr_int(
                         context->decl_tables, 
                         context->registry, 
@@ -1588,10 +1606,22 @@ fn is_const_str_assignable_to_array(
                         case .None => return false;
                     }
                 }
-                case .Slice => return false;
+                case .TerminatedSlice => return false;
+                case .Slice => return true;
             }
         }
-        case .Slice => return false;
+        case .Slice => {
+            switch (target_type->capacity) {
+                case .Fixed | .TerminatedSlice => return false;
+                case .Slice => return true;
+            }
+        }
+        case .TerminatedSlice => {
+            switch (target_type->capacity) {
+                case .Slice | .TerminatedSlice => return true;
+                case .Fixed => return false;
+            }
+        }
     }
 }
 

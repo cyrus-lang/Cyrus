@@ -1,0 +1,18 @@
+// @stdout: arr=10,30 slice=20,40 sub=30,40
+
+import std::libc{printf};
+
+pub fn main() {
+    var arr = int32[5] {10, 20, 30, 40, 50};
+
+    const ptr: int32* = @ptr(arr);
+    printf("arr=%d,%d ", ptr[0], ptr[2]);
+
+    const slice: int32[] = arr[1..4];
+    const slice_ptr: int32* = @ptr(slice);
+    printf("slice=%d,%d ", slice_ptr[0], slice_ptr[2]);
+
+    const sub: int32[] = slice[1..];
+    const sub_ptr: int32* = @ptr(sub);
+    printf("sub=%d,%d", sub_ptr[0], sub_ptr[1]);
+}
