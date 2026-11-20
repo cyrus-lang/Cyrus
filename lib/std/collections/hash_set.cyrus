@@ -101,6 +101,7 @@ pub struct HashSet<K>{
         self->reserve(1);
 
         const mask = self->cap - 1;
+
         var index = @cast(usize, hash) & mask;
         var first_tombstone: Option<usize> = .None;
         var entries = self->entries.data();
@@ -283,7 +284,7 @@ pub struct HashSetIterOwned<K> : IterOwned<K> {
     map: HashSet<K>*,
     index: usize,
 
-    pub fn next(self: Self*) Option<K> {
+    pub fn next_owned(self: Self*) Option<K> {
         const cap = self->map->cap();
         const entries_data = self->map->entries_data_const();
 
@@ -294,6 +295,7 @@ pub struct HashSetIterOwned<K> : IterOwned<K> {
             if (entry->state == .Occupied) {
                 switch (entry->key) {
                     case .Some(key) => return .Some(key);
+                    case .None => {}
                 }
             }
         }

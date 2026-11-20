@@ -5,8 +5,8 @@ import std::libc{printf};
 pub fn main() {
     var accum: int32 = 0;
     var base: int32 = 10;
-    var arr: int32[10] = int32[10]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    var p: int32* = &arr[0];
+    var array: int32[10] = int32[10]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    var p: int32* = &array[0];
 
     var i: int32 = 0;
     while (i < 10) {

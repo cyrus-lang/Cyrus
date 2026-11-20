@@ -4,7 +4,7 @@ const a = &value;
 const b = *ptr;
 const c = &obj.field;
 const d = **pp;
-const e = *arr[0];
+const e = *array[0];
 
 /*@parse
 ASTProgram
@@ -70,7 +70,7 @@ ASTProgram
                         ASTExpr::ArrayIndex
                             operand:
                                 ASTExpr::Ident
-                                    ident: arr
+                                    ident: array
                             index:
                                 ASTExpr::Literal
                                     value: 0

@@ -1,0 +1,11 @@
+pub fn main() {
+    var array = int32[2] { 1, 2 };
+
+    for (x : array) {    
+        x = 5; //~ ERROR cannot assign to immutable
+    }
+
+    for (p : &array) {
+        *p = 5; //~ ERROR cannot assign to immutable
+    }
+}

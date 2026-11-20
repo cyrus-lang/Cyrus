@@ -861,7 +861,7 @@ pub struct TypeContext {
 
         var tag_iter = self->enum_tags.iter_owned();
         while (true) {
-            switch (tag_iter.next()) {
+            switch (tag_iter.next_owned()) {
                 case .Some(entry) => {
                     var tags = entry.1;
                     tags.free();

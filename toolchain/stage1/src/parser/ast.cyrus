@@ -74,11 +74,20 @@ fn free_node(node: ASTNode*) {
         case .DestructTuple(var n) => free_destruct_pattern(&n.pat);
         case .Switch(var n) => free_switch_cases(&n.cases);
         case .Import(var n) => free_segments(&n.segments);
-        case .Builtin(var n) => free_builtin(&n);
         case .Var(var n) => free_option_type(&n.ty);
+        case .Builtin(var n) => free_builtin(&n);
         case .If(var n) => n.branches.free();
         case .Expr(var n) => free_expr(&n);
         case .Type(var n) => free_type(&n);
+        
+        case .Foreach(var n) => {
+            switch (n.index) {
+                case .Some(var pattern) => free_destruct_pattern(&pattern);
+                else => {}
+            }
+
+            free_destruct_pattern(&n.item);
+        }
 
         case .InlineAsm(var n) => {
             free_asm_template(&n.template);
@@ -120,9 +129,13 @@ fn free_node(node: ASTNode*) {
             free_opt_repr_attr(&n.modifiers.repr_attr);
         }
 
-        case .TypeAlias(var n) => free_generic_params(&n.generic_params);
+        case .TypeAlias(var n) => {
+            free_generic_params(&n.generic_params);
+        }
 
-        case .FuncType(var n) => n.params.list.free();
+        case .FuncType(var n) => {
+            n.params.list.free();
+        }
 
         case .Interface(var n) => {
             n.methods.free();
@@ -173,6 +186,17 @@ pub fn free_asm_clobbers(clobbers: Vec<ASTAsmClobber>*) {
     clobbers->free();
 }
 
+pub fn free_destruct_struct_fields(fields: Vec<ASTDestructStructField>*) {
+    for (var i: usize = 0; i < fields->len(); i += 1) {
+        switch (fields->get(i)) {
+            case .Some(field) => free_destruct_pattern(&field->pattern);
+            else => {}
+        }
+    }
+
+    fields->free();
+}
+
 pub fn free_destruct_kind(kind: ASTDestructTuplePatternKind*) {
     switch (*kind) {
         case .Tuple(var patterns) => {
@@ -184,6 +208,9 @@ pub fn free_destruct_kind(kind: ASTDestructTuplePatternKind*) {
             }
 
             patterns.free();
+        }
+        case .Struct { var fields, .. } => {
+            free_destruct_struct_fields(&fields);
         }
         else => {}
     }
@@ -491,6 +518,7 @@ pub enum ASTNode {
     Enum(ASTEnum),
     Var(ASTVar),
     For(ASTFor),
+    Foreach(ASTForeach),
     If(ASTIf),
 
     pub fn vis(self: const Self*) Option<ASTVisibility> {
@@ -954,6 +982,14 @@ pub struct ASTFor {
     pub span: Span,
 }
 
+pub struct ASTForeach {
+    pub index: Option<ASTDestructTuplePattern>,
+    pub item: ASTDestructTuplePattern,
+    pub iterable: NodeId,
+    pub body: NodeId,
+    pub span: Span,
+}
+
 pub struct ASTWhile {
     pub condition: NodeId,
     pub body: NodeId,
@@ -1059,8 +1095,18 @@ pub struct ASTDestructTuplePattern {
     pub span: Span,
 }
 
+pub struct ASTDestructStructField {
+    pub name: ASTIdent,
+    pub pattern: ASTDestructTuplePattern,
+    pub span: Span,
+}
+
 pub enum ASTDestructTuplePatternKind {
     Tuple(Vec<ASTDestructTuplePattern>),
+    Struct {
+        fields: Vec<ASTDestructStructField>,
+        ignore: bool,
+    },
     Ident(ASTIdent),
     Ignore,
 }

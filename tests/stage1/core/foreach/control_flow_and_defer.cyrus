@@ -1,0 +1,81 @@
+// @stdout: arr_res=1:20,3:40 seq=6,15 iter=0:10,2:30 def=d1,d2,end
+
+import std::libc{printf};
+import std::iterator{IterOwned};
+import std::option{Option};
+
+struct Counter : IterOwned<int32> {
+    pub cur: int32,
+    pub max: int32,
+
+    pub fn next_owned(self: Self*) Option<int32> {
+        if (self->cur >= self->max) {
+            return .None;
+        }
+        const v = self->cur;
+        self->cur += 10;
+        return .Some(v);
+    }
+}
+
+pub fn main() {
+    var first = true;
+    printf("arr_res=");
+    for (i, x : int32[5] { 10, 20, 30, 40, 50 }) {
+        if (i == 0 || i == 2) {
+            continue;
+        }
+        if (i == 4) {
+            break;
+        }
+        if (!first) {
+            printf(",");
+        }
+        printf("%zu:%d", i, x);
+        first = false;
+    }
+    printf(" ");
+
+    var sum1: int32 = 0;
+    for (x : int32[3] { 1, 2, 3 }) {
+        sum1 += x;
+    }
+    var sum2: int32 = 0;
+    for (x : int32[2] { 7, 8 }) {
+        sum2 += x;
+    }
+    printf("seq=%d,%d ", sum1, sum2);
+
+    var c = Counter { cur: 10, max: 50 };
+    first = true;
+    printf("iter=");
+    for (i, x : &c) {
+        if (i == 1) {
+            continue;
+        }
+        if (i == 3) {
+            break;
+        }
+        if (!first) {
+            printf(",");
+        }
+        printf("%zu:%d", i, x);
+        first = false;
+    }
+    printf(" ");
+
+    printf("def=");
+    for (i, _ : int32[3] { 1, 2, 3 }) {
+        defer {
+            if (i == 0) {
+                printf("d1,");
+            } else if (i == 1) {
+                printf("d2,");
+            }
+        }
+        if (i == 1) {
+            break;
+        }
+    }
+    printf("end\n");
+}

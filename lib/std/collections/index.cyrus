@@ -406,7 +406,7 @@ pub struct VecIterConst<T> : IterConst<T> {
     vec: const Vec<T>*,
     idx: usize,
 
-    pub fn next(self: Self*) Option<const T*> {
+    pub fn next_const(self: Self*) Option<const T*> {
         if (self->idx + 1 > self->vec->len()) {
             return .None;
         }
@@ -417,11 +417,11 @@ pub struct VecIterConst<T> : IterConst<T> {
     }
 }
 
-pub struct VecIterOwned<T> : IterConst<T> {
+pub struct VecIterOwned<T> : IterOwned<T> {
     vec: const Vec<T>*,
     idx: usize,
 
-    pub fn next(self: Self*) Option<T> {
+    pub fn next_owned(self: Self*) Option<T> {
         if (self->idx + 1 > self->vec->len()) {
             return .None;
         }

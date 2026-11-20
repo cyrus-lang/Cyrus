@@ -319,6 +319,12 @@ fn resolve_stmt(
                 case .None => return .None;
             }
         }
+        case .Foreach(foreach_stmt) => {
+            switch (resolve_foreach_stmt(ctx, program, &foreach_stmt)) {
+                case .Some(stmt) => return .Some(cir::Stmt.new(.Foreach(stmt)));
+                case .None => return .None;
+            }
+        }
         case .While(while_stmt) => {
             switch (resolve_while_stmt(ctx, program, &while_stmt)) {
                 case .Some(stmt) => return .Some(cir::Stmt.new(.While(stmt)));
@@ -832,6 +838,7 @@ fn node_span(
         case .Enum(n) => return n.span;
         case .Var(n) => return n.span;
         case .For(n) => return n.span;
+        case .Foreach(n) => return n.span;
         case .If(n) => return n.span;
         case .Continue(n) => return n.span;
         case .Builtin(.BuiltinFunc(n)) => return n.span;
@@ -1046,17 +1053,17 @@ fn resolve_export_pattern(
     pattern: const ast::ASTDestructTuplePattern*,
     var is_const: bool
 ) Option<cir::TupleExportPattern> {
+    switch (pattern->bind) {
+        case .Some(.Const) => is_const = true;
+        case .Some(.Var) => is_const = false;
+        else => {}
+    }
+
     var kind: cir::TupleExportPatternKind = .Ignore;
 
     switch (pattern->kind) {
         case .Ident(ident) => {
             const name = ident.str.as_str_const();
-
-            switch (pattern->bind) {
-                case .Some(.Const) => is_const = true;
-                case .Some(.Var) => is_const = false;
-                else => {}
-            }
 
             const var_decl_id = insert_variable_decl(
                 ctx,
@@ -1086,6 +1093,26 @@ fn resolve_export_pattern(
             }
 
             kind = .Tuple(typed_patterns);
+        }
+        case .Struct { fields, ignore } => {
+            var typed_fields: Vec<cir::StructExportPatternField> = Vec.new(ctx->allocator);
+
+            for (var i: usize = 0; i < fields.len(); i += 1) {
+                const field = fields.get_const(i).unwrap();
+
+                switch (resolve_export_pattern(ctx, program, &field->pattern, is_const)) {
+                    case .Some(typed_pattern) => {
+                        typed_fields.push(cir::StructExportPatternField {
+                            name: field->name,
+                            pattern: typed_pattern,
+                            span: field->span,
+                        });
+                    }
+                    case .None => return .None;
+                }
+            }
+
+            kind = .Struct { fields: typed_fields, ignore };
         }
         else => {}
     }
@@ -1226,6 +1253,66 @@ fn resolve_for_stmt(
                 increment,
                 body: alloc_init(ctx->allocator, body),
                 span: for_stmt->span,
+            });
+        }
+        case .None => {
+            ctx->exit_local_scope();
+            return .None;
+        }
+    }
+}
+
+fn resolve_foreach_stmt(
+    ctx: TraverseContext*,
+    program: const ast::ASTProgram*,
+    foreach_stmt: const ast::ASTForeach*
+) Option<cir::ForeachStmt> {
+    const iterable = resolve_expr_or_poisoned(
+        ctx,
+        program,
+        foreach_stmt->iterable,
+        foreach_stmt->span
+    );
+
+    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+
+    var index_pattern: Option<cir::TupleExportPattern> = .None;
+
+    switch (foreach_stmt->index) {
+        case .Some(idx_pat) => {
+            switch (resolve_export_pattern(ctx, program, &idx_pat, true)) {
+                case .Some(resolved) => index_pattern = .Some(resolved);
+                case .None => {
+                    ctx->exit_local_scope();
+                    return .None;
+                }
+            }
+        }
+        case .None => {}
+    }
+
+    var item_pattern: cir::TupleExportPattern;
+
+    switch (resolve_export_pattern(ctx, program, &foreach_stmt->item, true)) {
+        case .Some(resolved) => item_pattern = resolved;
+        case .None => {
+            ctx->exit_local_scope();
+            return .None;
+        }
+    }
+
+    switch (resolve_block_node(ctx, program, foreach_stmt->body)) {
+        case .Some(body) => {
+            ctx->exit_local_scope();
+
+            return .Some(cir::ForeachStmt {
+                index_pattern,
+                item_pattern,
+                iterable,
+                body: alloc_init(ctx->allocator, body),
+                kind: .Unresolved,
+                element_type: .None,
+                span: foreach_stmt->span,
             });
         }
         case .None => {

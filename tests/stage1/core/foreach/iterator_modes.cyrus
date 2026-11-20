@@ -1,0 +1,135 @@
+// @stdout: owned=1:10,2:20,3:30 const_ref=1:10,2:20,3:30 mut_ptr=1:11,2:21,3:31 explicit_const=1:11,2:21,3:31 destruct=1:12,2:22,3:32 dyn=1:11,2:21,3:31 c_only=9,8
+
+import std::libc{printf};
+import std::iterator{Iter, IterConst, IterOwned};
+import std::option{Option};
+
+struct KeyValuePair<K, V> {
+    pub key: K,
+    pub value: V,
+}
+
+struct FixedBag<T> : Iter<T>, IterConst<T>, IterOwned<T> {
+    pub items: T[3],
+    pub index: usize,
+
+    pub fn new(a: T, b: T, c: T) Self {
+        return FixedBag<T> {
+            items: T[3] { a, b, c },
+            index: 0,
+        };
+    }
+
+    pub fn next(self: Self*) Option<T*> {
+        if (self->index >= 3) {
+            return .None;
+        }
+        const i = self->index;
+        self->index += 1;
+        return .Some(&self->items[i]);
+    }
+
+    pub fn next_const(self: Self*) Option<const T*> {
+        if (self->index >= 3) {
+            return .None;
+        }
+        const i = self->index;
+        self->index += 1;
+        return .Some(&self->items[i]);
+    }
+
+    pub fn next_owned(self: Self*) Option<T> {
+        if (self->index >= 3) {
+            return .None;
+        }
+        const i = self->index;
+        self->index += 1;
+        return .Some(self->items[i]);
+    }
+}
+
+struct ConstOnly : IterConst<int32> {
+    pub data: int32[2],
+    pub pos: usize,
+
+    pub fn next_const(self: Self*) Option<const int32*> {
+        if (self->pos >= 2) {
+            return .None;
+        }
+        const i = self->pos;
+        self->pos += 1;
+        return .Some(&self->data[i]);
+    }
+}
+
+pub fn main() {
+    var bag = FixedBag.new(
+        KeyValuePair { key: 1, value: 10 },
+        KeyValuePair { key: 2, value: 20 },
+        KeyValuePair { key: 3, value: 30 }
+    );
+
+    printf("owned=");
+    for (i, item : bag) {
+        if (i > 0) { printf(","); }
+        printf("%d:%d", item.key, item.value);
+    }
+    printf(" ");
+
+    bag.index = 0;
+    printf("const_ref=");
+    for (i, item : &bag) {
+        if (i > 0) { printf(","); }
+        printf("%d:%d", item->key, item->value);
+    }
+    printf(" ");
+
+    bag.index = 0;
+    for (var item : &bag) {
+        item->value += 1;
+    }
+    bag.index = 0;
+    printf("mut_ptr=");
+    for (i, item : &bag) {
+        if (i > 0) { printf(","); }
+        printf("%d:%d", item->key, item->value);
+    }
+    printf(" ");
+
+    bag.index = 0;
+    const c_bag = bag;
+    printf("explicit_const=");
+    for (i, item : &c_bag) {
+        if (i > 0) { printf(","); }
+        printf("%d:%d", item->key, item->value);
+    }
+    printf(" ");
+
+    const c_bag2 = bag;
+    printf("destruct=");
+    for (i, const { key: k, value: var v } : &c_bag2) {
+        v += 1;
+        if (i > 0) { printf(","); }
+        printf("%d:%d", k, v);
+    }
+    printf(" ");
+
+    // 6. Interface fat pointer (`IterConst<T>`)
+    var bag_for_dyn = c_bag;
+    bag_for_dyn.index = 0;
+    var iface: IterConst<KeyValuePair<int32, int32>> = dynamic bag_for_dyn;
+    printf("dyn=");
+    for (i, p : iface) {
+        if (i > 0) { printf(","); }
+        printf("%d:%d", p->key, p->value);
+    }
+    printf(" ");
+
+    var const_only = ConstOnly { data: int32[2] { 9, 8 }, pos: 0 };
+    printf("c_only=");
+    for (i, var p : &const_only) {
+        if (i > 0) { printf(","); }
+        printf("%d", *p);
+    }
+    printf("\n");
+}

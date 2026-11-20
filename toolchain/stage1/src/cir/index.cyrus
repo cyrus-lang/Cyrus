@@ -2648,6 +2648,7 @@ pub enum StmtKind {
     FuncDecl(FuncDeclStmt),
     FuncDef(FuncDefStmt),
     InlineAsm(InlineAsm),
+    Foreach(ForeachStmt),
     Typedef(TypedefStmt),
     BlockStmt(BlockStmt),
     Switch(SwitchStmt),
@@ -2679,6 +2680,7 @@ pub enum StmtKind {
             case .FuncDef(typed_func_def) => return typed_func_def.span;
             case .Builtin(typed_builtin) => return typed_builtin.span();
             case .Goto(typed_goto_stmt) => return typed_goto_stmt.span;
+            case .Foreach(typed_foreach) => return typed_foreach.span;
             case .Typedef(typed_typedef) => return typed_typedef.span;
             case .Switch(typed_switch) => return typed_switch.span;
             case .Return(typed_return) => return typed_return.span;
@@ -2730,8 +2732,18 @@ pub struct TupleExportPattern {
     }
 }
 
+pub struct StructExportPatternField {
+    pub name: ast::ASTIdent,
+    pub pattern: TupleExportPattern,
+    pub span: Span,
+}
+
 pub enum TupleExportPatternKind {
     Tuple(Vec<TupleExportPattern>),
+    Struct {
+        fields: Vec<StructExportPatternField>,
+        ignore: bool,
+    },
     Ident(VarDeclId),
     Ignore,
 }
@@ -3113,6 +3125,35 @@ pub struct ForStmt {
     pub cond: Option<Expr>,
     pub increment: Option<Expr>,
     pub body: BlockStmt*,
+    pub span: Span,
+}
+
+pub enum ForeachKind {
+    Unresolved,
+    Array {
+        by_pointer: bool,
+        is_mut_ptr: bool,
+    },
+    Slice {
+        by_pointer: bool,
+        is_mut_ptr: bool,
+    },
+    Iterator {
+        next_dispatch: MethodCallDispatch,
+        option_type: SemaType,
+        element_type: SemaType,
+        pass_by_addr: bool,
+        is_interface_fat_ptr: bool,
+    },
+}
+
+pub struct ForeachStmt {
+    pub index_pattern: Option<TupleExportPattern>,
+    pub item_pattern: TupleExportPattern,
+    pub iterable: Expr,
+    pub body: BlockStmt*,
+    pub kind: ForeachKind,
+    pub element_type: Option<SemaType>,
     pub span: Span,
 }
 

@@ -11,8 +11,8 @@ pub fn main() {
     }
 
     {
-        const arr: int32[10];
-        var ptr: const int32* = &arr[0];
+        const array: int32[10];
+        var ptr: const int32* = &array[0];
         var ptr2: const int32* = ptr + 5;
 
         *ptr2 = 99;

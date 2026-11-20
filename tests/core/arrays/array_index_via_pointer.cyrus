@@ -3,14 +3,14 @@
 import std::libc{printf};
 
 pub fn main() {
-    var arr: int32[10] = undefined;
+    var array: int32[10] = undefined;
     var i: int32 = 0;
     while (i < 10) {
-        arr[i] = i;
+        array[i] = i;
         i += 1;
     }
 
-    var ptr: int32* = &arr[0];
+    var ptr: int32* = &array[0];
     i = 0;
     while (i < 10) {
         printf("%d ", ptr[i]);

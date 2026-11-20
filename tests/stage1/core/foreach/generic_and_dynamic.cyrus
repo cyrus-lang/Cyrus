@@ -1,0 +1,102 @@
+// @stdout: gen_arr=60 gen_bag=6 dyn_iter=10,20 dyn_owned=30,40 tuple_idx=0:(1,2);1:(3,4)
+
+import std::iterator{Iter, IterOwned};
+import std::option{Option};
+import std::libc{printf};
+
+struct PairBox<T> : IterOwned<T> {
+    pub items: T[2],
+    pub pos: usize,
+
+    pub fn next_owned(self: Self*) Option<T> {
+        if (self->pos >= 2) {
+            return .None;
+        }
+        const i = self->pos;
+        self->pos += 1;
+        return .Some(self->items[i]);
+    }
+}
+
+struct MutBox : Iter<int32> {
+    pub items: int32[2],
+    pub pos: usize,
+
+    pub fn next(self: Self*) Option<int32*> {
+        if (self->pos >= 2) {
+            return .None;
+        }
+        const i = self->pos;
+        self->pos += 1;
+        return .Some(&self->items[i]);
+    }
+}
+
+struct Holder<A, B> {
+    pub a: A,
+    pub b: B,
+}
+
+fn sum_slice<T>(items: T[]) T {
+    var sum: T = 0;
+
+    for (x : items) {
+        sum += x;
+    }
+
+    return sum;
+}
+
+fn sum_box<T>(box: PairBox<T>) T {
+    var sum: T = 0;
+
+    for (x : box) {
+        sum += x;
+    }
+
+    return sum;
+}
+
+pub fn main() {
+    const array = int32[3] { 10, 20, 30 };
+    printf("gen_arr=%d ", sum_slice(array[..]));
+
+    const pair_box = PairBox<int32> {
+        items: int32[2] { 2, 4 }, 
+        pos: 0 
+    };
+    printf("gen_bag=%d ", sum_box(pair_box));
+
+    // Iter<int32> dynamic fat pointer
+    var mut_box = MutBox { items: int32[2] { 5, 10 }, pos: 0 };
+    var mut_iter: Iter<int32> = dynamic mut_box;
+    for (p : mut_iter) {
+        *p *= 2;
+    }
+    printf("dyn_iter=%d,%d ", 
+        mut_box.items[0], 
+        mut_box.items[1]
+    );
+
+    // IterOwned<int32> dynamic fat pointer
+    var pair_box2 = PairBox<int32> { items: int32[2] { 30, 40 }, pos: 0 };
+    var owned_it: IterOwned<int32> = dynamic pair_box2;
+    printf("dyn_owned=");
+    for (i, x : owned_it) {
+        if (i > 0) { printf(","); }
+        printf("%d", x);
+    }
+    printf(" ");
+
+    // Generic struct + tuple destructuring inside foreach
+    const holder = Holder<int32, (int32, int32)>[2] {
+        Holder<int32, (int32, int32)> { a: 1, b: (1, 2) },
+        Holder<int32, (int32, int32)> { a: 2, b: (3, 4) },
+    };
+    printf("tuple_idx=");
+    for (i, const { a: _, b: (lx, ly) } : holder) {
+        if (i > 0) { printf(";"); }
+        printf("%zu:(%d,%d)", i, lx, ly);
+    }
+    printf("\n");
+}

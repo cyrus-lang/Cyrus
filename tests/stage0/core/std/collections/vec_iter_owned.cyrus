@@ -17,11 +17,11 @@ pub fn main() {
 
     const iter = vec.iter_owned();
 
-    printf("%d ", iter.next().unwrap());
-    printf("%d ", iter.next().unwrap());
-    printf("%d ", iter.next().unwrap());
+    printf("%d ", iter.next_owned().unwrap());
+    printf("%d ", iter.next_owned().unwrap());
+    printf("%d ", iter.next_owned().unwrap());
 
-    switch (iter.next()) {
+    switch (iter.next_owned()) {
         case .None => printf("none\n");
         else => {}
     }

@@ -1,0 +1,36 @@
+import std::iterator{Iter, IterConst, IterOwned};
+import std::option{Option};
+
+struct Bag : Iter<int32>, IterConst<int32>, IterOwned<int32> {
+    pub items: int32[2],
+    pub pos: usize,
+
+    pub fn next(self: Self*) Option<int32*> {
+        if (self->pos >= 2) { return .None; }
+        const i = self->pos;
+        self->pos += 1;
+        return .Some(&self->items[i]);
+    }
+
+    pub fn next_const(self: Self*) Option<const int32*> {
+        if (self->pos >= 2) { return .None; }
+        const i = self->pos;
+        self->pos += 1;
+        return .Some(&self->items[i]);
+    }
+
+    pub fn next_owned(self: Self*) Option<int32> {
+        if (self->pos >= 2) { return .None; }
+        const i = self->pos;
+        self->pos += 1;
+        return .Some(self->items[i]);
+    }
+}
+
+pub fn main() {
+    const array = int32[2] { 1, 2 };
+    for (var p : &array) {} //~ ERROR cannot mutably iterate over constant type
+    
+    const bag = Bag { items: int32[2] { 1, 2 }, pos: 0 };
+    for (var p : &bag) {} //~ ERROR cannot mutably iterate over constant type
+}

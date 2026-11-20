@@ -34,6 +34,7 @@ import .::types{
     write_union_back,
     write_enum_back,
     check_align,
+    is_const_qualified_lvalue,
 };
 import .::specialize{
     apply_self_type_in_method_decl_and_variable,
@@ -57,6 +58,7 @@ import .::exprs{
     tuple_access_expr,
     analyze_cond_expr,
     resolve_try_impl,
+    resolve_iterator_impl,
     analyze_expr,
 };
 import .::normalizer{
@@ -71,6 +73,7 @@ import sema::context{
     AnalyzerContext, 
 };
 import tokens{Span};
+import sema::generics;
 import sema::format;
 import sema::diags;
 import parser::ast;
@@ -676,6 +679,12 @@ fn analyze_stmt(
         case .For(var for_) => {
             const flow = analyze_for_loop(context, &for_);
             stmt->kind = .For(for_);
+            return flow;
+        }
+
+        case .Foreach(var foreach_) => {
+            const flow = analyze_foreach_loop(context, &foreach_);
+            stmt->kind = .Foreach(foreach_);
             return flow;
         }
 
@@ -2318,6 +2327,330 @@ fn analyze_for_loop(
     return .Reachable;
 }
 
+fn analyze_foreach_loop(
+    context: AnalyzerContext*,
+    foreach_: cir::ForeachStmt*
+) flow::FlowState {
+    switch (foreach_->index_pattern) {
+        case .Some(index_pattern) => {
+            switch (index_pattern.ty) {
+                case .Some(explicit_type) => {
+                    const usize_type: cir::SemaType = .Plain(.USize);
+
+                    if (!is_assignable_to(context, usize_type, explicit_type, index_pattern.span)) {
+                        var lhs_str = format::format_sema_type(
+                            context->allocator,
+                            context->decl_tables,
+                            &explicit_type
+                        );
+                        var rhs_str = format::format_sema_type(
+                            context->allocator,
+                            context->decl_tables,
+                            &usize_type
+                        );
+                        
+                        diags::report_assignment_type_mismatch(
+                            context->dctx,
+                            context->allocator,
+                            index_pattern.span,
+                            lhs_str.as_str_const(),
+                            rhs_str.as_str_const()
+                        );
+                        
+                        lhs_str.free();
+                        rhs_str.free();
+                    }
+                }
+                case .None => {}
+            }
+
+            switch (index_pattern.kind) {
+                case .Ident(var_decl_id) => {
+                    var is_index_const = true;
+
+                    switch (index_pattern.constness) {
+                        case .Some(.Var) => is_index_const = false;
+                        else => {}
+                    }
+                    
+                    const usize_type: cir::SemaType = .Plain(.USize);
+                    
+                    analyze_tuple_ident_pattern(
+                        context,
+                        var_decl_id,
+                        &usize_type,
+                        .None,
+                        is_index_const
+                    );
+                }
+
+                case .Tuple | .Struct => {
+                    diags::report_invalid_foreach_index_pattern(
+                        context->dctx,
+                        context->allocator,
+                        index_pattern.span
+                    );
+
+                    poison_tuple_export_pattern(
+                        context, 
+                        &index_pattern, 
+                        index_pattern.span
+                    );
+                }
+
+                case .Ignore => {}
+            }
+        }
+        case .None => {}
+    }
+
+    var is_item_var = false;
+
+    switch (foreach_->item_pattern.constness) {
+        case .Some(.Var) => is_item_var = true;
+        else => {}
+    }
+
+    if (analyze_expr(context, &foreach_->iterable, .None).is_none()) {
+        poison_tuple_export_pattern(
+            context, 
+            &foreach_->item_pattern, 
+            foreach_->item_pattern.span
+        );
+        context->control_region_stack.push(.Loop);
+        analyze_block_stmt(context, foreach_->body);
+        context->control_region_stack.pop();
+        return .Reachable;
+    }
+
+    var iterable_type: cir::SemaType = .Placeholder;
+
+    switch (foreach_->iterable.ty) {
+        case .Some(ty_val) => iterable_type = ty_val;
+        case .None => {
+            poison_tuple_export_pattern(
+                context, 
+                &foreach_->item_pattern, 
+                foreach_->item_pattern.span
+            );
+            context->control_region_stack.push(.Loop);
+            analyze_block_stmt(context, foreach_->body);
+            context->control_region_stack.pop();
+            return .Reachable;
+        }
+    }
+
+    if (iterable_type.contains_error()) {
+        poison_tuple_export_pattern(
+            context, 
+            &foreach_->item_pattern, 
+            foreach_->item_pattern.span
+        );
+        context->control_region_stack.push(.Loop);
+        analyze_block_stmt(context, foreach_->body);
+        context->control_region_stack.pop();
+        return .Reachable;
+    }
+
+    const expand = expand_sema_type(
+        context, 
+        iterable_type, 
+        foreach_->iterable.span
+    );
+    const stripped = *expand.const_inner();
+
+    var array_opt: Option<cir::ArrayType> = .None;
+    var ptr_is_const = false;
+    var by_pointer = false;
+
+    switch (stripped) {
+        case .Array(array) => {
+            array_opt = .Some(array);
+            by_pointer = false;
+        }
+        case .Pointer(pointee) => {
+            const expand = expand_sema_type(
+                context,
+                *pointee->const_inner(),
+                foreach_->iterable.span
+            );
+
+            switch (expand) {
+                case .Array(array) => {
+                    ptr_is_const = pointee->is_const();
+                    array_opt = .Some(array);
+                    by_pointer = true;
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    var element_type: cir::SemaType = .Placeholder;
+    var has_element_type = false;
+
+    switch (array_opt) {
+        case .Some(array) => {
+            var is_fixed = false;
+
+            switch (array.capacity) {
+                case .Slice | .TerminatedSlice => {}
+                case .Fixed => is_fixed = true;
+            }
+
+            const element_inner = *array.element_type->const_inner();
+            
+            const is_target_const = 
+                iterable_type.is_const() ||
+                ptr_is_const ||
+                array.element_type->is_const();
+
+            if (by_pointer) {
+                if (is_item_var) {
+                    if (is_target_const) {
+                        var type_str = format::format_sema_type(
+                            context->allocator,
+                            context->decl_tables,
+                            &iterable_type
+                        );
+
+                        diags::report_cannot_mutably_iterate_const(
+                            context->dctx,
+                            context->allocator,
+                            foreach_->iterable.span,
+                            type_str.as_str_const()
+                        );
+
+                        poison_tuple_export_pattern(
+                            context, 
+                            &foreach_->item_pattern, 
+                            foreach_->item_pattern.span
+                        );
+                        type_str.free();
+                    } else {
+                        element_type = .Pointer(alloc_init(context->allocator, element_inner));
+                        has_element_type = true;
+
+                        if (is_fixed) {
+                            foreach_->kind = .Array { by_pointer: true, is_mut_ptr: true };
+                        } else {
+                            foreach_->kind = .Slice { by_pointer: true, is_mut_ptr: true };
+                        }
+                    }
+                } else {
+                    const const_element: cir::SemaType = .Const(alloc_init(context->allocator, element_inner));
+
+                    element_type = .Pointer(alloc_init(context->allocator, const_element));
+                    has_element_type = true;
+                    
+                    if (is_fixed) {
+                        foreach_->kind = .Array { by_pointer: true, is_mut_ptr: false };
+                    } else {
+                        foreach_->kind = .Slice { by_pointer: true, is_mut_ptr: false };
+                    }
+                }
+            } else {
+                element_type = element_inner;
+                has_element_type = true;
+
+                if (is_fixed) {
+                    foreach_->kind = .Array { by_pointer: false, is_mut_ptr: false };
+                } else {
+                    foreach_->kind = .Slice { by_pointer: false, is_mut_ptr: false };
+                }
+            }
+        }
+        case .None => {
+            const before_diags = context->dctx->diag_count();
+
+            switch (resolve_iterator_impl(
+                context,
+                &foreach_->iterable,
+                &iterable_type,
+                is_item_var,
+                foreach_->iterable.span
+            )) {
+                case .Some(resolved) => {
+                    element_type = resolved.element_type;
+                    has_element_type = true;
+
+                    foreach_->kind = .Iterator {
+                        next_dispatch: resolved.next_dispatch,
+                        option_type: resolved.option_type,
+                        element_type: resolved.element_type,
+                        pass_by_addr: resolved.pass_by_addr,
+                        is_interface_fat_ptr: resolved.is_interface_fat_ptr,
+                    };
+                }
+                case .None => {
+                    if (!context->dctx->has_errors_since(before_diags)) {
+                        var type_str = format::format_sema_type(
+                            context->allocator,
+                            context->decl_tables,
+                            &iterable_type
+                        );
+
+                        diags::report_type_is_not_iterable(
+                            context->dctx,
+                            context->allocator,
+                            foreach_->iterable.span,
+                            type_str.as_str_const()
+                        );
+
+                        type_str.free();
+                    }
+                    poison_tuple_export_pattern(
+                        context,
+                        &foreach_->item_pattern,
+                        foreach_->item_pattern.span
+                    );
+                }
+            }
+        }
+    }
+
+    if (has_element_type) {
+        foreach_->element_type = .Some(element_type);
+
+        var pattern_elem_ty = element_type;
+        var unwrap_ptr = false;
+
+        switch (foreach_->item_pattern.kind) {
+            case .Tuple | .Struct => unwrap_ptr = true;
+            case .Ident | .Ignore => {}
+        }
+
+        if (unwrap_ptr) {
+            switch (*element_type.const_inner()) {
+                case .Pointer(pt_inner) => {
+                    pattern_elem_ty = *pt_inner->const_inner();
+                }
+                else => {}
+            }
+        }
+
+        const is_default_const = !is_item_var;
+
+        analyze_destruct_pattern(
+            context,
+            &foreach_->item_pattern,
+            &pattern_elem_ty,
+            .None,
+            is_default_const,
+            true,
+            foreach_->item_pattern.span,
+            .None
+        );
+    }
+
+    context->control_region_stack.push(.Loop);
+    analyze_block_stmt(context, foreach_->body);
+    context->control_region_stack.pop();
+
+    return .Reachable;
+}
+
 fn analyze_return(
     context: AnalyzerContext*, 
     return_: cir::ReturnStmt*
@@ -3211,9 +3544,9 @@ fn analyze_nested_enum_pattern(
     ty: const cir::SemaType*,
     ident: ast::ASTIdent
 ) {
-    const expanded = expand_sema_type(context, *ty, pattern->span);
+    const expand = expand_sema_type(context, *ty, pattern->span);
 
-    switch (expanded.as_named_type()) case .Some(named) else {
+    switch (expand.as_named_type()) case .Some(named) else {
         diags::report_only_variant_pattern_is_allowed_in_switch(
             context->dctx,
             context->allocator,
@@ -3426,6 +3759,12 @@ fn poison_tuple_export_pattern(
                 poison_tuple_export_pattern(context, sub, span);
             }
         }
+        case .Struct { fields, .. } => {
+            for (var i: usize = 0; i < fields.len(); i += 1) {
+                const field = fields.get_const(i).unwrap();
+                poison_tuple_export_pattern(context, &field->pattern, span);
+            }
+        }
         case .Ignore => {}
     }
 }
@@ -3467,54 +3806,19 @@ fn analyze_export_tuple_values(
                 return;
             }
 
-            var tuple_type_opt = ty_val.as_tuple_type();
+            var path: Vec<usize> = Vec.new(context->allocator);
+            defer path.free();
 
-            switch (tuple_type_opt) case .Some(tuple_type) else {
-                diags::report_tuple_member_access_on_non_tuple_operand(
-                    context->dctx,
-                    context->allocator,
-                    export_tuple->span
-                );
-                poison_tuple_export_pattern(context, &export_tuple->pattern, export_tuple->span);
-                return;
-            }
-
-            switch (export_tuple->pattern.kind) {
-                case .Tuple(patterns) => {
-                    if (patterns.len() != tuple_type.elements.len()) {
-                        diags::report_tuple_exported_values_and_tuple_elements_count_mismatch(
-                            context->dctx,
-                            context->allocator,
-                            export_tuple->span,
-                            tuple_type.elements.len(),
-                            patterns.len()
-                        );
-                        poison_tuple_export_pattern(context, &export_tuple->pattern, export_tuple->span);
-                        return;
-                    }
-
-                    var path: Vec<usize> = Vec.new(context->allocator);
-                    defer path.free();
-
-                    for (var i: usize = 0; i < patterns.len(); i += 1) {
-                        const sub_pattern = patterns.get_const(i).unwrap();
-                        const element = tuple_type.elements.get_const(i).unwrap();
-
-                        path.push(i);
-                        analyze_tuple_pattern(context,
-                            sub_pattern,
-                            &element->ty,
-                            &rhs,
-                            export_tuple->is_const,
-                            export_tuple->span,
-                            &path
-                        );
-                        path.pop();
-                    }
-
-                }
-                else => {}
-            }
+            analyze_destruct_pattern(
+                context,
+                &export_tuple->pattern,
+                &ty_val,
+                .Some(&rhs),
+                export_tuple->is_const,
+                true,
+                export_tuple->span,
+                .Some(&path)
+            );
         }
     }
 }
@@ -3523,7 +3827,7 @@ fn analyze_tuple_ident_pattern(
     context: AnalyzerContext*,
     var_decl_id: cir::VarDeclId,
     sema_type: const cir::SemaType*,
-    rhs: const cir::Expr*,
+    rhs: Option<cir::Expr>,
     is_const: bool
 ) {
     const var_decl = context->decl_tables->vars.get(var_decl_id);
@@ -3531,21 +3835,198 @@ fn analyze_tuple_ident_pattern(
     switch (var_decl) {
         case .Some(entry) => {
             entry->ty = .Some(*sema_type);
-            entry->rhs = .Some(*rhs);
+            entry->rhs = rhs;
             entry->is_const = is_const;
         }
         case .None => {}
     }
 }
 
-fn analyze_tuple_pattern(
+fn poison_struct_pattern_fields(
+    context: AnalyzerContext*,
+    fields: const Vec<cir::StructExportPatternField>*
+) {
+    for (var i: usize = 0; i < fields->len(); i += 1) {
+        const field = fields->get_const(i).unwrap();
+        poison_tuple_export_pattern(context, &field->pattern, field->span);
+    }
+}
+
+fn analyze_struct_pattern(
+    context: AnalyzerContext*,
+    fields: const Vec<cir::StructExportPatternField>*,
+    ignore: bool,
+    sema_type: const cir::SemaType*,
+    effective_const: bool,
+    span: Span
+) {
+    const expand = expand_sema_type(context, *sema_type->const_inner(), span);
+
+    switch (expand.as_named_type()) case .Some(named_type) else {
+        var type_str = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            sema_type
+        );
+        diags::report_struct_destructuring_on_non_struct(
+            context->dctx,
+            context->allocator,
+            span,
+            type_str.as_str_const()
+        );
+        type_str.free();
+        poison_struct_pattern_fields(context, fields);
+        return;
+    }
+
+    switch (named_type.type_decl_id.as_struct()) case .Some(struct_id) else {
+        var type_str = format::format_sema_type(
+            context->allocator,
+            context->decl_tables,
+            sema_type
+        );
+
+        diags::report_struct_destructuring_on_non_struct(
+            context->dctx,
+            context->allocator,
+            span,
+            type_str.as_str_const()
+        );
+
+        poison_struct_pattern_fields(context, fields);
+        type_str.free();
+        return;
+    }
+
+    const struct_decl = context->decl_tables->structs.get_const(struct_id).unwrap();
+    
+    var struct_name = format::format_struct_decl(
+        context->allocator,
+        context->decl_tables,
+        struct_decl
+    );
+    defer struct_name.free();
+
+    if (!ignore && fields->len() != struct_decl->fields.len()) {
+        diags::report_struct_destructuring_field_count_mismatch(
+            context->dctx,
+            context->allocator,
+            span,
+            struct_name.as_str_const(),
+            struct_decl->fields.len(),
+            fields->len()
+        );
+    }
+
+    for (var i: usize = 0; i < fields->len(); i += 1) {
+        const field = fields->get_const(i).unwrap();
+        const field_name_str = field->name.str.as_str_const();
+
+        var is_duplicate = false;
+
+        for (var j: usize = 0; j < i; j += 1) {
+            const prev = fields->get_const(j).unwrap();
+            
+            if (prev->name.str.as_str_const() == field_name_str) {
+                is_duplicate = true;
+                break;
+            }
+        }
+
+        if (is_duplicate) {
+            diags::report_duplicate_field_in_struct_pattern(
+                context->dctx,
+                context->allocator,
+                field->span,
+                field_name_str
+            );
+            
+            poison_tuple_export_pattern(
+                context, 
+                &field->pattern, 
+                field->span
+            );
+            continue;
+        }
+
+        switch (struct_decl->lookup_field(field_name_str)) {
+            case .Some(struct_field) => {
+                var access_violation = false;
+
+                switch (context->func_env.current_method) {
+                    case .Some(current_method_id) => {
+                        if (!struct_decl->methods.contains_method_id(current_method_id)) {
+                            access_violation = struct_field->vis != .Public;
+                        }
+                    }
+                    case .None => {
+                        access_violation = struct_field->vis != .Public;
+                    }
+                }
+
+                if (access_violation) {
+                    diags::report_internal_field_access(
+                        context->dctx,
+                        context->allocator,
+                        field->span,
+                        field_name_str,
+                        struct_name.as_str_const()
+                    );
+                }
+
+                var field_type = cir::substitute_sema_type_with_type_args(
+                    context->allocator,
+                    &struct_field->ty,
+                    &struct_decl->generic_params,
+                    &named_type.type_args
+                );
+                
+                switch (normalize_sema_type(context, field_type, field->span, 0)) {
+                    case .Some(norm_ty) => {
+                        field_type = generics::substitute_self_type(context, &norm_ty, &expand);
+                    }
+                    case .None => {}
+                }
+
+                analyze_destruct_pattern(
+                    context,
+                    &field->pattern,
+                    &field_type,
+                    .None,
+                    effective_const,
+                    false,
+                    field->span,
+                    .None
+                );
+            }
+            case .None => {
+                diags::report_object_has_no_field_named(
+                    context->dctx,
+                    context->allocator,
+                    field->span,
+                    struct_name.as_str_const(),
+                    field_name_str
+                );
+
+                poison_tuple_export_pattern(
+                    context, 
+                    &field->pattern, 
+                    field->span
+                );
+            }
+        }
+    }
+}
+
+fn analyze_destruct_pattern(
     context: AnalyzerContext*,
     pattern: const cir::TupleExportPattern*,
     sema_type: const cir::SemaType*,
-    root_expr: const cir::Expr*,
+    root_expr_opt: Option<const cir::Expr*>,
     stmt_is_const: bool,
+    is_top_level: bool,
     span: Span,
-    path: Vec<usize>*
+    path_opt: Option<Vec<usize>*>
 ) {
     switch (pattern->ty) {
         case .Some(explicit_type) => {
@@ -3577,55 +4058,69 @@ fn analyze_tuple_pattern(
         case .None => {}
     }
 
+    var is_const_opt: Option<bool> = .None;
+
+    switch (pattern->constness) {
+        case .Some(.Const) => is_const_opt = .Some(true);
+        case .Some(.Var) => is_const_opt = .Some(false);
+        case .None => {}
+    }
+
+    if (!is_top_level && is_const_opt.is_some()) {
+        const explicit_is_const = is_const_opt.unwrap();
+
+        if (explicit_is_const == stmt_is_const) {
+            var str = "var";
+            
+            if (explicit_is_const) {
+                str = "const";
+            }
+            
+            diags::report_invalid_nested_export_tuple(
+                context->dctx,
+                context->allocator,
+                span,
+                str
+            );
+        }
+    }
+
+    const effective_is_const = is_const_opt.unwrap_or(stmt_is_const);
+
     switch (pattern->kind) {
         case .Ident(var_decl_id) => {
-            const access_expr = tuple_access_expr(
-                context->allocator, 
-                root_expr, 
-                path, 
-                span
-            );
+            var rhs_opt: Option<cir::Expr> = .None;
 
-            var is_const_opt: Option<bool> = .None;
-
-            switch (pattern->constness) {
-                case .Some(.Const) => is_const_opt = .Some(true);
-                case .Some(.Var) => is_const_opt = .Some(false);
+            switch (root_expr_opt) {
+                case .Some(root_expr) => {
+                    switch (path_opt) {
+                        case .Some(path) => {
+                            rhs_opt = .Some(tuple_access_expr(
+                                context->allocator,
+                                root_expr,
+                                path,
+                                span
+                            ));
+                        }
+                        case .None => {}
+                    }
+                }
                 case .None => {}
             }
 
-            if (is_const_opt.is_some()) {
-                const is_const = is_const_opt.unwrap();
-
-                if (is_const == stmt_is_const) {
-                    var str = "var";
-
-                    if (is_const) {
-                        str = "const";
-                    }
-                    
-                    diags::report_invalid_nested_export_tuple(
-                        context->dctx,
-                        context->allocator,
-                        span,
-                        str
-                    );
-                }
-            }
-
-            const final_is_const = is_const_opt.unwrap_or(stmt_is_const);
-            
             analyze_tuple_ident_pattern(
-                context, 
-                var_decl_id, 
-                sema_type, 
-                &access_expr, 
-                final_is_const
+                context,
+                var_decl_id,
+                sema_type,
+                rhs_opt,
+                effective_is_const
             );
         }
 
         case .Tuple(patterns) => {
-            var tuple_type_opt = sema_type->as_tuple_type();
+            const expand = expand_sema_type(context, *sema_type->const_inner(), span);
+            
+            var tuple_type_opt = expand.const_inner()->as_tuple_type();
 
             switch (tuple_type_opt) case .Some(tuple_type) else {
                 diags::report_tuple_member_access_on_non_tuple_operand(
@@ -3633,6 +4128,7 @@ fn analyze_tuple_pattern(
                     context->allocator,
                     span
                 );
+                poison_tuple_export_pattern(context, pattern, span);
                 return;
             }
 
@@ -3644,25 +4140,56 @@ fn analyze_tuple_pattern(
                     tuple_type.elements.len(),
                     patterns.len()
                 );
+                poison_tuple_export_pattern(context, pattern, span);
                 return;
             }
 
             for (var i: usize = 0; i < patterns.len(); i += 1) {
-                const sub_pattern = patterns.get_const(i).unwrap();
                 const element = tuple_type.elements.get_const(i).unwrap();
+                const sub_pattern = patterns.get_const(i).unwrap();
 
-                path->push(i);
-                analyze_tuple_pattern(
-                    context, 
-                    sub_pattern, 
-                    &element->ty,
-                    root_expr, 
-                    stmt_is_const, 
-                    span, 
-                    path
-                );
-                path->pop();
+                switch (path_opt) {
+                    case .Some(path) => {
+                        path->push(i);
+
+                        analyze_destruct_pattern(
+                            context,
+                            sub_pattern,
+                            &element->ty,
+                            root_expr_opt,
+                            effective_is_const,
+                            false,
+                            span,
+                            path_opt
+                        );
+
+                        path->pop();
+                    }
+                    case .None => {
+                        analyze_destruct_pattern(
+                            context,
+                            sub_pattern,
+                            &element->ty,
+                            .None,
+                            effective_is_const,
+                            false,
+                            span,
+                            .None
+                        );
+                    }
+                }
             }
+        }
+
+        case .Struct { fields, ignore } => {
+            analyze_struct_pattern(
+                context,
+                &fields,
+                ignore,
+                sema_type,
+                effective_is_const,
+                span
+            );
         }
 
         case .Ignore => {}

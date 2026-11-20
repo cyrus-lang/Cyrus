@@ -27,7 +27,7 @@ pub fn main() {
     var count: usize = 0;
 
     while (true) {
-        var opt = iter.next();
+        var opt = iter.next_owned();
 
         if (opt.is_none()) {
             break;
