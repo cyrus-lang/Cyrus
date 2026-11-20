@@ -36,7 +36,8 @@ jobs:
             python3 \
             zlib1g \
             zlib1g-dev \
-            upx-ucl \
+            zip \
+            unzip \
             libasan8 \
             libzstd-dev \
             libzstd1
@@ -97,28 +98,26 @@ jobs:
 
       - name: Prepare binary artifact directory
         run: |
-          mkdir -p ./dist
-          cp ./toolchain/stage0/target/release/cyrus ./dist/
-          cp ./toolchain/stage1/build/output/cyrus ./dist/cyrus-stage1
-          cp ./toolchain/stage1/build/output/cyrus-stage2 ./dist/cyrus-stage2
-          cp -r ./lib/std ./dist/stdlib
+          mkdir -p ./dist/cyrus
+          cp ./toolchain/stage1/build/output/cyrus-stage2 ./dist/cyrus/cyrus
+          cp -r ./lib/std ./dist/cyrus/stdlib
           if [ -f "./scripts/install.sh" ]; then
-            cp ./scripts/install.sh ./dist/
+            cp ./scripts/install.sh ./dist/cyrus/
           fi
+          (cd ./dist && zip -r -9 "../cyrus-linux.zip" ./cyrus)
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: cyrus-${{ steps.version.outputs.VERSION }}-binary
-          path: ./dist
+          path: ./dist/cyrus
 
-      - name: Upload stage1 & stage2 compiler artifacts
+      - name: Upload Linux release zip
         uses: actions/upload-artifact@v4
         with:
-          name: cyrus-${{ steps.version.outputs.VERSION }}-selfhost
-          path: |
-            ./toolchain/stage1/build/output/cyrus
-            ./toolchain/stage1/build/output/cyrus-stage2
+          name: cyrus-linux
+          path: ./cyrus-linux.zip
+          compression-level: 0
 
       - name: Generate PKGBUILD
         run: |
@@ -133,12 +132,12 @@ jobs:
           license=('MIT')
           depends=('zlib' 'llvm' 'clang' 'polly' 'gcc-libs' 'zstd')
           makedepends=('unzip')
-          source=("cyrus-linux-${{ steps.version.outputs.VERSION }}.zip")
+          source=("cyrus-linux.zip")
           sha256sums=('SKIP')
 
           package() {
             cd "\${srcdir}"
-            unzip -q "cyrus-linux-${{ steps.version.outputs.VERSION }}.zip"
+            unzip -q "cyrus-linux.zip"
             install -Dm755 "./cyrus/cyrus" "\${pkgdir}/usr/bin/cyrus"
             cp -r "./cyrus/stdlib" "\${pkgdir}/usr/share/cyrus/"
             if [ -f "./cyrus/install.sh" ]; then
@@ -303,11 +302,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
+            ./release-files/**/cyrus-linux.zip
             ./release-files/**/*.deb
             ./release-files/**/*.rpm
             ./release-files/**/PKGBUILD
-            ./release-files/**/cyrus
-            ./release-files/**/cyrus-stage1
-            ./release-files/**/cyrus-stage2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
