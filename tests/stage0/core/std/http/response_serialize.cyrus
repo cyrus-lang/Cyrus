@@ -6,7 +6,7 @@ import std::mem{Allocator};
 import std::libc{printf};
 
 pub fn main() {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const allocator: Allocator = dynamic LibcAllocator.new();
 
     var response = Response.new(allocator);
     defer response.free();

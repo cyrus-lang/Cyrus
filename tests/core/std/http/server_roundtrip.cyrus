@@ -16,7 +16,7 @@ fn greet(request: const Request*, response: Response*) {
 }
 
 pub fn main() {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const allocator: Allocator = dynamic LibcAllocator.new();
 
     var router = Router.new(allocator);
     defer router.free();

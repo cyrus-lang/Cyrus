@@ -648,7 +648,7 @@ pub struct Builder {
             );
         }
 
-        var allocator: Allocator = dynamic LibcAllocator.new();
+        const allocator: Allocator = dynamic LibcAllocator.new();
         var raw_indices: core::LLVMValueRef* = allocator.alloc(
             count * @sizeof(core::LLVMValueRef)
         );
@@ -1032,7 +1032,7 @@ pub struct Builder {
                 @cast(const c_char*, name)
             );
         } else {
-            var allocator: Allocator = dynamic LibcAllocator.new();
+            const allocator: Allocator = dynamic LibcAllocator.new();
             var raw_args: core::LLVMValueRef* = allocator.alloc(
                 count * @sizeof(core::LLVMValueRef)
             );

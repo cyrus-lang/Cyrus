@@ -14,7 +14,7 @@ import std::format{
 };
 
 pub fn main() {
-     var allocator: Allocator = dynamic LibcAllocator.new();
+     const allocator: Allocator = dynamic LibcAllocator.new();
 
      var buffer = String.new(allocator);
      defer buffer.free();
