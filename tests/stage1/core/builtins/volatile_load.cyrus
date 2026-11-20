@@ -1,0 +1,8 @@
+// @stdout: 513
+
+import std::libc{printf};
+
+pub fn main() {
+    const value: uint16 = 513;
+    printf("%d", @volatile_load(&value));
+}

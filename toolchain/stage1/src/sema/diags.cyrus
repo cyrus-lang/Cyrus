@@ -2716,6 +2716,32 @@ pub fn report_builtin_param_mismatch(
     param_type_str.free();
 }
 
+pub fn report_builtin_bit_cast_size_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    decl_tables: DeclTables*,
+    span: Span,
+    source_type: const cir::SemaType*,
+    target_type: const cir::SemaType*
+) {
+    var source_str = format::format_sema_type(allocator, decl_tables, source_type);
+    var target_str = format::format_sema_type(allocator, decl_tables, target_type);
+
+    var mesg = String.new(allocator);
+    mesg.push_str("builtin `@bit_cast` requires equal representation sizes, but `");
+    mesg.push_str(source_str.as_str_const());
+    mesg.push_str("` and `");
+    mesg.push_str(target_str.as_str_const());
+    mesg.push_str("` have different sizes");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+    source_str.free();
+    target_str.free();
+}
+
 pub fn report_incompatible_profile_definitions(
     dctx: DiagContext*,
     allocator: Allocator,

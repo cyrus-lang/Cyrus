@@ -2837,8 +2837,99 @@ fn analyze_builtin_func_semantics(
     builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
     switch (builtin_kind) {
+        case .Memcpy | .Memmove => return analyze_builtin_copy_memset(context, builtin_func, true);
+        
         case .Memset => return analyze_builtin_copy_memset(context, builtin_func, false);
-        case .Memcpy => return analyze_builtin_copy_memset(context, builtin_func, true);
+
+        case .Breakpoint | .FrameAddress | .ReturnAddress | .Trap => {
+            return analyze_builtin_void_or_address(context, builtin_func, builtin_kind);
+        }
+
+        case .PtrOffset | .PtrDiff | .VolatileLoad | .VolatileStore => {
+            return analyze_builtin_pointer_op(context, builtin_func, builtin_kind);
+        }
+        
+        case .BitCast => return analyze_builtin_bit_cast(context, builtin_func);
+        
+        case .ReadUnaligned => {
+            return analyze_builtin_unaligned(context, builtin_func, false);
+        }
+        
+        case .WriteUnaligned => {
+            return analyze_builtin_unaligned(context, builtin_func, true);
+        }
+        
+        case .Infinity | .Nan => {
+            return analyze_builtin_special_float(context, builtin_func);
+        }
+
+        case .PopCount
+        | .CountLeadingZeros
+        | .CountTrailingZeros
+        | .ByteSwap
+        | .BitReverse
+        | .RotateLeft
+        | .RotateRight
+        | .Abs
+        | .Min
+        | .Max
+        | .Copysign
+        | .PositiveDifference
+        | .DivCeil
+        | .DivFloor
+        | .DivTrunc
+        | .Mod
+        | .Rem
+        | .Ceil
+        | .Floor
+        | .Trunc
+        | .Round
+        | .RoundEven
+        | .Sqrt
+        | .Cbrt
+        | .Pow
+        | .Hypot
+        | .MulAdd
+        | .Sin
+        | .Cos
+        | .Tan
+        | .Asin
+        | .Acos
+        | .Atan
+        | .Atan2
+        | .Sinh
+        | .Cosh
+        | .Tanh
+        | .Asinh
+        | .Acosh
+        | .Atanh
+        | .Exp
+        | .Exp2
+        | .Expm1
+        | .Log
+        | .Log2
+        | .Log10
+        | .Log1p
+        | .Fmod
+        | .Remainder
+        | .Ldexp
+        | .Ilogb
+        | .Logb
+        | .Scalbn
+        | .NextAfter
+        | .NextUp
+        | .NextDown
+        | .Erf
+        | .Erfc
+        | .Gamma
+        | .IsNan
+        | .IsInf
+        | .IsFinite
+        | .IsNormal
+        | .Signbit => {
+            return analyze_builtin_scalar(context, builtin_func, builtin_kind);
+        }
+
         case .OffsetOf => return analyze_builtin_offsetof(context, builtin_func);
         case .AlignOf => return analyze_builtin_alignof(context, builtin_func);
         case .SizeOf => return analyze_builtin_sizeof(context, builtin_func);
@@ -2849,14 +2940,16 @@ fn analyze_builtin_func_semantics(
         case .Len => return analyze_builtin_len(context, builtin_func);
         case .Ptr => return analyze_builtin_ptr(context, builtin_func);
 
+        case .Panic | .Todo | .Unimplemented | .Unreachable => {
+            return analyze_builtin_const_msg_arg(context, builtin_func);
+        }
+        
         case .FuncName | .MethodName | .ModuleName | .FileName => {
             return analyze_builtin_name_ret(context, builtin_func);
         }
+
         case .Line | .Column => {
             return analyze_builtin_usize_ret(context, builtin_func);
-        }
-        case .Panic | .Todo | .Unimplemented | .Unreachable => {
-            return analyze_builtin_const_msg_arg(context, builtin_func);
         }
 
         else => return .None;
@@ -2966,6 +3059,666 @@ fn analyze_builtin_ptr(
             return .None;
         }
     }
+}
+
+fn analyze_builtin_pointer_op(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*,
+    kind: cir::BuiltinKind
+) Option<cir::SemaType> {
+    const pointer = builtin_func->args.get(0).unwrap();
+    var pointer_type: cir::SemaType = .Placeholder;
+    switch (analyze_expr(context, pointer, .None)) {
+        case .Some(ty) => pointer_type = ty;
+        case .None => return .None;
+    }
+    if (pointer_type.contains_error()) {
+        return .Some(.Err(builtin_func->span));
+    }
+    const element = pointer_type.const_inner()->pointer_inner();
+    var requirement: const uint8* = null;
+    if (!pointer_type.is_pointer() || element->is_void() || element->is_func_type()) {
+        requirement = "pointer to an object";
+    } else if (kind == .VolatileStore && element->is_const()) {
+        requirement = "pointer to a writable scalar";
+    } else if ((kind == .VolatileLoad || kind == .VolatileStore)
+        && !element->const_inner()->is_integer() && !element->const_inner()->is_float()) {
+        requirement = "pointer to a numeric scalar";
+    }
+    if (requirement != null) {
+        var found = format::format_sema_type(context->allocator, context->decl_tables, &pointer_type);
+        diags::report_func_call_param_type_mismatch(
+            context->dctx, context->allocator, pointer->span, 0, found.as_str_const(), requirement
+        );
+        found.free();
+        return .None;
+    }
+
+    var result: cir::SemaType = *element->const_inner();
+    if (kind != .VolatileLoad) {
+        var expected: cir::SemaType = result;
+        if (kind == .PtrOffset) {
+            expected = .Plain(.ISize);
+            result = pointer_type;
+        } else if (kind == .PtrDiff) {
+            expected = pointer_type;
+            result = .Plain(.ISize);
+        } else {
+            result = .Plain(.Void);
+        }
+        const operand = builtin_func->args.get(1).unwrap();
+        var actual: cir::SemaType = .Placeholder;
+        switch (analyze_expr(context, operand, .Some(expected))) {
+            case .Some(ty) => actual = ty;
+            case .None => return .None;
+        }
+        if (actual.contains_error()) {
+            return .Some(.Err(builtin_func->span));
+        }
+        var valid: bool;
+        if (kind == .PtrDiff) {
+            valid = actual.is_pointer() && cir::cir_types_eq(
+                element->const_inner(), actual.const_inner()->pointer_inner()->const_inner()
+            );
+        } else {
+            valid = is_assignable_to(context, actual, expected, operand->span);
+        }
+        if (!valid) {
+            diags::report_builtin_param_mismatch(
+                context->dctx, context->allocator, context->decl_tables, builtin_func, 1, &actual, &expected
+            );
+            return .None;
+        }
+    }
+    builtin_func->ret_type = .Some(result);
+    return .Some(result);
+}
+
+fn report_builtin_arg_mismatch(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*,
+    argument_idx: usize,
+    argument_type: const cir::SemaType*,
+    expected: const uint8*
+) {
+    var found = format::format_sema_type(
+        context->allocator,
+        context->decl_tables,
+        argument_type
+    );
+
+    diags::report_func_call_param_type_mismatch(
+        context->dctx,
+        context->allocator,
+        builtin_func->span,
+        @cast(uint32, argument_idx),
+        found.as_str_const(),
+        expected
+    );
+
+    found.free();
+}
+
+fn analyze_builtin_type_arg(
+    context: AnalyzerContext*,
+    type_arg: cir::Expr*
+) Option<cir::SemaType> {
+    analyze_expr_non_terminal(context, type_arg, .None);
+
+    var target: cir::SemaType = .Placeholder;
+
+    switch (type_arg->kind.as_type_expr(context->allocator)) {
+        case .Some(ty) => target = ty;
+        case .None => return .None;
+    }
+
+    switch (type_arg->kind) {
+        case .SemaType { .. } => {
+            switch (type_arg->ty) {
+                case .Some(ty) => target = ty;
+                case .None => {}
+            }
+        }
+        else => {}
+    }
+
+    target = expand_sema_type(context, target, type_arg->span);
+    return .Some(generics::substitute_type(context, &target));
+}
+
+fn analyze_builtin_bit_cast(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*
+) Option<cir::SemaType> {
+    const type_arg = builtin_func->args.get(0).unwrap();
+    const value_arg = builtin_func->args.get(1).unwrap();
+
+    var target_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_builtin_type_arg(context, type_arg)) {
+        case .Some(ty) => target_type = ty;
+        case .None => {
+            diags::report_builtin_cast_requires_type_argument(
+                context->dctx,
+                context->allocator,
+                builtin_func->span
+            );
+            return .None;
+        }
+    }
+
+    var value_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_expr(context, value_arg, .None)) {
+        case .Some(ty) => value_type = ty;
+        case .None => return .None;
+    }
+
+    if (value_type.contains_error() || target_type.contains_error()) {
+        return .Some(.Err(builtin_func->span));
+    }
+
+    value_type = expand_sema_type(context, value_type, builtin_func->span);
+
+    switch (cir::builtin_type_size_bytes(&value_type)) {
+        case .Some(value_size) => {
+            switch (cir::builtin_type_size_bytes(&target_type)) {
+                case .Some(target_size) => {
+                    if (value_size != target_size) {
+                        diags::report_builtin_bit_cast_size_mismatch(
+                            context->dctx,
+                            context->allocator,
+                            context->decl_tables,
+                            builtin_func->span,
+                            &value_type,
+                            &target_type
+                        );
+                        return .None;
+                    }
+                }
+                case .None => {}
+            }
+        }
+        case .None => {}
+    }
+
+    builtin_func->ret_type = .Some(target_type);
+    return .Some(target_type);
+}
+
+fn analyze_builtin_unaligned(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*,
+    is_write: bool
+) Option<cir::SemaType> {
+    const type_arg = builtin_func->args.get(0).unwrap();
+    const pointer_arg = builtin_func->args.get(1).unwrap();
+
+    var target_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_builtin_type_arg(context, type_arg)) {
+        case .Some(ty) => target_type = ty;
+        case .None => {
+            diags::report_builtin_cast_requires_type_argument(
+                context->dctx,
+                context->allocator,
+                builtin_func->span
+            );
+            return .None;
+        }
+    }
+
+    var acceptable = false;
+
+    switch (target_type.const_inner()->as_plain_type()) {
+        case .Some(plain) => {
+            if (plain.is_scalar() && !plain.is_void()) {
+                acceptable = true;
+            }
+        }
+        case .None => {
+            if (target_type.const_inner()->is_pointer()) {
+                acceptable = true;
+            }
+        }
+    }
+
+    if (!acceptable) {
+        report_builtin_arg_mismatch(
+            context, builtin_func, 0, &target_type, "a scalar type"
+        );
+        return .None;
+    }
+
+    var pointer_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_expr(context, pointer_arg, .None)) {
+        case .Some(ty) => pointer_type = ty;
+        case .None => return .None;
+    }
+
+    if (pointer_type.contains_error()) {
+        return .Some(.Err(builtin_func->span));
+    }
+
+    if (!pointer_type.is_pointer()) {
+        report_builtin_arg_mismatch(
+            context, builtin_func, 1, &pointer_type, "a pointer"
+        );
+        return .None;
+    }
+
+    if (is_write && pointer_type.const_inner()->pointer_inner()->is_const()) {
+        report_builtin_arg_mismatch(
+            context, builtin_func, 1, &pointer_type, "a mutable pointer"
+        );
+        return .None;
+    }
+
+    if (is_write) {
+        const value_arg = builtin_func->args.get(2).unwrap();
+        var value_type: cir::SemaType = .Placeholder;
+
+        switch (analyze_expr(context, value_arg, .Some(target_type))) {
+            case .Some(ty) => value_type = ty;
+            case .None => return .None;
+        }
+
+        if (value_type.contains_error()) {
+            return .Some(.Err(builtin_func->span));
+        }
+
+        if (!is_assignable_to(context, value_type, target_type, value_arg->span)) {
+            report_builtin_arg_mismatch(
+                context, builtin_func, 2, &value_type, "the destination type"
+            );
+            return .None;
+        }
+    }
+
+    var ret_type: cir::SemaType = target_type;
+
+    if (is_write) {
+        ret_type = .Plain(.Void);
+    }
+
+    builtin_func->ret_type = .Some(ret_type);
+    return .Some(ret_type);
+}
+
+fn analyze_builtin_special_float(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*
+) Option<cir::SemaType> {
+    const type_arg = builtin_func->args.get(0).unwrap();
+
+    var target_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_builtin_type_arg(context, type_arg)) {
+        case .Some(ty) => target_type = ty;
+        case .None => {
+            diags::report_builtin_cast_requires_type_argument(
+                context->dctx,
+                context->allocator,
+                builtin_func->span
+            );
+            return .None;
+        }
+    }
+
+    switch (target_type.const_inner()->as_plain_type()) {
+        case .Some(plain) => {
+            switch (plain) {
+                case .Float32 | .Float64 => {}
+                else => {
+                    report_builtin_arg_mismatch(
+                        context, builtin_func, 0, &target_type, "float32 or float64"
+                    );
+                    return .None;
+                }
+            }
+        }
+        case .None => {
+            report_builtin_arg_mismatch(
+                context, builtin_func, 0, &target_type, "float32 or float64"
+            );
+            return .None;
+        }
+    }
+
+    builtin_func->ret_type = .Some(target_type);
+    return .Some(target_type);
+}
+
+fn analyze_builtin_void_or_address(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*,
+    kind: cir::BuiltinKind
+) Option<cir::SemaType> {
+    var ret_type: cir::SemaType = .Plain(.Void);
+
+    switch (kind) {
+        case .FrameAddress | .ReturnAddress => ret_type = .Plain(.UIntPtr);
+        else => {}
+    }
+
+    builtin_func->ret_type = .Some(ret_type);
+    return .Some(ret_type);
+}
+
+fn builtin_requires_integer(kind: cir::BuiltinKind) bool {
+    switch (kind) {
+        case .PopCount
+        | .CountLeadingZeros
+        | .CountTrailingZeros
+        | .ByteSwap
+        | .BitReverse
+        | .RotateLeft
+        | .RotateRight
+        | .DivCeil
+        | .DivFloor
+        | .DivTrunc
+        | .Mod
+        | .Rem => return true;
+        else => return false;
+    }
+}
+
+fn builtin_requires_wide_integer(kind: cir::BuiltinKind) bool {
+    switch (kind) {
+        case .PopCount
+        | .CountLeadingZeros
+        | .CountTrailingZeros
+        | .ByteSwap
+        | .BitReverse
+        | .RotateLeft
+        | .RotateRight => return true;
+        else => return false;
+    }
+}
+
+fn builtin_requires_float(kind: cir::BuiltinKind) bool {
+    switch (kind) {
+        case .Copysign
+        | .PositiveDifference
+        | .Ceil
+        | .Floor
+        | .Trunc
+        | .Round
+        | .RoundEven
+        | .Sqrt
+        | .Cbrt
+        | .Pow
+        | .Hypot
+        | .MulAdd
+        | .Sin
+        | .Cos
+        | .Tan
+        | .Asin
+        | .Acos
+        | .Atan
+        | .Atan2
+        | .Sinh
+        | .Cosh
+        | .Tanh
+        | .Asinh
+        | .Acosh
+        | .Atanh
+        | .Exp
+        | .Exp2
+        | .Expm1
+        | .Log
+        | .Log2
+        | .Log10
+        | .Log1p
+        | .Fmod
+        | .Remainder
+        | .Ldexp
+        | .Ilogb
+        | .Logb
+        | .Scalbn
+        | .NextAfter
+        | .NextUp
+        | .NextDown
+        | .Erf
+        | .Erfc
+        | .Gamma
+        | .IsNan
+        | .IsInf
+        | .IsFinite
+        | .IsNormal
+        | .Signbit => return true;
+        else => return false;
+    }
+}
+
+fn builtin_takes_integer_second_arg(kind: cir::BuiltinKind) bool {
+    switch (kind) {
+        case .Ldexp | .Scalbn | .RotateLeft | .RotateRight => return true;
+        else => return false;
+    }
+}
+
+fn builtin_returns_int(kind: cir::BuiltinKind) bool {
+    switch (kind) {
+        case .PopCount
+        | .CountLeadingZeros
+        | .CountTrailingZeros
+        | .Ilogb => return true;
+        else => return false;
+    }
+}
+
+fn builtin_returns_bool(kind: cir::BuiltinKind) bool {
+    switch (kind) {
+        case .IsNan | .IsInf | .IsFinite | .IsNormal | .Signbit => return true;
+        else => return false;
+    }
+}
+
+fn builtin_accepts_any_number(kind: cir::BuiltinKind) bool {
+    switch (kind) {
+        case .Abs | .Min | .Max => return true;
+        else => return false;
+    }
+}
+
+fn analyze_builtin_scalar(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*,
+    kind: cir::BuiltinKind
+) Option<cir::SemaType> {
+    const first_arg = builtin_func->args.get(0).unwrap();
+    var first_type: cir::SemaType = .Placeholder;
+
+    switch (analyze_expr(context, first_arg, .None)) {
+        case .Some(ty) => first_type = ty;
+        case .None => return .None;
+    }
+
+    if (first_type.contains_error()) {
+        return .Some(.Err(builtin_func->span));
+    }
+
+    const first_inner = first_type.const_inner();
+    const is_float = first_inner->is_float();
+    var is_float32_or_64 = false;
+
+    switch (first_inner->as_plain_type()) {
+        case .Some(plain) => {
+            switch (plain) {
+                case .Float32 | .Float64 => is_float32_or_64 = true;
+                else => {}
+            }
+        }
+        case .None => {}
+    }
+
+    if (builtin_requires_integer(kind)) {
+        if (!first_inner->is_integer()) {
+            report_builtin_arg_mismatch(
+                context, builtin_func, 0, &first_type, "an integer type"
+            );
+            return .None;
+        }
+
+        if (builtin_requires_wide_integer(kind)) {
+            var width_ok = false;
+
+            switch (cir::builtin_integer_bit_width(&first_type)) {
+                case .Some(width) => {
+                    if (width == 8 || width == 16 || width == 32 || width == 64) {
+                        width_ok = true;
+                    }
+                }
+                case .None => {}
+            }
+
+            if (!width_ok) {
+                report_builtin_arg_mismatch(
+                    context, builtin_func, 0, &first_type,
+                    "an integer type no wider than 64 bits"
+                );
+                return .None;
+            }
+        }
+
+        if (builtin_takes_integer_second_arg(kind)) {
+            const count_arg = builtin_func->args.get(1).unwrap();
+            var count_type: cir::SemaType = .Placeholder;
+
+            switch (analyze_expr(context, count_arg, .Some(.Plain(.Int32)))) {
+                case .Some(ty) => count_type = ty;
+                case .None => return .None;
+            }
+
+            if (count_type.contains_error()) {
+                return .Some(.Err(builtin_func->span));
+            }
+
+            if (!count_type.const_inner()->is_integer()) {
+                report_builtin_arg_mismatch(
+                    context, builtin_func, 1, &count_type, "an integer type"
+                );
+                return .None;
+            }
+        } else {
+            for (var i: usize = 1; i < builtin_func->args.len(); i += 1) {
+                const arg = builtin_func->args.get(i).unwrap();
+                var arg_type: cir::SemaType = .Placeholder;
+
+                switch (analyze_expr(context, arg, .Some(first_type))) {
+                    case .Some(ty) => arg_type = ty;
+                    case .None => return .None;
+                }
+
+                if (arg_type.contains_error()) {
+                    return .Some(.Err(builtin_func->span));
+                }
+
+                if (!is_assignable_to(context, arg_type, first_type, arg->span)) {
+                    report_builtin_arg_mismatch(
+                        context, builtin_func, i, &arg_type, "the first operand's type"
+                    );
+                    return .None;
+                }
+            }
+        }
+    } else if (builtin_accepts_any_number(kind)) {
+        if (!first_inner->is_integer() && !is_float) {
+            report_builtin_arg_mismatch(
+                context, builtin_func, 0, &first_type, "a numeric type"
+            );
+            return .None;
+        }
+
+        if (is_float && !is_float32_or_64) {
+            report_builtin_arg_mismatch(
+                context, builtin_func, 0, &first_type, "float32 or float64"
+            );
+            return .None;
+        }
+
+        for (var i: usize = 1; i < builtin_func->args.len(); i += 1) {
+            const arg = builtin_func->args.get(i).unwrap();
+            var arg_type: cir::SemaType = .Placeholder;
+
+            switch (analyze_expr(context, arg, .Some(first_type))) {
+                case .Some(ty) => arg_type = ty;
+                case .None => return .None;
+            }
+
+            if (arg_type.contains_error()) {
+                return .Some(.Err(builtin_func->span));
+            }
+
+            if (!is_assignable_to(context, arg_type, first_type, arg->span)) {
+                report_builtin_arg_mismatch(
+                    context, builtin_func, i, &arg_type, "the first operand's type"
+                );
+                return .None;
+            }
+        }
+    } else {
+        if (!is_float || !is_float32_or_64) {
+            report_builtin_arg_mismatch(
+                context, builtin_func, 0, &first_type, "float32 or float64"
+            );
+            return .None;
+        }
+
+        for (var i: usize = 1; i < builtin_func->args.len(); i += 1) {
+            const arg = builtin_func->args.get(i).unwrap();
+            var arg_type: cir::SemaType = .Placeholder;
+
+            if (i == 1 && builtin_takes_integer_second_arg(kind)) {
+                switch (analyze_expr(context, arg, .Some(.Plain(.Int32)))) {
+                    case .Some(ty) => arg_type = ty;
+                    case .None => return .None;
+                }
+
+                if (arg_type.contains_error()) {
+                    return .Some(.Err(builtin_func->span));
+                }
+
+                if (!arg_type.const_inner()->is_integer()) {
+                    report_builtin_arg_mismatch(
+                        context, builtin_func, i, &arg_type, "an integer type"
+                    );
+                    return .None;
+                }
+
+                continue;
+            }
+
+            switch (analyze_expr(context, arg, .Some(first_type))) {
+                case .Some(ty) => arg_type = ty;
+                case .None => return .None;
+            }
+
+            if (arg_type.contains_error()) {
+                return .Some(.Err(builtin_func->span));
+            }
+
+            if (!is_assignable_to(context, arg_type, first_type, arg->span)) {
+                report_builtin_arg_mismatch(
+                    context, builtin_func, i, &arg_type, "the first operand's type"
+                );
+                return .None;
+            }
+        }
+    }
+
+    var ret_type: cir::SemaType = first_type;
+
+    if (builtin_returns_int(kind)) {
+        ret_type = .Plain(.Int32);
+    } else if (builtin_returns_bool(kind)) {
+        ret_type = .Plain(.Bool);
+    }
+
+    builtin_func->ret_type = .Some(ret_type);
+    return .Some(ret_type);
 }
 
 fn analyze_builtin_slice(

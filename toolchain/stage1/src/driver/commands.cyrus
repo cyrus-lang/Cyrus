@@ -739,9 +739,10 @@ fn compile_file(
                     defer rt_dir.free();
                     append_list_item(&lib_paths, rt_dir.as_str_const());
                     append_list_item(&libraries, "cyrus_rt");
+                    append_list_item(&libraries, "m");
                 }
                 case .None => {
-                    compile_error("could not locate C runtime library `libcyrus_rt.a`");
+                    compile_error("could not locate runtime library `libcyrus_rt.a`");
                     return 1;
                 }
             }

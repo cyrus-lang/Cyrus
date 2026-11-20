@@ -1,0 +1,9 @@
+// @stdout: 11 513 33
+
+import std::libc{printf};
+
+pub fn main() {
+    var values = uint16[3] {11, 22, 33};
+    @volatile_store(&values[1], 513);
+    printf("%d %d %d", values[0], values[1], values[2]);
+}
