@@ -1,0 +1,22 @@
+// @stdout: pop=4 clz=3 8 ctz=3 8 swap=78563412 rev=104 rot=12 3
+
+import std::libc{printf};
+
+pub fn main() {
+    const bits: uint8 = 0b10110100;
+    const leading: uint8 = 0b00010000;
+    const trailing: uint8 = 0b00101000;
+    const zero: uint8 = 0;
+
+    printf("pop=%d ", @pop_count(bits));
+    printf("clz=%d %d ", @count_leading_zeros(leading), @count_leading_zeros(zero));
+    printf("ctz=%d %d ", @count_trailing_zeros(trailing), @count_trailing_zeros(zero));
+    
+    const word: uint32 = 0x12345678;
+    printf("swap=%x ", @byte_swap(word));
+    
+    const reversed: uint8 = 0b00010110;
+    const rotated: uint8 = 0b00000110;
+    printf("rev=%d ", @bit_reverse(reversed));
+    printf("rot=%d %d", @rotate_left(rotated, 1), @rotate_right(rotated, 1));
+}

@@ -1,0 +1,25 @@
+// @stdout: abs=12 min=4 max=9 copysign=-3.0 pd=4.0 0.0 div=-2 -3 -2 mod=2 rem=-1 round=3 2 -2 3 2 roots=9 -2 1024 5 3.25 rem=3 -1 scale=12 3 3 12 class=1 1 1 1 1 next=1 1 1
+
+import std::libc{printf};
+
+pub fn main() {
+    const i4: int32 = 4;
+    const i9: int32 = 9;
+    const ineg: int32 = -12;
+
+    printf("abs=%d ", @abs(ineg));
+    printf("min=%d max=%d ", @min(i4, i9), @max(i4, i9));
+    printf("copysign=%.1f ", @copysign(3.0, -1.0));
+    printf("pd=%.1f %.1f ", @positive_difference(7.0, 3.0), @positive_difference(3.0, 7.0));
+    printf("div=%d %d %d ", @div_ceil(-7, 3), @div_floor(-7, 3), @div_trunc(-7, 3));
+    printf("mod=%d rem=%d ", @mod(-7, 3), @rem(-7, 3));
+    printf("round=%.0f %.0f %.0f %.0f %.0f ", @ceil(2.3), @floor(2.7), @trunc(-2.7), @round(2.5), @round_even(2.5));
+    printf("roots=%.0f %.0f %.0f %.0f %.2f ", @sqrt(81.0), @cbrt(-8.0), @pow(2.0, 10.0), @hypot(3.0, 4.0), @mul_add(1.5, 2.0, 0.25));
+    printf("rem=%.0f %.0f ", @fmod(7.0, 4.0), @remainder(7.0, 4.0));
+    printf("scale=%.0f %d %.0f %.0f ", @ldexp(0.75, 4), @ilogb(8.0), @logb(8.0), @scalbn(1.5, 3));
+
+    const inf: float64 = @infinity(float64);
+    const nanv: float64 = @nan(float64);
+    printf("class=%d %d %d %d %d ", @is_inf(inf), @is_nan(nanv), @is_finite(1.0), @is_normal(1.0), @signbit(-0.0));
+    printf("next=%d %d %d", @next_up(1.0) > 1.0, @next_down(1.0) < 1.0, @next_after(1.0, 2.0) == @next_up(1.0));
+}

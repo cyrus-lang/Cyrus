@@ -1,0 +1,27 @@
+pub fn bad_bit_cast() {
+    const x = @bit_cast(uint32, 1.0); //~ ERROR equal representation sizes
+}
+
+pub fn bad_sqrt() {
+    const x = @sqrt(1); //~ ERROR float32 or float64
+}
+
+pub fn bad_pop_count() {
+    const x = @pop_count(1.0); //~ ERROR an integer type
+}
+
+pub fn bad_rotate() {
+    const x = @rotate_left(1.0, 1); //~ ERROR an integer type
+}
+
+pub fn bad_infinity() {
+    const x = @infinity(int32); //~ ERROR float32 or float64
+}
+
+pub fn bad_unaligned_write(ptr: const uint32*) {
+    @write_unaligned(uint32, ptr, 1); //~ ERROR mutable pointer
+}
+
+pub fn bad_min() {
+    const x = @min(1, 1.0); //~ ERROR first operand's type
+}

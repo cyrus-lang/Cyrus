@@ -1,0 +1,10 @@
+// @stdout: 20
+
+import std::libc{printf};
+
+pub fn main() {
+    var values = int32[3] {10, 20, 30};
+    const end = @ptr_offset(@ptr(values), 3);
+    const middle = @ptr_offset(end, -2);
+    printf("%d", *middle);
+}

@@ -1,0 +1,24 @@
+// @stdout: bits=3f800000 unaligned=12345678 move=11234 diff=4
+
+import std::libc{printf};
+
+pub fn main() {
+    const one: uint32 = @bit_cast(uint32, @cast(float32, 1.0));
+    printf("bits=%x ", one);
+
+    var bytes: uint8[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    var address = @ptr_offset(@ptr(bytes[0..8]), 1);
+    @write_unaligned(uint32, address, 0x12345678);
+    
+    const value: uint32 = @read_unaligned(uint32, address);
+    printf("unaligned=%x ", value);
+
+    var source: uint8[5] = {1, 2, 3, 4, 5};
+    const base = @ptr(source);
+    @memmove(@ptr_offset(base, 1), base, 4);
+    printf("move=%d%d%d%d%d ", source[0], source[1], source[2], source[3], source[4]);
+
+    const first = @ptr(source);
+    const last = @ptr_offset(first, 4);
+    printf("diff=%d", @cast(int32, @ptr_diff(last, first)));
+}

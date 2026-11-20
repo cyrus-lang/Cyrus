@@ -77,7 +77,10 @@ pub struct Emitter {
 
     needs_panic_helper: bool,
     needs_assert_helper: bool,
+    needs_math_header: bool,
+    needs_bitop_helpers: bool,
     needs_memcpy_proto: bool,
+    needs_memmove_proto: bool,
     needs_memcmp_proto: bool,
     needs_memset_proto: bool,
     needs_stddef_header: bool,
@@ -85,6 +88,7 @@ pub struct Emitter {
     needs_errno_location_proto: bool,
 
     in_void_main: bool,
+    builtin_temp_id: usize,
     test_cases: Vec<cir::BuiltinBlock>,
 
     pub fn new(
@@ -127,7 +131,10 @@ pub struct Emitter {
             loop_marks: Vec.new(allocator),
             needs_stddef_header: false,
             needs_assert_helper: false,
+            needs_math_header: false,
+            needs_bitop_helpers: false,
             needs_memcpy_proto: false,
+            needs_memmove_proto: false,
             needs_memcmp_proto: false,
             needs_memset_proto: false,
             needs_strcmp_proto: false,
@@ -146,6 +153,7 @@ pub struct Emitter {
             cur_func_name: .None,
             cur_ret_type: .None,
             in_void_main: false,
+            builtin_temp_id: 0,
             test_cases: Vec.new(allocator),
             tuple_export_id: 0,
             lambda_id: 0,
@@ -514,6 +522,20 @@ pub struct Emitter {
             writer.write("#include <stddef.h>\n");
         }
 
+        if (self->needs_math_header) {
+            writer.write("#include <math.h>\n");
+        }
+
+        if (self->needs_bitop_helpers) {
+            writer.write("#include <stdint.h>\n");
+            writer.write(
+                "static inline uint64_t __cyrus_bswap64_(uint64_t x){return ((x&0xFFull)<<56)|((x&0xFF00ull)<<40)|((x&0xFF0000ull)<<24)|((x&0xFF000000ull)<<8)|((x>>8)&0xFF000000ull)|((x>>24)&0xFF0000ull)|((x>>40)&0xFF00ull)|((x>>56)&0xFFull);}\n"
+            );
+            writer.write(
+                "static inline uint64_t __cyrus_bitrev64_(uint64_t x){x=((x>>1)&0x5555555555555555ull)|((x&0x5555555555555555ull)<<1);x=((x>>2)&0x3333333333333333ull)|((x&0x3333333333333333ull)<<2);x=((x>>4)&0x0F0F0F0F0F0F0F0Full)|((x&0x0F0F0F0F0F0F0F0Full)<<4);x=((x>>8)&0x00FF00FF00FF00FFull)|((x&0x00FF00FF00FF00FFull)<<8);x=((x>>16)&0x0000FFFF0000FFFFull)|((x&0x0000FFFF0000FFFFull)<<16);return (x>>32)|(x<<32);}\n"
+            );
+        }
+
         if (self->libc_protos.len() > 0) {
             writer.write(self->libc_protos.as_str_const());
         }
@@ -857,6 +879,12 @@ pub struct Emitter {
 
         if (name == "strcmp") {
             self->ensure_strcmp_proto();
+            mangled_name.free();
+            return;
+        }
+
+        if (name == "memmove") {
+            self->ensure_memmove_proto();
             mangled_name.free();
             return;
         }
@@ -8638,10 +8666,56 @@ pub struct Emitter {
                         return out;
                     }
 
-                    case .Memcpy => {
-                        self->ensure_memcpy_proto();
+                    case .PtrOffset | .PtrDiff => {
+                        var left = self->emit_expr(builtin_func->args.get_const(0).unwrap());
+                        var right = self->emit_expr(builtin_func->args.get_const(1).unwrap());
+                        var out = String.from_str(self->allocator, "((");
+                        out.push_str(left.as_str_const());
+
+                        if (kind == .PtrDiff) {
+                            out.push_str(")-(");
+                        } else {
+                            out.push_str(")+(");
+                        }
                         
-                        var out = String.from_str(self->allocator, "memcpy(");
+                        out.push_str(right.as_str_const());
+                        out.push_str("))");
+
+                        left.free();
+                        right.free();
+                        return out;
+                    }
+
+                    case .VolatileLoad | .VolatileStore => {
+                        var ptr = self->emit_expr(builtin_func->args.get_const(0).unwrap());
+                        var out = String.from_str(self->allocator, "(*(volatile __typeof__(*(");
+                        out.push_str(ptr.as_str_const());
+                        out.push_str("))*)(");
+                        out.push_str(ptr.as_str_const());
+                        out.push(')');
+
+                        if (kind == .VolatileStore) {
+                            var value = self->emit_expr(builtin_func->args.get_const(1).unwrap());
+                            out.push_str("=(");
+                            out.push_str(value.as_str_const());
+                            out.push(')');
+                            value.free();
+                        }
+
+                        out.push(')');
+                        ptr.free();
+                        return out;
+                    }
+
+                    case .Memcpy | .Memmove => {
+                        var name: const uint8* = "memcpy(";
+                        if (kind == .Memmove) {
+                            self->ensure_memmove_proto();
+                            name = "memmove(";
+                        } else {
+                            self->ensure_memcpy_proto();
+                        }
+                        var out = String.from_str(self->allocator, name);
                         
                         for (var i: usize = 0; i < builtin_func->args.len(); i += 1) {
                             const arg = builtin_func->args.get_const(i).unwrap();
@@ -8678,6 +8752,90 @@ pub struct Emitter {
                         
                         out.push(')');
                         return out;
+                    }
+
+                    case .BitCast
+                    | .ReadUnaligned
+                    | .WriteUnaligned => {
+                        return self->emit_repr_builtin(builtin_func, kind);
+                    }
+
+                    case .PopCount
+                    | .CountLeadingZeros
+                    | .CountTrailingZeros
+                    | .ByteSwap
+                    | .BitReverse
+                    | .RotateLeft
+                    | .RotateRight
+                    | .Abs
+                    | .Min
+                    | .Max
+                    | .Copysign
+                    | .PositiveDifference
+                    | .DivCeil
+                    | .DivFloor
+                    | .DivTrunc
+                    | .Mod
+                    | .Rem
+                    | .Ceil
+                    | .Floor
+                    | .Trunc
+                    | .Round
+                    | .RoundEven
+                    | .Sqrt
+                    | .Cbrt
+                    | .Pow
+                    | .Hypot
+                    | .MulAdd
+                    | .Sin
+                    | .Cos
+                    | .Tan
+                    | .Asin
+                    | .Acos
+                    | .Atan
+                    | .Atan2
+                    | .Sinh
+                    | .Cosh
+                    | .Tanh
+                    | .Asinh
+                    | .Acosh
+                    | .Atanh
+                    | .Exp
+                    | .Exp2
+                    | .Expm1
+                    | .Log
+                    | .Log2
+                    | .Log10
+                    | .Log1p
+                    | .Fmod
+                    | .Remainder
+                    | .Ldexp
+                    | .Ilogb
+                    | .Logb
+                    | .Scalbn
+                    | .NextAfter
+                    | .NextUp
+                    | .NextDown
+                    | .Erf
+                    | .Erfc
+                    | .Gamma
+                    | .IsNan
+                    | .IsInf
+                    | .IsFinite
+                    | .IsNormal
+                    | .Signbit => {
+                        return self->emit_scalar_builtin(builtin_func, kind);
+                    }
+
+                    case .Infinity | .Nan => {
+                        return self->emit_special_float_builtin(builtin_func, kind);
+                    }
+
+                    case .Breakpoint
+                    | .FrameAddress
+                    | .ReturnAddress
+                    | .Trap => {
+                        return self->emit_debug_builtin(builtin_func, kind);
                     }
 
                     case .FuncName => {
@@ -9280,6 +9438,693 @@ pub struct Emitter {
         self->libc_protos.push_str("int memcmp(const void*s1,const void*s2,size_t n);");
     }
 
+    fn builtin_arg_text(
+        self: Self*,
+        builtin_func: const cir::BuiltinFunc*,
+        index: usize
+    ) String {
+        const arg = builtin_func->args.get_const(index).unwrap();
+        return self->emit_expr(arg);
+    }
+
+    fn builtin_arg_type(
+        self: Self*,
+        builtin_func: const cir::BuiltinFunc*,
+        index: usize
+    ) cir::SemaType {
+        const arg = builtin_func->args.get_const(index).unwrap();
+
+        switch (arg->ty) {
+            case .Some(ty) => return ty;
+            case .None => return .Placeholder;
+        }
+    }
+
+    fn emit_math_expr(
+        self: Self*,
+        name: const uint8*,
+        builtin_func: const cir::BuiltinFunc*,
+        ret_name: const uint8*,
+        arg_count: usize
+    ) String {
+        self->needs_math_header = true;
+
+        var out = String.new(self->allocator);
+        out.push_str("((");
+        out.push_str(ret_name);
+        out.push(')');
+        out.push_str(name);
+        out.push('(');
+
+        for (var i: usize = 0; i < arg_count; i += 1) {
+            var arg = self->builtin_arg_text(builtin_func, i);
+
+            out.push_str("(double)(");
+            out.push_str(arg.as_str_const());
+            out.push(')');
+            arg.free();
+
+            if (i + 1 < arg_count) {
+                out.push(',');
+            }
+        }
+
+        out.push_str("))");
+        return out;
+    }
+
+    fn emit_math_scale_expr(
+        self: Self*,
+        name: const uint8*,
+        builtin_func: const cir::BuiltinFunc*,
+        ret_name: const uint8*
+    ) String {
+        self->needs_math_header = true;
+
+        var value = self->builtin_arg_text(builtin_func, 0);
+        var scale = self->builtin_arg_text(builtin_func, 1);
+
+        var out = String.new(self->allocator);
+        out.push_str("((");
+        out.push_str(ret_name);
+        out.push(')');
+        out.push_str(name);
+        out.push_str("((double)(");
+        out.push_str(value.as_str_const());
+        out.push_str("),(int)(");
+        out.push_str(scale.as_str_const());
+        out.push_str(")))");
+
+        value.free();
+        scale.free();
+        return out;
+    }
+
+    fn emit_scalar_builtin(
+        self: Self*,
+        builtin_func: const cir::BuiltinFunc*,
+        kind: cir::BuiltinKind
+    ) String {
+        var ret_type: cir::SemaType = .Placeholder;
+
+        switch (builtin_func->ret_type) {
+            case .Some(ty) => ret_type = ty;
+            case .None => {}
+        }
+
+        var ret_name = self->type_name_of(&ret_type);
+        var first_type = self->builtin_arg_type(builtin_func, 0);
+        var out = String.new(self->allocator);
+
+        switch (kind) {
+            case .PopCount | .CountLeadingZeros | .CountTrailingZeros => {
+                var value = self->builtin_arg_text(builtin_func, 0);
+                var width: usize = 0;
+                var id = self->builtin_temp_id;
+                self->builtin_temp_id += 1;
+
+                switch (cir::builtin_integer_bit_width(&first_type)) {
+                    case .Some(bits) => width = bits;
+                    case .None => {}
+                }
+
+                switch (kind) {
+                    case .PopCount => {
+                        out.push_str("((int32_t)__builtin_popcountll((unsigned long long)(");
+                        out.push_str(value.as_str_const());
+                        out.push_str(")))");
+                    }
+                    case .CountLeadingZeros => {
+                        self->types.used_stdint = true;
+                        out.push_str("({ uint64_t __cyrus_cv");
+                        push_usize(&out, id);
+                        out.push_str("=(uint64_t)(");
+                        out.push_str(value.as_str_const());
+                        out.push_str("); int32_t __cyrus_cr");
+                        push_usize(&out, id);
+                        out.push_str("=((__cyrus_cv");
+                        push_usize(&out, id);
+                        out.push_str(")==0 ? ");
+                        push_usize(&out, width);
+                        out.push_str(" : (int32_t)(__builtin_clzll(__cyrus_cv");
+                        push_usize(&out, id);
+                        out.push_str(") - ");
+                        push_usize(&out, 64 - width);
+                        out.push_str(")); __cyrus_cr");
+                        push_usize(&out, id);
+                        out.push_str("; })");
+                    }
+                    case .CountTrailingZeros => {
+                        self->types.used_stdint = true;
+                        out.push_str("({ uint64_t __cyrus_tv");
+                        push_usize(&out, id);
+                        out.push_str("=(uint64_t)(");
+                        out.push_str(value.as_str_const());
+                        out.push_str("); int32_t __cyrus_tr");
+                        push_usize(&out, id);
+                        out.push_str("=((__cyrus_tv");
+                        push_usize(&out, id);
+                        out.push_str(")==0 ? ");
+                        push_usize(&out, width);
+                        out.push_str(" : (int32_t)__builtin_ctzll(__cyrus_tv");
+                        push_usize(&out, id);
+                        out.push_str(")); __cyrus_tr");
+                        push_usize(&out, id);
+                        out.push_str("; })");
+                    }
+                    else => {}
+                }
+
+                value.free();
+            }
+
+            case .ByteSwap | .BitReverse => {
+                var value = self->builtin_arg_text(builtin_func, 0);
+                var width: usize = 0;
+
+                switch (cir::builtin_integer_bit_width(&first_type)) {
+                    case .Some(bits) => width = bits;
+                    case .None => {}
+                }
+
+                self->needs_bitop_helpers = true;
+
+                out.push_str("((");
+                out.push_str(ret_name.as_str_const());
+                out.push(')');
+
+                switch (kind) {
+                    case .ByteSwap => {
+                        out.push_str("(__cyrus_bswap64_((uint64_t)(");
+                    }
+                    case .BitReverse => {
+                        out.push_str("(__cyrus_bitrev64_((uint64_t)(");
+                    }
+                    else => {}
+                }
+
+                out.push_str(value.as_str_const());
+                out.push_str(")) >> ");
+                push_usize(&out, 64 - width);
+                out.push_str("))");
+                value.free();
+            }
+
+            case .RotateLeft | .RotateRight => {
+                var value = self->builtin_arg_text(builtin_func, 0);
+                var count = self->builtin_arg_text(builtin_func, 1);
+                var width: usize = 0;
+                var id = self->builtin_temp_id;
+                self->builtin_temp_id += 1;
+
+                switch (cir::builtin_integer_bit_width(&first_type)) {
+                    case .Some(bits) => width = bits;
+                    case .None => {}
+                }
+
+                self->types.used_stdint = true;
+                out.push_str("({ uint64_t __cyrus_rv");
+                push_usize(&out, id);
+                out.push_str("=(uint64_t)(");
+                out.push_str(value.as_str_const());
+                out.push_str("); unsigned __cyrus_rk");
+                push_usize(&out, id);
+                out.push_str("=(unsigned)((");
+                out.push_str(count.as_str_const());
+                out.push_str(") % ");
+                push_usize(&out, width);
+                out.push_str("); (");
+                out.push_str(ret_name.as_str_const());
+                out.push_str(")(");
+
+                if (kind == .RotateLeft) {
+                    out.push_str("(__cyrus_rv");
+                    push_usize(&out, id);
+                    out.push_str(" << __cyrus_rk");
+                    push_usize(&out, id);
+                    out.push_str(") | (__cyrus_rv");
+                    push_usize(&out, id);
+                    out.push_str(" >> ((");
+                    push_usize(&out, width);
+                    out.push_str(" - __cyrus_rk");
+                    push_usize(&out, id);
+                    out.push_str(") % ");
+                    push_usize(&out, width);
+                    out.push_str("))");
+                } else {
+                    out.push_str("(__cyrus_rv");
+                    push_usize(&out, id);
+                    out.push_str(" >> __cyrus_rk");
+                    push_usize(&out, id);
+                    out.push_str(") | (__cyrus_rv");
+                    push_usize(&out, id);
+                    out.push_str(" << ((");
+                    push_usize(&out, width);
+                    out.push_str(" - __cyrus_rk");
+                    push_usize(&out, id);
+                    out.push_str(") % ");
+                    push_usize(&out, width);
+                    out.push_str("))");
+                }
+
+                out.push_str("); })");
+                value.free();
+                count.free();
+            }
+
+            case .Abs => {
+                if (first_type.const_inner()->is_float()) {
+                    out = self->emit_math_expr("fabs", builtin_func, ret_name.as_str_const(), 1);
+                } else {
+                    var value = self->builtin_arg_text(builtin_func, 0);
+                    out.push_str("((");
+                    out.push_str(ret_name.as_str_const());
+                    out.push_str(")(((");
+                    out.push_str(value.as_str_const());
+                    out.push_str(") < 0) ? -(");
+                    out.push_str(value.as_str_const());
+                    out.push_str(") : (");
+                    out.push_str(value.as_str_const());
+                    out.push_str(")))");
+                    value.free();
+                }
+            }
+
+            case .Min | .Max => {
+                if (first_type.const_inner()->is_float()) {
+                    var name: const uint8* = "fmin";
+
+                    if (kind == .Max) {
+                        name = "fmax";
+                    }
+
+                    out = self->emit_math_expr(name, builtin_func, ret_name.as_str_const(), 2);
+                } else {
+                    var left = self->builtin_arg_text(builtin_func, 0);
+                    var right = self->builtin_arg_text(builtin_func, 1);
+
+                    out.push_str("((");
+                    out.push_str(ret_name.as_str_const());
+                    out.push_str(")(((");
+                    out.push_str(left.as_str_const());
+                    out.push(')');
+
+                    if (kind == .Min) {
+                        out.push_str(" < (");
+                    } else {
+                        out.push_str(" > (");
+                    }
+
+                    out.push_str(right.as_str_const());
+                    out.push_str(")) ? (");
+                    out.push_str(left.as_str_const());
+                    out.push_str(") : (");
+                    out.push_str(right.as_str_const());
+                    out.push_str(")))");
+
+                    left.free();
+                    right.free();
+                }
+            }
+
+            case .PositiveDifference => {
+                var left = self->builtin_arg_text(builtin_func, 0);
+                var right = self->builtin_arg_text(builtin_func, 1);
+
+                out.push_str("((");
+                out.push_str(ret_name.as_str_const());
+                out.push_str(")(((");
+                out.push_str(left.as_str_const());
+                out.push_str(") > (");
+                out.push_str(right.as_str_const());
+                out.push_str(")) ? ((");
+                out.push_str(left.as_str_const());
+                out.push_str(") - (");
+                out.push_str(right.as_str_const());
+                out.push_str(")) : ((((");
+                out.push_str(left.as_str_const());
+                out.push_str(") != (");
+                out.push_str(left.as_str_const());
+                out.push_str(")) || ((");
+                out.push_str(right.as_str_const());
+                out.push_str(") != (");
+                out.push_str(right.as_str_const());
+                out.push_str("))) ? ((");
+                out.push_str(left.as_str_const());
+                out.push_str(") - (");
+                out.push_str(right.as_str_const());
+                out.push_str(")) : 0.0)))");
+
+                left.free();
+                right.free();
+            }
+
+            case .DivCeil | .DivFloor | .DivTrunc | .Mod | .Rem => {
+                var left = self->builtin_arg_text(builtin_func, 0);
+                var right = self->builtin_arg_text(builtin_func, 1);
+
+                out.push_str("((");
+                out.push_str(ret_name.as_str_const());
+                out.push_str(")(");
+
+                switch (kind) {
+                    case .DivTrunc => {
+                        out.push_str("(");
+                        out.push_str(left.as_str_const());
+                        out.push_str(") / (");
+                        out.push_str(right.as_str_const());
+                        out.push(')');
+                    }
+                    case .DivCeil => {
+                        out.push_str("((");
+                        out.push_str(left.as_str_const());
+                        out.push_str(") / (");
+                        out.push_str(right.as_str_const());
+                        out.push_str(") + ((((");
+                        out.push_str(left.as_str_const());
+                        out.push_str(") % (");
+                        out.push_str(right.as_str_const());
+                        out.push_str(")) != 0 && (((");
+                        out.push_str(left.as_str_const());
+                        out.push_str(") < 0) == ((");
+                        out.push_str(right.as_str_const());
+                        out.push_str(") < 0))) ? 1 : 0))");
+                    }
+                    case .DivFloor => {
+                        out.push_str("((");
+                        out.push_str(left.as_str_const());
+                        out.push_str(") / (");
+                        out.push_str(right.as_str_const());
+                        out.push_str(") - ((((");
+                        out.push_str(left.as_str_const());
+                        out.push_str(") % (");
+                        out.push_str(right.as_str_const());
+                        out.push_str(")) != 0 && (((");
+                        out.push_str(left.as_str_const());
+                        out.push_str(") < 0) != ((");
+                        out.push_str(right.as_str_const());
+                        out.push_str(") < 0))) ? 1 : 0))");
+                    }
+                    case .Mod => {
+                        out.push_str("(((");
+                        out.push_str(left.as_str_const());
+                        out.push_str(") % (");
+                        out.push_str(right.as_str_const());
+                        out.push_str(")) + (");
+                        out.push_str(right.as_str_const());
+                        out.push_str(")) % (");
+                        out.push_str(right.as_str_const());
+                        out.push(')');
+                    }
+                    case .Rem => {
+                        out.push_str("(");
+                        out.push_str(left.as_str_const());
+                        out.push_str(") % (");
+                        out.push_str(right.as_str_const());
+                        out.push(')');
+                    }
+                    else => {}
+                }
+
+                out.push_str("))");
+                left.free();
+                right.free();
+            }
+
+            case .Ilogb => {
+                var value = self->builtin_arg_text(builtin_func, 0);
+                self->needs_math_header = true;
+                out.push_str("((int32_t)ilogb((double)(");
+                out.push_str(value.as_str_const());
+                out.push_str(")))");
+                value.free();
+            }
+
+            case .Ldexp => {
+                out = self->emit_math_scale_expr(
+                    "ldexp", builtin_func, ret_name.as_str_const()
+                );
+            }
+            case .Scalbn => {
+                out = self->emit_math_scale_expr(
+                    "scalbn", builtin_func, ret_name.as_str_const()
+                );
+            }
+
+            case .NextUp | .NextDown => {
+                var value = self->builtin_arg_text(builtin_func, 0);
+                self->needs_math_header = true;
+                out.push_str("((");
+                out.push_str(ret_name.as_str_const());
+                out.push_str(")nextafter((double)(");
+                out.push_str(value.as_str_const());
+
+                if (kind == .NextUp) {
+                    out.push_str("),INFINITY))");
+                } else {
+                    out.push_str("),(-INFINITY)))");
+                }
+
+                value.free();
+            }
+
+            case .IsNan | .IsInf | .IsFinite | .IsNormal | .Signbit => {
+                var value = self->builtin_arg_text(builtin_func, 0);
+                var name: const uint8* = "isnan";
+
+                switch (kind) {
+                    case .IsNan => {
+                        name = "isnan";
+                    }
+                    case .IsInf => {
+                        name = "isinf";
+                    }
+                    case .IsFinite => {
+                        name = "isfinite";
+                    }
+                    case .IsNormal => {
+                        name = "isnormal";
+                    }
+                    case .Signbit => {
+                        name = "signbit";
+                    }
+                    else => {}
+                }
+
+                self->needs_math_header = true;
+                out.push_str("((bool)(");
+                out.push_str(name);
+                out.push_str("((double)(");
+                out.push_str(value.as_str_const());
+                out.push_str(")) != 0))");
+                value.free();
+            }
+
+            else => {
+                switch (cir::builtin_math_c_name(kind)) {
+                    case .Some(name) => {
+                        var count: usize = 1;
+
+                        switch (kind) {
+                            case .Pow
+                            | .Hypot
+                            | .Atan2
+                            | .Fmod
+                            | .Remainder
+                            | .Copysign
+                            | .NextAfter => count = 2;
+                            case .MulAdd => count = 3;
+                            else => {}
+                        }
+
+                        out = self->emit_math_expr(
+                            name, builtin_func, ret_name.as_str_const(), count
+                        );
+                    }
+                    case .None => {}
+                }
+            }
+        }
+
+        ret_name.free();
+        return out;
+    }
+
+    fn emit_repr_builtin(
+        self: Self*,
+        builtin_func: const cir::BuiltinFunc*,
+        kind: cir::BuiltinKind
+    ) String {
+        var ret_type: cir::SemaType = .Placeholder;
+
+        switch (builtin_func->ret_type) {
+            case .Some(ty) => ret_type = ty;
+            case .None => {}
+        }
+
+        var ret_name = self->type_name_of(&ret_type);
+        var out = String.new(self->allocator);
+        var id = self->builtin_temp_id;
+        self->builtin_temp_id += 1;
+
+        switch (kind) {
+            case .BitCast => {
+                var value_type = self->builtin_arg_type(builtin_func, 1);
+                var value_name = self->type_name_of(&value_type);
+                var value = self->builtin_arg_text(builtin_func, 1);
+
+                out.push_str("({ union { ");
+                out.push_str(ret_name.as_str_const());
+                out.push_str(" __cyrus_bt");
+                push_usize(&out, id);
+                out.push(';');
+                out.push_str(value_name.as_str_const());
+                out.push_str(" __cyrus_bv");
+                push_usize(&out, id);
+                out.push_str("; } __cyrus_bu");
+                push_usize(&out, id);
+                out.push_str("; __cyrus_bu");
+                push_usize(&out, id);
+                out.push_str(".__cyrus_bv");
+                push_usize(&out, id);
+                out.push_str(" = (");
+                out.push_str(value.as_str_const());
+                out.push_str("); __cyrus_bu");
+                push_usize(&out, id);
+                out.push_str(".__cyrus_bt");
+                push_usize(&out, id);
+                out.push_str("; })");
+
+                value.free();
+                value_name.free();
+            }
+
+            case .ReadUnaligned => {
+                var pointer = self->builtin_arg_text(builtin_func, 1);
+                self->ensure_memcpy_proto();
+
+                out.push_str("({ ");
+                out.push_str(ret_name.as_str_const());
+                out.push_str(" __cyrus_ul");
+                push_usize(&out, id);
+                out.push_str("; memcpy(&__cyrus_ul");
+                push_usize(&out, id);
+                out.push_str(",(void*)(");
+                out.push_str(pointer.as_str_const());
+                out.push_str("),sizeof(__cyrus_ul");
+                push_usize(&out, id);
+                out.push_str(")); __cyrus_ul");
+                push_usize(&out, id);
+                out.push_str("; })");
+
+                pointer.free();
+            }
+
+            case .WriteUnaligned => {
+                var pointer = self->builtin_arg_text(builtin_func, 1);
+                var value = self->builtin_arg_text(builtin_func, 2);
+                var target_type = self->builtin_arg_type(builtin_func, 0);
+                var target_name = self->type_name_of(&target_type);
+                self->ensure_memcpy_proto();
+
+                out.push_str("({ ");
+                out.push_str(target_name.as_str_const());
+                out.push_str(" __cyrus_uv");
+                push_usize(&out, id);
+                out.push_str(" = (");
+                out.push_str(value.as_str_const());
+                out.push_str("); memcpy((void*)(");
+                out.push_str(pointer.as_str_const());
+                out.push_str("),&__cyrus_uv");
+                push_usize(&out, id);
+                out.push_str(",sizeof(__cyrus_uv");
+                push_usize(&out, id);
+                out.push_str(")); (void)0; })");
+
+                pointer.free();
+                value.free();
+                target_name.free();
+            }
+
+            else => {}
+        }
+
+        ret_name.free();
+        return out;
+    }
+
+    fn emit_special_float_builtin(
+        self: Self*,
+        builtin_func: const cir::BuiltinFunc*,
+        kind: cir::BuiltinKind
+    ) String {
+        var ret_type: cir::SemaType = .Placeholder;
+
+        switch (builtin_func->ret_type) {
+            case .Some(ty) => ret_type = ty;
+            case .None => {}
+        }
+
+        var ret_name = self->type_name_of(&ret_type);
+        var out = String.new(self->allocator);
+        self->needs_math_header = true;
+
+        out.push_str("((");
+        out.push_str(ret_name.as_str_const());
+        out.push(')');
+
+        switch (kind) {
+            case .Infinity => {
+                out.push_str("INFINITY");
+            }
+            case .Nan => {
+                out.push_str("NAN");
+            }
+            else => {}
+        }
+
+        out.push(')');
+        ret_name.free();
+        return out;
+    }
+
+    fn emit_debug_builtin(
+        self: Self*,
+        builtin_func: const cir::BuiltinFunc*,
+        kind: cir::BuiltinKind
+    ) String {
+        var out = String.new(self->allocator);
+
+        switch (kind) {
+            case .Breakpoint => {
+                out.push_str("({ __asm__ __volatile__(\"int3\"); (void)0; })");
+            }
+            case .Trap => {
+                self->libc_protos.push_str("void abort(void);");
+                out.push_str("abort()");
+            }
+            case .FrameAddress => {
+                self->types.used_stdint = true;
+                out.push_str("((uintptr_t)__builtin_frame_address(0))");
+            }
+            case .ReturnAddress => {
+                self->types.used_stdint = true;
+                out.push_str("((uintptr_t)__builtin_return_address(0))");
+            }
+            else => {}
+        }
+
+        return out;
+    }
+
+    fn ensure_memmove_proto(self: Self*) {
+        if (!self->needs_memmove_proto) {
+            self->needs_memmove_proto = true;
+            self->needs_stddef_header = true;
+            self->libc_protos.push_str("void*memmove(void*dest,const void*src,size_t n);");
+        }
+    }
+
     fn ensure_memcpy_proto(self: Self*) {
         if (self->needs_memcpy_proto) {
             return;
@@ -9439,16 +10284,16 @@ fn is_64bit_int_plain(plain: const cir::PlainType*) bool {
 
 fn int_literal_c_type_name(plain: const cir::PlainType*) Option<const uint8*> {
     switch (*plain) {
-        case .Int8 => return .Some("int8_t");
-        case .UInt8 => return .Some("uint8_t");
-        case .Int16 => return .Some("int16_t");
+        case .USize | .UIntPtr => return .Some("uintptr_t");
+        case .ISize | .IntPtr => return .Some("intptr_t");
+        case .UInt64 => return .Some("uint64_t");
+        case .UInt32 => return .Some("uint32_t");
         case .UInt16 => return .Some("uint16_t");
         case .Int32 => return .Some("int32_t");
-        case .UInt32 => return .Some("uint32_t");
         case .Int64 => return .Some("int64_t");
-        case .UInt64 => return .Some("uint64_t");
-        case .ISize | .IntPtr => return .Some("intptr_t");
-        case .USize | .UIntPtr => return .Some("uintptr_t");
+        case .UInt8 => return .Some("uint8_t");
+        case .Int16 => return .Some("int16_t");
+        case .Int8 => return .Some("int8_t");
         else => return .None;
     }
 }
