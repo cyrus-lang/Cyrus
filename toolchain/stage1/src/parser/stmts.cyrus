@@ -1033,7 +1033,7 @@ pub struct ParserStmts {
             }
         }
 
-        if (self->state->is(.LeftParen)) {
+        if (self->state->is(.LeftParen) || self->state->is(.LeftBrace)) {
             return self->parse_destruct_tuple(is_const, start);
         }
 
@@ -1154,8 +1154,15 @@ pub struct ParserStmts {
         return .Some(self->program->create_node(.DestructTuple(node)));
     }
 
-    /// Grammar: constness? ( _ | IDENT ( : Type )? | ( Pattern, ... ) ( : Type )? )
+    /// Grammar: constness? ( _ | IDENT ( : Type )? | ( Pattern, ... ) ( : Type )? | { FieldPattern, ... } ( : Type )? )
     fn parse_destruct_pattern(self: Self*) Option<ast::ASTDestructTuplePattern> {
+        return self->parse_destruct_pattern_ext(true);
+    }
+
+    fn parse_destruct_pattern_ext(
+        self: Self*,
+        allow_type_annotation: bool
+    ) Option<ast::ASTDestructTuplePattern> {
         const start = self->state->current_span();
 
         var bind: Option<ast::ASTConstness> = .None;
@@ -1185,7 +1192,7 @@ pub struct ParserStmts {
                         return .None;
                     }
 
-                    const inner_opt = self->parse_destruct_pattern();
+                    const inner_opt = self->parse_destruct_pattern_ext(true);
 
                     if (inner_opt.is_none()) {
                         // Recovery: Skip garbage up to `,` or `)`
@@ -1262,6 +1269,110 @@ pub struct ParserStmts {
             }
 
             kind = .Tuple(patterns);
+        } else if (self->state->is(.LeftBrace)) {
+            self->state->next();
+
+            var fields: Vec<ast::ASTDestructStructField> = Vec.new(self->allocator);
+            var ignore = false;
+
+            while (!self->state->is(.RightBrace) && !self->state->is(.EOF)) {
+                if (self->state->is(.DoubleDot)) {
+                    ignore = true;
+                    self->state->next();
+                    if (self->state->is(.Comma)) {
+                        self->state->next();
+                    }
+                    break;
+                }
+
+                const field_start = self->state->current_span();
+                var field_bind: Option<ast::ASTConstness> = .None;
+
+                if (self->state->is(.Var)) {
+                    self->state->next();
+                    field_bind = .Some(.Var);
+                } else if (self->state->is(.Const)) {
+                    self->state->next();
+                    field_bind = .Some(.Const);
+                }
+
+                switch (self->state->expect_ident()) case .Some(name) else {
+                    ast::free_destruct_struct_fields(&fields);
+                    return .None;
+                }
+
+                if (self->state->is(.Colon)) {
+                    self->state->next();
+
+                    switch (self->parse_destruct_pattern_ext(true)) case .Some(var inner) else {
+                        ast::free_destruct_struct_fields(&fields);
+                        return .None;
+                    }
+
+                    if (field_bind.is_some() && inner.bind.is_none()) {
+                        inner.bind = field_bind;
+                    }
+
+                    fields.push(ast::ASTDestructStructField {
+                        name,
+                        pattern: inner,
+                        span: field_start.merge(self->state->current_span()),
+                    });
+                } else {
+                    fields.push(ast::ASTDestructStructField {
+                        name,
+                        pattern: ast::ASTDestructTuplePattern {
+                            kind: .Ident(name),
+                            ty: .None,
+                            bind: field_bind,
+                            span: field_start,
+                        },
+                        span: field_start,
+                    });
+                }
+
+                if (self->state->is(.Comma)) {
+                    self->state->next();
+                    continue;
+                }
+
+                if (self->state->is(.RightBrace)) {
+                    break;
+                }
+
+                self->state->dctx->report(Diag.new(
+                    self->state->allocator,
+                    .Error,
+                    "expected `,` or `}` in struct pattern",
+                    self->state->current_span()
+                ));
+
+                while (!self->state->is(.EOF)
+                    && !self->state->is(.Comma)
+                    && !self->state->is(.RightBrace)
+                ) {
+                    self->state->next();
+                }
+
+                if (self->state->is(.Comma)) {
+                    self->state->next();
+                    continue;
+                }
+
+                if (self->state->is(.RightBrace)) {
+                    break;
+                }
+
+                ast::free_destruct_struct_fields(&fields);
+                return .None;
+            }
+
+            if (!self->state->expect(.RightBrace)) {
+                ast::free_destruct_struct_fields(&fields);
+                return .None;
+            }
+
+            kind = .Struct { fields, ignore };
         } else {
             switch (self->state->expect_ident()) case .Some(ident) else {
                 return .None;
@@ -1273,7 +1384,7 @@ pub struct ParserStmts {
         // Optional type annotation
         var ty: Option<ast::ASTType> = .None;
 
-        if (self->state->is(.Colon)) {
+        if (allow_type_annotation && self->state->is(.Colon)) {
             self->state->next();
 
             switch (self->parse_type()) case .Some(explicit_type) else {
@@ -1634,12 +1745,18 @@ pub struct ParserStmts {
 
     /// Grammar: for (Init? ; Cond ; Incr?) Block
     //          for (Init ;) Block
+    //          for ((Index ,)? Pattern : Expr) Block
     pub fn parse_for(self: Self*) {
         const start = self->state->current_span();
         self->state->next();
 
         if (!self->state->expect(.LeftParen)) {
             self->state->sync();
+            return;
+        }
+
+        if (self->is_foreach_header()) {
+            self->parse_foreach(start);
             return;
         }
 
@@ -1724,6 +1841,137 @@ pub struct ParserStmts {
         };
 
         self->state->pending->push(self->program->create_node(.For(node)));
+    }
+
+    fn is_foreach_header(self: const Self*) bool {
+        var idx = self->state->pos();
+        var depth: usize = 0;
+        var has_top_colon = false;
+
+        while (true) {
+            switch (self->state->get(idx)) {
+                case .Some(token) => {
+                    switch (*token->kind) {
+                        case .LeftParen 
+                        | .LeftBracket 
+                        | .LeftBrace => depth += 1;
+                        
+                        case .RightParen => {
+                            if (depth == 0) {
+                                return has_top_colon;
+                            }
+                            depth -= 1;
+                        }
+                        
+                        case .RightBracket | .RightBrace => {
+                            if (depth > 0) {
+                                depth -= 1;
+                            }
+                        }
+                        
+                        case .Semicolon => {
+                            if (depth == 0) {
+                                return false;
+                            }
+                        }
+                        
+                        case .Colon => {
+                            if (depth == 0) {
+                                has_top_colon = true;
+                            }
+                        }
+
+                        case .EOF => return false;
+
+                        else => {}
+                    }
+                }
+                case .None => return false;
+            }
+
+            idx += 1;
+        }
+
+        return false;
+    }
+
+    fn parse_foreach(self: Self*, start: Span) {
+        switch (self->parse_destruct_pattern_ext(false)) case .Some(var first_pat) else {
+            self->state->sync();
+            return;
+        }
+
+        var index: Option<ast::ASTDestructTuplePattern> = .None;
+        var item: ast::ASTDestructTuplePattern;
+
+        if (self->state->is(.Comma)) {
+            self->state->next();
+            index = .Some(first_pat);
+
+            switch (self->parse_destruct_pattern_ext(false)) case .Some(second_pat) else {
+                ast::free_destruct_pattern(&first_pat);
+                self->state->sync();
+                return;
+            }
+
+            item = second_pat;
+        } else {
+            item = first_pat;
+        }
+
+        if (!self->state->expect(.Colon)) {
+            switch (index) {
+                case .Some(var idx_pat) => ast::free_destruct_pattern(&idx_pat);
+                else => {}
+            }
+
+            ast::free_destruct_pattern(&item);
+            self->state->sync();
+            return;
+        }
+
+        switch (self->parse_expr()) case .Some(iterable) else {
+            switch (index) {
+                case .Some(var idx_pat) => ast::free_destruct_pattern(&idx_pat);
+                else => {}
+            }
+
+            ast::free_destruct_pattern(&item);
+            self->state->sync();
+            return;
+        }
+
+        if (!self->state->expect(.RightParen)) {
+            switch (index) {
+                case .Some(var idx_pat) => ast::free_destruct_pattern(&idx_pat);
+                else => {}
+            }
+
+            ast::free_destruct_pattern(&item);
+            self->state->sync();
+            return;
+        }
+
+        switch (self->parse_block_node()) case .Some(body) else {
+            switch (index) {
+                case .Some(var idx_pat) => ast::free_destruct_pattern(&idx_pat);
+                else => {}
+            }
+
+            ast::free_destruct_pattern(&item);
+            self->state->sync();
+            return;
+        }
+
+        const node = ast::ASTForeach {
+            index,
+            item,
+            iterable,
+            body,
+            span: start.merge(self->state->current_span()),
+        };
+
+        self->state->pending->push(self->program->create_node(.Foreach(node)));
     }
 
     /// Grammar: break
@@ -1819,6 +2067,7 @@ pub struct ParserStmts {
 
             if (self->state->is(.LeftParen)) {
                 self->state->next();
+
                 switch (*self->state->current()->kind) {
                     case .Ident(str) => {
                         error_binding = .Some(ast::ASTIdent {
@@ -2633,6 +2882,7 @@ pub struct ParserStmts {
                 });
 
                 if (self->state->is(.Comma)) {
+                    self->state->next();
                     continue;
                 }
 
@@ -3013,6 +3263,7 @@ pub struct ParserStmts {
                 });
 
                 if (self->state->is(.Comma)) {
+                    self->state->next();
                     continue;
                 }
 
@@ -3278,6 +3529,7 @@ pub struct ParserStmts {
                 });
 
                 if (self->state->is(.Comma)) {
+                    self->state->next();
                     continue;
                 }
 

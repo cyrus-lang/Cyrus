@@ -8,9 +8,9 @@ pub interface Iter<T> {
 }
 
 pub interface IterConst<T> {
-    fn next(self: Self*) Option<const T*>;
+    fn next_const(self: Self*) Option<const T*>;
 }
 
 pub interface IterOwned<T> {
-    fn next(self: Self*) Option<T>;
+    fn next_owned(self: Self*) Option<T>;
 }

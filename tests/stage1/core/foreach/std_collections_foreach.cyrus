@@ -1,0 +1,83 @@
+// @stdout: vec_mut=2,4,6 vec_const=2,4,6 vec_owned=2,4,6 map_sum=46 set_sum=42
+
+import std::collections::hash_map{HashMap};
+import std::collections::hash_set{HashSet};
+import std::hash{hash_usize, eq_usize};
+import std::mem::libc{LibcAllocator};
+import std::collections{Vec};
+import std::mem{Allocator};
+import std::libc{printf};
+
+pub fn main() {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var v: Vec<int32> = Vec.new(allocator);
+    defer v.free();
+    v.push(1);
+    v.push(2);
+    v.push(3);
+
+    for (var p : v.iter()) {
+        *p *= 2;
+    }
+
+    printf("vec_mut=");
+    for (i, x : v.iter()) {
+        if (i > 0) { printf(","); }
+        printf("%d", *x);
+    }
+    printf(" ");
+
+    printf("vec_const=");
+    for (i, x : v.iter_const()) {
+        if (i > 0) { printf(","); }
+        printf("%d", *x);
+    }
+    printf(" ");
+
+    printf("vec_owned=");
+    for (i, x : v.iter_owned()) {
+        if (i > 0) { printf(","); }
+        printf("%d", x);
+    }
+    printf(" ");
+
+    var map: HashMap<usize, int32> = HashMap.with_hasher(
+        allocator, 
+        8, 
+        hash_usize, 
+        eq_usize
+    );
+    defer map.free();
+
+    const k1: usize = 1;
+    const k2: usize = 2;
+    const k3: usize = 3;
+    map.insert(k1, 10);
+    map.insert(k2, 20);
+    map.insert(k3, 16);
+
+    var map_sum: int32 = 0;
+    for ((_, val) : map.iter_owned()) {
+        map_sum += val;
+    }
+    printf("map_sum=%d ", map_sum);
+
+    var set: HashSet<usize> = HashSet.with_hasher(allocator, 8, hash_usize, eq_usize);
+    defer set.free();
+
+    const s1: usize = 10;
+    const s2: usize = 12;
+    const s3: usize = 20;
+    set.insert(s1);
+    set.insert(s2);
+    set.insert(s3);
+
+    var set_sum: usize = 0;
+    
+    for (x : set.iter_owned()) {
+        set_sum += x;
+    }
+    
+    printf("set_sum=%zu\n", set_sum);
+}

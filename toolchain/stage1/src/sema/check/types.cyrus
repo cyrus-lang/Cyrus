@@ -87,6 +87,30 @@ pub fn analyze_object_implements_monomorphized_interfaces(
             decl_tables->
             interfaces.get_const(inner_interface_id).unwrap();
 
+        const subst_type = generics::substitute_type(context, &ty);
+        
+        var pushed_inner_env = false;
+        
+        switch (subst_type.as_named_type()) {
+            case .Some(inner_named) => {
+                const inner_env_opt = context->dispatcher.create_inference_generic_env(
+                    context,
+                    inner_interface_decl->name.as_str_const(),
+                    inner_interface_decl->generic_params,
+                    &inner_named.type_args,
+                    implement_interface->span
+                );
+                switch (inner_env_opt) {
+                    case .Some(inner_env) => {
+                        generics::push_generic_env(context, inner_env);
+                        pushed_inner_env = true;
+                    }
+                    case .None => {}
+                }
+            }
+            case .None => {}
+        }
+
         for (var j: usize = 0; j < inner_interface_decl->methods.entries.len(); j += 1) {
             const interface_method = 
                 inner_interface_decl->methods.entries.get_const(j).unwrap();
@@ -125,6 +149,11 @@ pub fn analyze_object_implements_monomorphized_interfaces(
             // Substitute function parameters
             generics::substitute_func_params(context, &interface_func.params);
             
+            switch (normalize_sema_type(context, interface_func.ret_type, interface_func.span, 0)) {
+                case .Some(normalized_type) => interface_func.ret_type = normalized_type;
+                case .None => {}
+            }
+
             // Substitute return type
             interface_func.ret_type = generics::substitute_type(
                 context, 
@@ -180,6 +209,11 @@ pub fn analyze_object_implements_monomorphized_interfaces(
                 // Substitute function parameters
                 generics::substitute_func_params(context, &object_func.params);
 
+                switch (normalize_sema_type(context, object_func.ret_type, object_func.span, 0)) {
+                    case .Some(normalized_type) => object_func.ret_type = normalized_type;
+                    case .None => {}
+                }
+
                 // Substitute return type
                 object_func.ret_type = generics::substitute_type(
                     context, 
@@ -203,6 +237,10 @@ pub fn analyze_object_implements_monomorphized_interfaces(
                     );
                 }
             }
+        }
+
+        if (pushed_inner_env) {
+            generics::pop_generic_env(context);
         }
 
         if (!check_type_correctness(context, ty, implement_interface->span)) {
@@ -2231,6 +2269,7 @@ pub fn tuple_type_from_pattern(
     pattern: const cir::TupleExportPattern*
 ) Option<cir::SemaType> {
     switch (pattern->kind) {
+        case .Struct => return .None;
         case .Tuple(elements) => {
             var result_type: Vec<cir::TupleElement> = Vec.new(context->allocator);
             defer result_type.free();
@@ -2301,6 +2340,9 @@ pub fn tuple_type_from_pattern(
                 span: pattern->span,
             }));
         }
+
+        case .Struct => return .None;
+
         else => { return .None; }
     }
 }
@@ -2399,6 +2441,7 @@ pub fn dispatch_normalize_and_check_type_formation(
 ) {
     *result = normalize_and_check_type_formation(@cast(AnalyzerContext*, opaque_context), *ty, *span, indirection);
 }
+
 pub fn method_decls_of_named_type(
     decl_tables: tables::DeclTables*,
     named_type: const cir::NamedType*

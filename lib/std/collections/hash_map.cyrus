@@ -353,7 +353,7 @@ pub struct HashMapIterOwned<K, V> : IterOwned<(K, V)> {
     map: HashMap<K, V>*,
     index: usize,
 
-    pub fn next(self: Self*) Option<(K, V)> {
+    pub fn next_owned(self: Self*) Option<(K, V)> {
         const cap = self->map->cap();
         const entries_data = self->map->entries_data_const();
         const values_data = self->map->values_data_const();

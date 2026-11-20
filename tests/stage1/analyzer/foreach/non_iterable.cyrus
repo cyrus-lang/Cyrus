@@ -1,0 +1,3 @@
+pub fn main() {
+    for (x : 42) {} //~ ERROR is not iterable
+}

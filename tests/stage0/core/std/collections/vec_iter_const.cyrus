@@ -15,13 +15,13 @@ pub fn main() {
     vec.push(20);
     vec.push(30);
 
-    const iter = vec.iter_owned();
+    const iter = vec.iter_const();
 
-    printf("%d ", iter.next().unwrap());
-    printf("%d ", iter.next().unwrap());
-    printf("%d ", iter.next().unwrap());
+    printf("%d ", *iter.next_const().unwrap());
+    printf("%d ", *iter.next_const().unwrap());
+    printf("%d ", *iter.next_const().unwrap());
 
-    switch (iter.next()) {
+    switch (iter.next_const()) {
         case .None => printf("none\n");
         else => {}
     }

@@ -3,8 +3,8 @@
 import std::libc{printf};
 
 pub fn main() {
-    var arr: int32[100] = undefined;
-    var p: int32* = &arr[0];
+    var array: int32[100] = undefined;
+    var p: int32* = &array[0];
     var i: int32 = 0;
     while (i < 100) {
         *p = i;
@@ -13,7 +13,7 @@ pub fn main() {
     }
 
     var sum: int32 = 0;
-    p = &arr[0];
+    p = &array[0];
     var j: int32 = 0;
     while (j < 100) {
         sum = sum + *p;

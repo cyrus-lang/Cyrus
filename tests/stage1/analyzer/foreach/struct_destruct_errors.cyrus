@@ -1,0 +1,20 @@
+struct Point {
+    pub x: int32,
+    pub y: int32,
+}
+
+struct Hidden {
+    secret: int32,
+    pub visible: int32,
+}
+
+pub fn main() {
+    const point = Point { x: 1, y: 2 };
+    const { a } = 123; //~ ERROR cannot destructure non-struct type
+    const { x } = point; //~ ERROR specifies 1
+    const { x: x1, x: x2 } = point; //~ ERROR duplicate field `x`
+    const { z, y } = point; //~ ERROR has no field named `z`
+
+    const hiddenn = Hidden { secret: 1, visible: 2 };
+    const { secret, visible } = hiddenn; //~ ERROR cannot access internal field `secret`
+}

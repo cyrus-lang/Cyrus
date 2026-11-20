@@ -20,6 +20,7 @@ fn clone_stmt_kind(
     src: const cir::StmtKind*
 ) cir::StmtKind {
     switch (*src) {
+        case .Foreach(foreach_stmt) => return .Foreach(clone_foreach_stmt(allocator, &foreach_stmt));
         case .Switch(switch_stmt) => return .Switch(clone_switch_stmt(allocator, &switch_stmt));
         case .Return(return_stmt) => return .Return(clone_return_stmt(allocator, &return_stmt));
         case .Variable(var_stmt) => return .Variable(clone_var_stmt(allocator, &var_stmt));
@@ -160,6 +161,27 @@ fn clone_for_stmt(allocator: Allocator, src: const cir::ForStmt*) cir::ForStmt {
     };
 }
 
+fn clone_foreach_stmt(allocator: Allocator, src: const cir::ForeachStmt*) cir::ForeachStmt {
+    var index_pattern: Option<cir::TupleExportPattern> = .None;
+
+    switch (src->index_pattern) {
+        case .Some(idx_pat) => {
+            index_pattern = .Some(clone_tuple_export_pattern(allocator, &idx_pat));
+        }
+        case .None => {}
+    }
+
+    return cir::ForeachStmt {
+        index_pattern,
+        item_pattern: clone_tuple_export_pattern(allocator, &src->item_pattern),
+        iterable: clone_expr(allocator, &src->iterable),
+        body: clone_block_alloc(allocator, src->body),
+        kind: src->kind,
+        element_type: src->element_type,
+        span: src->span,
+    };
+}
+
 fn clone_switch_stmt(allocator: Allocator, src: const cir::SwitchStmt*) cir::SwitchStmt {
     var cases: Vec<cir::SwitchCase> = Vec.new(allocator);
 
@@ -296,6 +318,20 @@ fn clone_tuple_export_pattern(
             }
 
             kind = .Tuple(cloned);
+        }
+        case .Struct { fields, ignore } => {
+            var cloned: Vec<cir::StructExportPatternField> = Vec.new(allocator);
+
+            for (var i: usize = 0; i < fields.len(); i += 1) {
+                const field = fields.get_const(i).unwrap();
+                cloned.push(cir::StructExportPatternField {
+                    name: field->name,
+                    pattern: clone_tuple_export_pattern(allocator, &field->pattern),
+                    span: field->span,
+                });
+            }
+
+            kind = .Struct { fields: cloned, ignore };
         }
         case .Ident(var_decl_id) => kind = .Ident(var_decl_id);
         case .Ignore => kind = .Ignore;

@@ -2071,6 +2071,10 @@ pub struct Emitter {
                 self->scan_block_labels(for_.body, depth + 1);
             }
 
+            case .Foreach(foreach_) => {
+                self->scan_block_labels(foreach_.body, depth + 1);
+            }
+
             case .Switch(switch_) => {
                 for (var i: usize = 0; i < switch_.cases.len(); i += 1) {
                     const case_ = switch_.cases.get_const(i).unwrap();
@@ -2101,9 +2105,6 @@ pub struct Emitter {
         return .None;
     }
 
-    // Emits the defers of every scope deeper than `depth`, innermost
-    // first, without popping them: emission continues linearly after
-    // the goto for the paths that never take it.
     fn emit_defers_above(self: Self*, depth: usize) {
         for (var s: usize = self->defer_scopes.len(); s > depth; s -= 1) {
             switch (self->defer_scopes.get_const(s - 1)) {
@@ -2146,7 +2147,7 @@ pub struct Emitter {
                 var target_emitted = true;
 
                 // A goto leaves every defer scope deeper than the label
-                // it targets; run those defers before jumping.
+                // it targets, run those defers before jumping
                 switch (goto_.label_id) {
                     case .Some(label_id) => {
                         switch (self->label_depth_of(label_id)) {
@@ -2155,10 +2156,11 @@ pub struct Emitter {
                             }
                             case .None => {
                                 // The target label sits in code that the
-                                // analyzer removed as unreachable. The
-                                // reference backend drops the branch in this
+                                // analyzer removed as unreachable. 
+                                // 
+                                // The reference backend drops the branch in this
                                 // situation, so do the same rather than emit
-                                // a jump to a label that will never exist.
+                                // a jump to a label that will never exist
                                 target_emitted = false;
                             }
                         }
@@ -2231,6 +2233,10 @@ pub struct Emitter {
                 self->emit_for(&for_);
             }
 
+            case .Foreach(foreach_) => {
+                self->emit_foreach(&foreach_);
+            }
+
             case .Switch(switch_) => {
                 self->emit_switch(&switch_);
             }
@@ -2300,18 +2306,48 @@ pub struct Emitter {
 
                 switch (self->tables->vars.get_const(var_decl_id)) {
                     case .Some(entry) => {
-                        var name = mangle::sanitized(self->allocator, entry->name.as_str_const());
+                        var base_name = mangle::sanitized(self->allocator, entry->name.as_str_const());
+                        var name = self->declare_fn_scope_name(base_name.as_str_const());
+
+                        if (name.as_str_const() != base_name.as_str_const()) {
+                            self->register_fn_rename(var_decl_id, name.as_str_const());
+                        }
+                        base_name.free();
 
                         switch (entry->ty) {
                             case .Some(ty) => {
-                                self->types.ensure_named(&ty);
+                                const clean_ty = *ty.const_inner();
+                                self->types.ensure_named(&clean_ty);
 
-                                var binding_decl = self->types.build_decl(&ty, name.as_str_const());
+                                var binding_decl = self->types.build_decl(&clean_ty, name.as_str_const());
 
-                                self->body_out.push_str(binding_decl.as_str_const());
-                                self->body_out.push('=');
-                                self->body_out.push_str(accessor);
-                                self->body_out.push(';');
+                                var is_fixed_array = false;
+                                switch (clean_ty.as_array_type()) {
+                                    case .Some(array) => {
+                                        switch (array.capacity) {
+                                            case .Fixed => is_fixed_array = true;
+                                            case .Slice | .TerminatedSlice => {}
+                                        }
+                                    }
+                                    else => {}
+                                }
+
+                                if (is_fixed_array) {
+                                    self->ensure_memcpy_proto();
+                                    self->body_out.push_str(binding_decl.as_str_const());
+                                    self->body_out.push_str(";memcpy(");
+                                    self->body_out.push_str(name.as_str_const());
+                                    self->body_out.push(',');
+                                    self->body_out.push_str(accessor);
+                                    self->body_out.push_str(",sizeof(");
+                                    self->body_out.push_str(name.as_str_const());
+                                    self->body_out.push_str("));");
+                                } else {
+                                    self->body_out.push_str(binding_decl.as_str_const());
+                                    self->body_out.push('=');
+                                    self->body_out.push_str(accessor);
+                                    self->body_out.push(';');
+                                }
 
                                 binding_decl.free();
                             }
@@ -2334,6 +2370,28 @@ pub struct Emitter {
                     self->emit_tuple_export_pattern(inner, child_accessor.as_str_const(), is_const);
 
                     child_accessor.free();
+                }
+            }
+            case .Struct { fields, .. } => {
+                for (var i: usize = 0; i < fields.len(); i += 1) {
+                    const field = fields.get_const(i).unwrap();
+                    var sanitized_field = mangle::sanitized(
+                        self->allocator,
+                        field->name.str.as_str_const()
+                    );
+
+                    var child_accessor = String.from_str(self->allocator, accessor);
+                    child_accessor.push('.');
+                    child_accessor.push_str(sanitized_field.as_str_const());
+
+                    self->emit_tuple_export_pattern(
+                        &field->pattern, 
+                        child_accessor.as_str_const(), 
+                        is_const
+                    );
+
+                    child_accessor.free();
+                    sanitized_field.free();
                 }
             }
             case .Ignore => {}
@@ -2421,13 +2479,13 @@ pub struct Emitter {
                     case .Some(rhs) => {
                         // C arrays are not assignable and C aggregates of
                         // distinct types are not assignable even when their
-                        // layouts match. Both cases are lowered explicitly.
-                        var copy_array = false;
+                        // layouts match. Both cases are lowered explicitly
                         var is_fixed_array = false;
+                        var copy_array = false;
 
                         switch (ty.as_array_type()) {
-                            case .Some(arr) => {
-                                switch (arr.capacity) {
+                            case .Some(array) => {
+                                switch (array.capacity) {
                                     case .Fixed => is_fixed_array = true;
                                     case .Slice | .TerminatedSlice => {}
                                 }
@@ -2636,19 +2694,20 @@ pub struct Emitter {
 
         switch (return_->arg) {
             case .Some(arg) => {
-                // Array-returning functions dont really return a plain array. They return
-                // a generated struct wrapper. So we copy the
-                // array value into that wrapper's storage.
-                var ret_check_ty = self->cur_ret_type;
-                if (ret_check_ty.is_none()) {
-                    ret_check_ty = arg.ty;
+                // Array-returning functions dont really return a plain array. 
+                // They return a generated struct wrapper. So we copy the
+                // array value into that wrapper's storage
+                var ret_check_type = self->cur_ret_type;
+
+                if (ret_check_type.is_none()) {
+                    ret_check_type = arg.ty;
                 }
 
-                switch (ret_check_ty) {
+                switch (ret_check_type) {
                     case .Some(ty) => {
                         switch (ty.as_array_type()) {
-                            case .Some(arr) => {
-                                switch (arr.capacity) {
+                            case .Some(array) => {
+                                switch (array.capacity) {
                                     case .Fixed => {
                                         var struct_name = self->types.array_return_struct_name(&ty);
                                         self->ensure_memcpy_proto();
@@ -2874,6 +2933,706 @@ pub struct Emitter {
         self->loop_marks.pop();
 
         self->body_out.push('}');
+    }
+
+    fn emit_foreach_next_call(
+        self: Self*,
+        dispatch: const cir::MethodCallDispatch*,
+        option_type: const cir::SemaType*,
+        iter_var: const uint8*
+    ) String {
+        switch (*dispatch) {
+            case .Normal { method_decl_id } => {
+                switch (self->tables->methods.get_const(method_decl_id)) {
+                    case .Some(method) => {
+                        var name = mangle::mangle_method(
+                            self->allocator,
+                            &self->types.maps,
+                            method_decl_id,
+                            method
+                        );
+
+                        var out = String.new(self->allocator);
+                        out.push_str(name.as_str_const());
+                        out.push('(');
+                        
+                        if (method->is_self_by_value()) {
+                            out.push('*');
+                        }
+                        
+                        out.push_str(iter_var);
+                        out.push(')');
+                        name.free();
+                        return out;
+                    }
+                    else => {}
+                }
+            }
+            case .Monomorph { monomorph_id, .. } => {
+                switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                    case .Some(inst) => {
+                        switch (inst->template_id) {
+                            case .Method(method_decl_id) => {
+                                switch (self->tables->methods.get_const(method_decl_id)) {
+                                    case .Some(method) => {
+                                        var name = mangle::mangle_monomorphized_method(
+                                            self->allocator,
+                                            &self->types.maps,
+                                            self->tables,
+                                            method_decl_id,
+                                            method,
+                                            &inst->type_args
+                                        );
+
+                                        var out = String.new(self->allocator);
+                                        out.push_str(name.as_str_const());
+                                        out.push('(');
+                                        
+                                        if (method->is_self_by_value()) {
+                                            out.push('*');
+                                        }
+                                        
+                                        out.push_str(iter_var);
+                                        out.push(')');
+                                        name.free();
+                                        return out;
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            case .Interface { index, dispatch: icall_dispatch, .. } => {
+                switch (icall_dispatch) {
+                    case .StaticNormal { method_decl_id } => {
+                        switch (self->tables->methods.get_const(method_decl_id)) {
+                            case .Some(method) => {
+                                var name = mangle::mangle_method(
+                                    self->allocator,
+                                    &self->types.maps,
+                                    method_decl_id,
+                                    method
+                                );
+
+                                var out = String.new(self->allocator);
+                                out.push_str(name.as_str_const());
+                                out.push('(');
+                                out.push_str(iter_var);
+                                out.push_str(".data)");
+                                name.free();
+                                return out;
+                            }
+                            else => {}
+                        }
+                    }
+                    case .StaticMonomorphized { monomorph_id } => {
+                        switch (self->monomorphs->instances.get_const(monomorph_id)) {
+                            case .Some(inst) => {
+                                switch (inst->template_id) {
+                                    case .Method(method_decl_id) => {
+                                        switch (self->tables->methods.get_const(method_decl_id)) {
+                                            case .Some(method) => {
+                                                var name = mangle::mangle_monomorphized_method(
+                                                    self->allocator,
+                                                    &self->types.maps,
+                                                    self->tables,
+                                                    method_decl_id,
+                                                    method,
+                                                    &inst->type_args
+                                                );
+
+                                                var out = String.new(self->allocator);
+                                                out.push_str(name.as_str_const());
+                                                out.push('(');
+                                                out.push_str(iter_var);
+                                                out.push_str(".data)");
+                                                name.free();
+                                                return out;
+                                            }
+                                            else => {}
+                                        }
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    case .Dynamic => {
+                        self->types.ensure_named(option_type);
+                        var ret_name = self->types.type_name(option_type);
+
+                        var out = String.from_str(self->allocator, "((");
+                        out.push_str(ret_name.as_str_const());
+                        out.push_str("(*)(void*))((void**)");
+                        out.push_str(iter_var);
+                        out.push_str(".vtable)[");
+                        push_usize(&out, index);
+                        out.push_str("])(");
+                        out.push_str(iter_var);
+                        out.push_str(".data)");
+
+                        ret_name.free();
+                        return out;
+                    }
+                }
+            }
+            case .Unresolved => {}
+        }
+
+        return String.from_str(self->allocator, "((void)0)");
+    }
+
+    fn emit_foreach_item_binding(
+        self: Self*,
+        pattern: const cir::TupleExportPattern*,
+        raw_accessor: const uint8*,
+        val_ty: const cir::SemaType*,
+        deref_ptr: bool,
+        id: usize
+    ) {
+        var needs_temp = false;
+
+        switch (pattern->kind) {
+            case .Tuple | .Struct => needs_temp = true;
+            case .Ident | .Ignore => {}
+        }
+
+        if (needs_temp) {
+            const clean_value_type = *val_ty->const_inner();
+            self->types.ensure_named(&clean_value_type);
+
+            var item_var = String.from_str(self->allocator, "__cyrus_for_item_");
+            push_usize(&item_var, id);
+
+            var item_decl = self->types.build_decl(
+                &clean_value_type, 
+                item_var.as_str_const()
+            );
+            self->body_out.push_str(item_decl.as_str_const());
+            self->body_out.push('=');
+
+            if (deref_ptr) {
+                self->body_out.push_str("*(");
+                self->body_out.push_str(raw_accessor);
+                self->body_out.push(')');
+            } else {
+                self->body_out.push_str(raw_accessor);
+            }
+            
+            self->body_out.push(';');
+            self->emit_tuple_export_pattern(
+                pattern, 
+                item_var.as_str_const(), 
+                true
+            );
+
+            item_decl.free();
+            item_var.free();
+        } else {
+            self->emit_tuple_export_pattern(pattern, raw_accessor, true);
+        }
+    }
+
+    fn emit_foreach(self: Self*, foreach_: const cir::ForeachStmt*) {
+        const id = self->tuple_export_id;
+        self->tuple_export_id += 1;
+
+        var index_var = String.from_str(self->allocator, "__cyrus_for_idx_");
+        push_usize(&index_var, id);
+        defer index_var.free();
+
+        self->body_out.push('{');
+
+        var iter_type: cir::SemaType = .Placeholder;
+
+        switch (foreach_->iterable.ty) {
+            case .Some(ty) => {
+                iter_type = ty;
+            }
+            case .None => {
+                self->body_out.push('}');
+                return;
+            }
+        }
+
+        var is_ident_item = false;
+
+        switch (foreach_->item_pattern.kind) {
+            case .Ident => is_ident_item = true;
+            else => {}
+        }
+
+        switch (foreach_->kind) {
+            case .Array { by_pointer, .. } => {
+                var base_type: cir::SemaType = *extract_typedef_inner_type(
+                    self->tables,
+                    iter_type.const_inner()
+                );
+
+                if (by_pointer) {
+                    switch (base_type) {
+                        case .Pointer(pt) => {
+                            base_type = *extract_typedef_inner_type(self->tables, pt->const_inner());
+                        }
+                        else => {}
+                    }
+                }
+
+                switch (base_type.as_array_type()) case .Some(array) else {
+                    self->body_out.push('}');
+                    return;
+                }
+
+                var capacity: usize = 0;
+
+                switch (array.capacity) {
+                    case .Fixed(capacity_expr) => {
+                        switch (ciri::fold_const_expr_int(
+                            self->tables, 
+                            self->registry, 
+                            capacity_expr
+                        )) {
+                            case .Some(literal) => {
+                                capacity = cir::integer_literal_as_usize(literal);
+                            }
+                            else => {}
+                        }
+                    }
+                    case .Slice | .TerminatedSlice => {}
+                }
+
+                var element_inner_type: cir::SemaType = *array.element_type->const_inner();
+                self->types.ensure_named(&element_inner_type);
+
+                const element_pointer_type: cir::SemaType = .Pointer(&element_inner_type);
+                
+                var array_ptr_var = String.from_str(self->allocator, "__cyrus_for_arr_");
+                push_usize(&array_ptr_var, id);
+                defer array_ptr_var.free();
+
+                var array_ptr_decl = self->types.build_decl(
+                    &element_pointer_type, 
+                    array_ptr_var.as_str_const()
+                );
+                var element_ptr_cast = self->types.build_decl(&element_pointer_type, "");
+
+                if (by_pointer) {
+                    var iter_expr = self->emit_expr(&foreach_->iterable);
+                    self->body_out.push_str(array_ptr_decl.as_str_const());
+                    self->body_out.push_str("=(");
+                    self->body_out.push_str(element_ptr_cast.as_str_const());
+                    self->body_out.push_str(")(");
+                    self->body_out.push_str(iter_expr.as_str_const());
+                    self->body_out.push_str(");");
+                    iter_expr.free();
+                } else {
+                    var array_value_var = String.from_str(self->allocator, "__cyrus_for_arr_val_");
+                    push_usize(&array_value_var, id);
+
+                    var array_value_name_with_capacity = String.from_str(
+                        self->allocator, 
+                        array_value_var.as_str_const()
+                    );
+
+                    array_value_name_with_capacity.push('[');
+                    
+                    var safe_cap: usize = 1;
+                    
+                    if (capacity > 0) {
+                        safe_cap = capacity;
+                    }
+                    
+                    push_usize(&array_value_name_with_capacity, safe_cap);
+                    array_value_name_with_capacity.push(']');
+
+                    var array_value_decl = self->types.build_decl(
+                        &element_inner_type, 
+                        array_value_name_with_capacity.as_str_const()
+                    );
+
+                    self->body_out.push_str(array_value_decl.as_str_const());
+
+                    switch (foreach_->iterable.kind) {
+                        case .Array(arr_expr) => {
+                            var braces = self->emit_array_braces(&arr_expr);
+                            self->body_out.push('=');
+                            self->body_out.push_str(braces.as_str_const());
+                            self->body_out.push(';');
+                            braces.free();
+                        }
+                        else => {
+                            if (capacity > 0) {
+                                self->ensure_memcpy_proto();
+                                var iter_expr = self->emit_expr(&foreach_->iterable);
+                                self->body_out.push_str(";memcpy(");
+                                self->body_out.push_str(array_value_var.as_str_const());
+                                self->body_out.push(',');
+                                self->body_out.push_str(iter_expr.as_str_const());
+                                self->body_out.push_str(",sizeof(");
+                                self->body_out.push_str(array_value_var.as_str_const());
+                                self->body_out.push_str("));");
+                                iter_expr.free();
+                            } else {
+                                self->body_out.push_str("={0};");
+                            }
+                        }
+                    }
+
+                    self->body_out.push_str(array_ptr_decl.as_str_const());
+                    self->body_out.push_str("=(");
+                    self->body_out.push_str(element_ptr_cast.as_str_const());
+                    self->body_out.push_str(")");
+                    self->body_out.push_str(array_value_var.as_str_const());
+                    self->body_out.push(';');
+
+                    array_value_decl.free();
+                    array_value_name_with_capacity.free();
+                    array_value_var.free();
+                }
+
+                array_ptr_decl.free();
+                element_ptr_cast.free();
+
+                self->body_out.push_str("for(uintptr_t ");
+                self->body_out.push_str(index_var.as_str_const());
+                self->body_out.push_str("=0;");
+                self->body_out.push_str(index_var.as_str_const());
+                self->body_out.push('<');
+                push_usize(&self->body_out, capacity);
+                self->body_out.push(';');
+                self->body_out.push_str(index_var.as_str_const());
+                self->body_out.push_str("+=1){");
+
+                switch (foreach_->index_pattern) {
+                    case .Some(idx_pat) => {
+                        self->emit_tuple_export_pattern(&idx_pat, index_var.as_str_const(), true);
+                    }
+                    case .None => {}
+                }
+
+                // FIXME: Rename
+                var item_acc = String.new(self->allocator);
+
+                if (by_pointer && is_ident_item) {
+                    item_acc.push_str("(&");
+                    item_acc.push_str(array_ptr_var.as_str_const());
+                    item_acc.push('[');
+                    item_acc.push_str(index_var.as_str_const());
+                    item_acc.push_str("])");
+                } else {
+                    item_acc.push_str(array_ptr_var.as_str_const());
+                    item_acc.push('[');
+                    item_acc.push_str(index_var.as_str_const());
+                    item_acc.push(']');
+                }
+
+                self->emit_foreach_item_binding(
+                    &foreach_->item_pattern,
+                    item_acc.as_str_const(),
+                    &element_inner_type,
+                    false,
+                    id
+                );
+
+                item_acc.free();
+            }
+
+            case .Slice { by_pointer, .. } => {
+                var slice_type: cir::SemaType = *extract_typedef_inner_type(
+                    self->tables,
+                    iter_type.const_inner()
+                );
+
+                if (by_pointer) {
+                    switch (slice_type) {
+                        case .Pointer(pt) => {
+                            slice_type = *extract_typedef_inner_type(self->tables, pt->const_inner());
+                        }
+                        else => {}
+                    }
+                }
+
+                switch (slice_type.as_array_type()) case .Some(array) else {
+                    self->body_out.push('}');
+                    return;
+                }
+
+                self->types.ensure_slice();
+                self->types.ensure_named(&slice_type);
+
+                var element_inner_type: cir::SemaType = *array.element_type->const_inner();
+                self->types.ensure_named(&element_inner_type);
+
+                const element_pointer_type: cir::SemaType = .Pointer(&element_inner_type);
+                var element_ptr_cast = self->types.build_decl(&element_pointer_type, "");
+
+                var slice_var = String.from_str(self->allocator, "__cyrus_for_slice_");
+                push_usize(&slice_var, id);
+                defer slice_var.free();
+
+                var slice_decl = self->types.build_decl(&slice_type, slice_var.as_str_const());
+                var iter_expr = self->emit_expr(&foreach_->iterable);
+
+                self->body_out.push_str(slice_decl.as_str_const());
+                self->body_out.push('=');
+
+                if (by_pointer) {
+                    self->body_out.push_str("*(");
+                    self->body_out.push_str(iter_expr.as_str_const());
+                    self->body_out.push(')');
+                } else {
+                    self->body_out.push_str(iter_expr.as_str_const());
+                }
+
+                self->body_out.push(';');
+
+                iter_expr.free();
+                slice_decl.free();
+
+                self->body_out.push_str("for(uintptr_t ");
+                self->body_out.push_str(index_var.as_str_const());
+                self->body_out.push_str("=0;");
+                self->body_out.push_str(index_var.as_str_const());
+                self->body_out.push('<');
+                self->body_out.push_str(slice_var.as_str_const());
+                self->body_out.push_str(".len;");
+                self->body_out.push_str(index_var.as_str_const());
+                self->body_out.push_str("+=1){");
+
+                switch (foreach_->index_pattern) {
+                    case .Some(idx_pat) => {
+                        self->emit_tuple_export_pattern(&idx_pat, index_var.as_str_const(), true);
+                    }
+                    case .None => {}
+                }
+
+                var item_acc = String.new(self->allocator);
+
+                if (by_pointer && is_ident_item) {
+                    item_acc.push_str("(&((");
+                    item_acc.push_str(element_ptr_cast.as_str_const());
+                    item_acc.push(')');
+                    item_acc.push_str(slice_var.as_str_const());
+                    item_acc.push_str(".ptr)[");
+                    item_acc.push_str(index_var.as_str_const());
+                    item_acc.push_str("])");
+                } else {
+                    item_acc.push_str("(((");
+                    item_acc.push_str(element_ptr_cast.as_str_const());
+                    item_acc.push(')');
+                    item_acc.push_str(slice_var.as_str_const());
+                    item_acc.push_str(".ptr)[");
+                    item_acc.push_str(index_var.as_str_const());
+                    item_acc.push_str("])");
+                }
+
+                element_ptr_cast.free();
+
+                self->emit_foreach_item_binding(
+                    &foreach_->item_pattern,
+                    item_acc.as_str_const(),
+                    &element_inner_type,
+                    false,
+                    id
+                );
+
+                item_acc.free();
+            }
+
+            case .Iterator {
+                next_dispatch,
+                option_type,
+                element_type,
+                pass_by_addr,
+                is_interface_fat_ptr,
+            } => {
+                var iter_var = String.from_str(self->allocator, "__cyrus_for_iter_");
+                push_usize(&iter_var, id);
+                defer iter_var.free();
+
+                var iter_expr = self->emit_expr(&foreach_->iterable);
+
+                if (is_interface_fat_ptr) {
+                    self->types.ensure_fat_ptr();
+                    self->body_out.push_str("__fat_ptr ");
+                    self->body_out.push_str(iter_var.as_str_const());
+                    self->body_out.push('=');
+
+                    if (pass_by_addr) {
+                        self->body_out.push_str(iter_expr.as_str_const());
+                    } else {
+                        self->body_out.push_str("*(");
+                        self->body_out.push_str(iter_expr.as_str_const());
+                        self->body_out.push(')');
+                    }
+                    
+                    self->body_out.push(';');
+                } else {
+                    var concrete_type: cir::SemaType = *iter_type.const_inner();
+                    
+                    if (!pass_by_addr) {
+                        switch (concrete_type) {
+                            case .Pointer(pt) => concrete_type = *pt->const_inner();
+                            else => {}
+                        }
+                    }
+
+                    concrete_type = *extract_typedef_inner_type(self->tables, &concrete_type);
+                    self->types.ensure_named(&concrete_type);
+
+                    const iter_ptr_ty: cir::SemaType = .Pointer(&concrete_type);
+                    
+                    var iter_ptr_decl = self->types.build_decl(&iter_ptr_ty, iter_var.as_str_const());
+
+                    if (pass_by_addr) {
+                        var iter_val_var = String.from_str(self->allocator, "__cyrus_for_iter_val_");
+                        push_usize(&iter_val_var, id);
+
+                        var iter_val_decl = self->types.build_decl(
+                            &concrete_type, 
+                            iter_val_var.as_str_const()
+                        );
+                        self->body_out.push_str(iter_val_decl.as_str_const());
+                        self->body_out.push('=');
+                        self->body_out.push_str(iter_expr.as_str_const());
+                        self->body_out.push(';');
+
+                        self->body_out.push_str(iter_ptr_decl.as_str_const());
+                        self->body_out.push_str("=&");
+                        self->body_out.push_str(iter_val_var.as_str_const());
+                        self->body_out.push(';');
+
+                        iter_val_decl.free();
+                        iter_val_var.free();
+                    } else {
+                        var iter_ptr_cast = self->types.build_decl(&iter_ptr_ty, "");
+                        self->body_out.push_str(iter_ptr_decl.as_str_const());
+                        self->body_out.push_str("=(");
+                        self->body_out.push_str(iter_ptr_cast.as_str_const());
+                        self->body_out.push_str(")(");
+                        self->body_out.push_str(iter_expr.as_str_const());
+                        self->body_out.push_str(");");
+                        iter_ptr_cast.free();
+                    }
+
+                    iter_ptr_decl.free();
+                }
+
+                iter_expr.free();
+
+                if (foreach_->index_pattern.is_some()) {
+                    self->body_out.push_str("uintptr_t ");
+                    self->body_out.push_str(index_var.as_str_const());
+                    self->body_out.push_str("=0;for(;;");
+                    self->body_out.push_str(index_var.as_str_const());
+                    self->body_out.push_str("+=1){");
+                } else {
+                    self->body_out.push_str("for(;;){");
+                }
+
+                var some_tag: uint32 = 0;
+
+                switch (option_type.const_inner()->as_named_type()) {
+                    case .Some(opt_named) => {
+                        switch (opt_named.type_decl_id.as_enum()) {
+                            case .Some(enum_id) => {
+                                switch (self->tables->enums.get_const(enum_id)) {
+                                    case .Some(enum_decl) => {
+                                        for (var vi: usize = 0; vi < enum_decl->variants.len(); vi += 1) {
+                                            const variant = enum_decl->variants.get_const(vi).unwrap();
+                                            
+                                            if (variant->name() == "Some") {
+                                                some_tag = @cast(uint32, vi);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    case .None => {}
+                                }
+                            }
+                            case .None => {}
+                        }
+                    }
+                    case .None => {}
+                }
+
+                self->types.ensure_named(&option_type);
+
+                var opt_var = String.from_str(self->allocator, "__cyrus_for_opt_");
+                push_usize(&opt_var, id);
+
+                var opt_decl = self->types.build_decl(&option_type, opt_var.as_str_const());
+
+                var next_call = self->emit_foreach_next_call(
+                    &next_dispatch,
+                    &option_type,
+                    iter_var.as_str_const()
+                );
+
+                self->body_out.push_str(opt_decl.as_str_const());
+                self->body_out.push('=');
+                self->body_out.push_str(next_call.as_str_const());
+                self->body_out.push_str(";if(");
+                self->body_out.push_str(opt_var.as_str_const());
+                self->body_out.push_str(".tag!=");
+                push_uint32(&self->body_out, some_tag);
+                self->body_out.push_str("){break;}");
+
+                opt_decl.free();
+                next_call.free();
+
+                switch (foreach_->index_pattern) {
+                    case .Some(idx_pat) => {
+                        self->emit_tuple_export_pattern(&idx_pat, index_var.as_str_const(), true);
+                    }
+                    case .None => {}
+                }
+
+                var payload_acc = self->enum_tuple_payload_base(
+                    opt_var.as_str_const(),
+                    some_tag,
+                    0
+                );
+
+                var deref_ptr = false;
+                var destruct_value_type: cir::SemaType = *element_type.const_inner();
+
+                switch (*element_type.const_inner()) {
+                    case .Pointer(inner) => {
+                        deref_ptr = true;
+                        destruct_value_type = *inner->const_inner();
+                    }
+                    else => {}
+                }
+
+                self->emit_foreach_item_binding(
+                    &foreach_->item_pattern,
+                    payload_acc.as_str_const(),
+                    &destruct_value_type,
+                    deref_ptr,
+                    id
+                );
+
+                payload_acc.free();
+                opt_var.free();
+            }
+
+            case .Unresolved => {
+                self->body_out.push('}');
+                return;
+            }
+        }
+
+        self->loop_marks.push(self->defer_scopes.len());
+        self->emit_block_stmts(foreach_->body, true);
+        self->loop_marks.pop();
+
+        self->body_out.push_str("}}");
     }
 
     fn emit_switch(self: Self*, switch_: const cir::SwitchStmt*) {
@@ -4496,8 +5255,8 @@ pub struct Emitter {
         switch (expr->ty) {
             case .Some(ty) => {
                 switch (ty.as_array_type()) {
-                    case .Some(arr) => {
-                        switch (arr.capacity) {
+                    case .Some(array) => {
+                        switch (array.capacity) {
                             case .Fixed => {
                                 var struct_name = self->types.array_return_struct_name(&ty);
 
@@ -4621,18 +5380,18 @@ pub struct Emitter {
                 var idx = self->emit_expr(array_index.index);
 
                 var is_slice = false;
-                var elem_ptr_decl = String.new(self->allocator);
+                var element_ptr_decl = String.new(self->allocator);
 
                 switch (array_index.operand->ty) {
                     case .Some(op_ty) => {
                         switch (op_ty.as_array_type()) {
-                            case .Some(arr) => {
-                                switch (arr.capacity) {
+                            case .Some(array) => {
+                                switch (array.capacity) {
                                     case .Slice | .TerminatedSlice => {
                                         is_slice = true;
-                                        const ptr_ty: cir::SemaType = .Pointer(arr.element_type);
-                                        elem_ptr_decl.free();
-                                        elem_ptr_decl = self->types.build_decl(&ptr_ty, "");
+                                        const ptr_ty: cir::SemaType = .Pointer(array.element_type);
+                                        element_ptr_decl.free();
+                                        element_ptr_decl = self->types.build_decl(&ptr_ty, "");
                                     }
                                     case .Fixed => {}
                                 }
@@ -4645,7 +5404,7 @@ pub struct Emitter {
 
                 if (is_slice) {
                     out.push_str("(((");
-                    out.push_str(elem_ptr_decl.as_str_const());
+                    out.push_str(element_ptr_decl.as_str_const());
                     out.push_str(")(");
                     out.push_str(base.as_str_const());
                     out.push_str(").ptr)[");
@@ -4659,7 +5418,7 @@ pub struct Emitter {
                     out.push_str("])");
                 }
 
-                elem_ptr_decl.free();
+                element_ptr_decl.free();
                 base.free();
                 idx.free();
                 
@@ -4680,22 +5439,24 @@ pub struct Emitter {
 
                 var is_slice_op = false;
                 var fixed_len: usize = 0;
-                var elem_ptr_decl = String.new(self->allocator);
+                var element_ptr_decl = String.new(self->allocator);
 
                 switch (slice_expr.operand->ty) {
                     case .Some(op_ty) => {
                         if (op_ty.is_pointer()) {
-                            elem_ptr_decl.free();
-                            elem_ptr_decl = self->types.build_decl(&op_ty, "");
+                            element_ptr_decl.free();
+                            element_ptr_decl = self->types.build_decl(&op_ty, "");
                         } else {
                             switch (op_ty.as_array_type()) {
-                                case .Some(arr) => {
-                                    const ptr_ty: cir::SemaType = .Pointer(arr.element_type);
-                                    elem_ptr_decl.free();
-                                    elem_ptr_decl = self->types.build_decl(&ptr_ty, "");
-                                    switch (arr.capacity) {
+                                case .Some(array) => {
+                                    const ptr_ty: cir::SemaType = .Pointer(array.element_type);
+                                    
+                                    element_ptr_decl.free();
+                                    element_ptr_decl = self->types.build_decl(&ptr_ty, "");
+
+                                    switch (array.capacity) {
                                         case .Fixed => {
-                                            fixed_len = self->types.tctx.array_capacity_len(&arr);
+                                            fixed_len = self->types.tctx.array_capacity_len(&array);
                                         }
                                         case .Slice | .TerminatedSlice => {
                                             is_slice_op = true;
@@ -4710,43 +5471,47 @@ pub struct Emitter {
                 }
 
                 var out = String.from_str(self->allocator, "({ ");
+
                 if (is_slice_op) {
                     out.push_str("__slice __s=(");
                     out.push_str(base.as_str_const());
                     out.push_str("); uintptr_t __start=(uintptr_t)(");
                     out.push_str(start_str.as_str_const());
                     out.push_str("); uintptr_t __end=");
+
                     switch (slice_expr.end) {
-                        case .Some(e) => {
-                            var end_str = self->emit_expr(e);
+                        case .Some(end) => {
+                            var expr = self->emit_expr(end);
                             out.push_str("(uintptr_t)(");
-                            out.push_str(end_str.as_str_const());
+                            out.push_str(expr.as_str_const());
                             out.push(')');
-                            end_str.free();
+                            expr.free();
                         }
                         case .None => {
                             out.push_str("__s.len");
                         }
                     }
+
                     out.push_str("; ((__slice){.ptr=(void*)(((");
-                    out.push_str(elem_ptr_decl.as_str_const());
+                    out.push_str(element_ptr_decl.as_str_const());
                     out.push_str(")(__s.ptr))+__start),.len=__end-__start}); })");
                 } else {
-                    out.push_str(elem_ptr_decl.as_str_const());
+                    out.push_str(element_ptr_decl.as_str_const());
                     out.push_str(" __p=(");
-                    out.push_str(elem_ptr_decl.as_str_const());
+                    out.push_str(element_ptr_decl.as_str_const());
                     out.push_str(")(");
                     out.push_str(base.as_str_const());
                     out.push_str("); uintptr_t __start=(uintptr_t)(");
                     out.push_str(start_str.as_str_const());
                     out.push_str("); uintptr_t __end=");
+
                     switch (slice_expr.end) {
-                        case .Some(e) => {
-                            var end_str = self->emit_expr(e);
+                        case .Some(end) => {
+                            var expr = self->emit_expr(end);
                             out.push_str("(uintptr_t)(");
-                            out.push_str(end_str.as_str_const());
+                            out.push_str(expr.as_str_const());
                             out.push(')');
-                            end_str.free();
+                            expr.free();
                         }
                         case .None => {
                             push_usize(&out, fixed_len);
@@ -4755,7 +5520,7 @@ pub struct Emitter {
                     out.push_str("; ((__slice){.ptr=(void*)(__p+__start),.len=__end-__start}); })");
                 }
 
-                elem_ptr_decl.free();
+                element_ptr_decl.free();
                 start_str.free();
                 base.free();
                 return out;
@@ -4803,22 +5568,23 @@ pub struct Emitter {
             case .Array(array) => {
                 var is_slice_lit = false;
                 var type_name = String.new(self->allocator);
-                var resolved_array_ty = array.ty;
+                var resolved_array_type = array.ty;
+
                 if (expr->ty.is_some()) {
-                    resolved_array_ty = expr->ty;
+                    resolved_array_type = expr->ty;
                 }
 
-                switch (resolved_array_ty) {
+                switch (resolved_array_type) {
                     case .Some(ty) => {
                         switch (ty.as_array_type()) {
-                            case .Some(arr) => {
-                                switch (arr.capacity) {
+                            case .Some(array) => {
+                                switch (array.capacity) {
                                     case .Slice | .TerminatedSlice => {
                                         is_slice_lit = true;
                                         self->types.ensure_slice();
-                                        self->types.ensure_named(arr.element_type);
+                                        self->types.ensure_named(array.element_type);
                                         type_name.free();
-                                        type_name = self->types.type_name(arr.element_type);
+                                        type_name = self->types.type_name(array.element_type);
                                     }
                                     case .Fixed => {
                                         self->types.ensure_named(&ty);
@@ -7421,21 +8187,24 @@ pub struct Emitter {
                                 switch (operand->ty) {
                                     case .Some(ty) => {
                                         switch (ty.as_array_type()) {
-                                            case .Some(arr) => {
-                                                switch (arr.capacity) {
+                                            case .Some(array) => {
+                                                switch (array.capacity) {
                                                     case .Fixed => {
-                                                        const len = self->types.tctx.array_capacity_len(&arr);
+                                                        const len = self->types.tctx.array_capacity_len(&array);
+                                                        
                                                         var out = String.from_str(self->allocator, "((uintptr_t)");
                                                         push_usize(&out, len);
                                                         out.push(')');
                                                         return out;
                                                     }
                                                     case .Slice | .TerminatedSlice => {
-                                                        var op_str = self->emit_expr(operand);
+                                                        var expr = self->emit_expr(operand);
                                                         var out = String.from_str(self->allocator, "((");
-                                                        out.push_str(op_str.as_str_const());
+                                                        
+                                                        out.push_str(expr.as_str_const());
                                                         out.push_str(").len)");
-                                                        op_str.free();
+                                                        
+                                                        expr.free();
                                                         return out;
                                                     }
                                                 }
@@ -7458,26 +8227,29 @@ pub struct Emitter {
                                 switch (operand->ty) {
                                     case .Some(ty) => {
                                         switch (ty.const_inner()->as_array_type()) {
-                                            case .Some(arr) => {
-                                                var op_str = self->emit_expr(operand);
-                                                const ptr_ty: cir::SemaType = .Pointer(arr.element_type);
+                                            case .Some(array) => {
+                                                const ptr_ty: cir::SemaType = .Pointer(array.element_type);
+
+                                                var expr = self->emit_expr(operand);
                                                 var ptr_decl = self->types.build_decl(&ptr_ty, "");
                                                 var out = String.from_str(self->allocator, "((");
                                                 out.push_str(ptr_decl.as_str_const());
-                                                switch (arr.capacity) {
+                                                
+                                                switch (array.capacity) {
                                                     case .Fixed => {
                                                         out.push_str(")(");
-                                                        out.push_str(op_str.as_str_const());
+                                                        out.push_str(expr.as_str_const());
                                                         out.push_str("))");
                                                     }
                                                     case .Slice | .TerminatedSlice => {
                                                         out.push_str(")((");
-                                                        out.push_str(op_str.as_str_const());
+                                                        out.push_str(expr.as_str_const());
                                                         out.push_str(").ptr))");
                                                     }
                                                 }
+                                                
                                                 ptr_decl.free();
-                                                op_str.free();
+                                                expr.free();
                                                 return out;
                                             }
                                             else => {}
@@ -7501,10 +8273,12 @@ pub struct Emitter {
                                         var ptr_str = self->emit_expr(ptr_arg);
                                         var len_str = self->emit_expr(len_arg);
                                         var out = String.from_str(self->allocator, "((__slice){.ptr=(void*)(");
+                                        
                                         out.push_str(ptr_str.as_str_const());
                                         out.push_str("),.len=(uintptr_t)(");
                                         out.push_str(len_str.as_str_const());
                                         out.push_str(")})");
+
                                         len_str.free();
                                         ptr_str.free();
                                         return out;
@@ -8131,8 +8905,8 @@ pub struct Emitter {
                 switch (literal->ty) {
                     case .Some(ty) => {
                         switch (*ty.const_inner()) {
-                            case .Array(arr) => {
-                                switch (arr.capacity) {
+                            case .Array(array) => {
+                                switch (array.capacity) {
                                     case .Slice | .TerminatedSlice => is_slice = true;
                                     case .Fixed => is_array = true;
                                 }

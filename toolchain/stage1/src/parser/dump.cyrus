@@ -139,6 +139,7 @@ pub struct ASTDump {
             case .Type(var ty) => self->dump_type("Type", ty);
             case .Continue(var node) => self->dump_continue(&node);
             case .FuncDef(var node) => self->dump_func_def(&node);
+            case .Foreach(var node) => self->dump_foreach(&node);
             case .Builtin(var node) => self->dump_builtin(&node);
             case .Struct(var node) => self->dump_struct(&node);
             case .Switch(var node) => self->dump_switch(&node);
@@ -795,6 +796,22 @@ pub struct ASTDump {
         self->indent -= 1;
     }
 
+    fn dump_foreach(self: Self*, node: const ast::ASTForeach*) {
+        self->write_indent();
+        self->writer.writeln("ASTForeach");
+        self->indent += 1;
+        
+        switch (node->index) {
+            case .Some(var idx) => self->dump_destruct_pattern("index", &idx);
+            else => {}
+        }
+
+        self->dump_destruct_pattern("item", &node->item);
+        self->dump_subtree("iterable", node->iterable);
+        self->dump_subtree("body", node->body);
+        self->indent -= 1;
+    }
+
     fn dump_switch(self: Self*, node: const ast::ASTSwitch*) {
         self->write_indent();
         self->writer.writeln("ASTSwitch");
@@ -1066,6 +1083,17 @@ pub struct ASTDump {
                 for (var i: usize = 0; i < patterns.len(); i += 1) {
                     const inner = patterns.get_const(i).unwrap();
                     self->dump_destruct_pattern("item", inner);
+                }
+            }
+            case .Struct { fields, ignore } => {
+                self->write_indent();
+                self->writer.writeln("Struct");
+                self->dump_bool("ignore", ignore);
+
+                for (var i: usize = 0; i < fields.len(); i += 1) {
+                    const field = fields.get_const(i).unwrap();
+                    self->dump_ident("field", &field->name);
+                    self->dump_destruct_pattern("pattern", &field->pattern);
                 }
             }
             case .Ident(var ident) => self->dump_ident("ident", &ident);

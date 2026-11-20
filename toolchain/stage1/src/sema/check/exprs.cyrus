@@ -6875,8 +6875,8 @@ fn resolve_try_method_dispatch(
         context->func_env.current_object = .Some(*pure_type);
 
         switch (normalize_sema_type(context, method_decl.func_decl.ret_type, span, 0)) {
-            case .Some(norm_ret) => {
-                method_decl.func_decl.ret_type = norm_ret;
+            case .Some(normalized_type) => {
+                method_decl.func_decl.ret_type = normalized_type;
                 generics::substitute_func_params(context, &method_decl.func_decl.params);
                 method_decl.func_decl.ret_type = generics::substitute_type(
                     context,
@@ -6915,8 +6915,8 @@ fn resolve_try_method_dispatch(
         context->func_env.current_object = .Some(*pure_type);
 
         switch (normalize_sema_type(context, method_decl.func_decl.ret_type, span, 0)) {
-            case .Some(norm_ret) => {
-                const ret_type = generics::substitute_type(context, &norm_ret);
+            case .Some(normalized_type) => {
+                const ret_type = generics::substitute_type(context, &normalized_type);
                 result = .Some(ResolvedTryMethod {
                     dispatch: .Normal { method_decl_id },
                     ret_type,
@@ -7091,6 +7091,580 @@ pub fn resolve_try_impl(
     });
 }
 
+pub struct ResolvedIteratorImpl {
+    pub next_dispatch: cir::MethodCallDispatch,
+    pub option_type: cir::SemaType,
+    pub element_type: cir::SemaType,
+    pub is_interface_fat_ptr: bool,
+    pub pass_by_addr: bool,
+}
+
+fn match_iterator_interface_decl(
+    context: AnalyzerContext*,
+    interface_decl_id: cir::InterfaceDeclId
+) Option<const uint8*> {
+    switch (context->decl_tables->interfaces.get_const(interface_decl_id)) {
+        case .Some(interface_decl) => {
+            if (interface_decl->generic_params.len() != 1) {
+                return .None;
+            }
+            const name = interface_decl->name.as_str_const();
+
+            if (name == "Iter") {
+                return .Some("next");
+            } else if (name == "IterConst") {
+                return .Some("next_const");
+            } else if (name == "IterOwned") {
+                return .Some("next_owned");
+            }
+            
+            return .None;
+        }
+        case .None => return .None;
+    }
+}
+
+fn extract_iterator_option_element(
+    context: AnalyzerContext*,
+    ret_type: cir::SemaType,
+    method_name: const uint8*,
+    span: Span
+) Option<(cir::SemaType, cir::SemaType)> {
+    const opt_expanded = expand_sema_type(context, ret_type, span);
+    switch (opt_expanded.as_named_type()) case .Some(opt_named) else {
+        diags::report_iterator_invalid_next_return_type(
+            context->dctx,
+            context->allocator,
+            span,
+            method_name
+        );
+        return .None;
+    }
+
+    switch (opt_named.type_decl_id.as_enum()) case .Some(enum_id) else {
+        diags::report_iterator_invalid_next_return_type(
+            context->dctx,
+            context->allocator,
+            span,
+            method_name
+        );
+        return .None;
+    }
+
+    switch (context->decl_tables->enums.get_const(enum_id)) case .Some(enum_decl) else {
+        diags::report_iterator_invalid_next_return_type(
+            context->dctx,
+            context->allocator,
+            span,
+            method_name
+        );
+        return .None;
+    }
+
+    var is_option_enum = false;
+
+    switch (enum_decl->name) {
+        case .Some(ename) => {
+            if (ename.as_str_const() == "Option") {
+                is_option_enum = true;
+            }
+        }
+        case .None => {}
+    }
+
+    if (!is_option_enum || opt_named.type_args.len() != 1) {
+        diags::report_iterator_invalid_next_return_type(
+            context->dctx,
+            context->allocator,
+            span,
+            method_name
+        );
+        return .None;
+    }
+
+    switch (*opt_named.type_args.get(0).unwrap()) {
+        case .Type(elem_type, _) => {
+            return .Some((opt_expanded, elem_type));
+        }
+        else => {
+            diags::report_iterator_invalid_next_return_type(
+                context->dctx,
+                context->allocator,
+                span,
+                method_name
+            );
+            return .None;
+        }
+    }
+}
+
+fn interface_method_return_type(
+    context: AnalyzerContext*,
+    interface_decl: const cir::InterfaceDecl*,
+    interface_type_args: const cir::TypeArgs*,
+    method_name: const uint8*,
+    span: Span
+) Option<cir::SemaType> {
+    switch (interface_decl->methods.get(method_name)) case .Some(interface_method_decl_id) else {
+        return .None;
+    }
+
+    const interface_method_decl =
+        context->decl_tables->methods.get_const(interface_method_decl_id).unwrap();
+
+    const final_generic_params = cir::extend_generic_params(
+        context->allocator,
+        &interface_method_decl->func_decl.generic_params,
+        &interface_decl->generic_params
+    );
+
+    const generic_env_opt = create_inference_generic_env(
+        context,
+        interface_decl->name.as_str_const(),
+        final_generic_params,
+        interface_type_args,
+        span
+    );
+    switch (generic_env_opt) case .Some(generic_env) else {
+        return .None;
+    }
+
+    generics::push_generic_env(context, generic_env);
+
+    var result: Option<cir::SemaType> = .None;
+
+    switch (normalize_sema_type(context, interface_method_decl->func_decl.ret_type, span, 0)) {
+        case .Some(normalized_type) => {
+            result = .Some(generics::substitute_type(context, &normalized_type));
+        }
+        case .None => {}
+    }
+
+    generics::pop_generic_env(context);
+    return result;
+}
+
+pub fn resolve_iterator_impl(
+    context: AnalyzerContext*,
+    iterable_expr: const cir::Expr*,
+    iterable_type: const cir::SemaType*,
+    item_is_var: bool,
+    span: Span
+) Option<ResolvedIteratorImpl> {
+    const is_top_const = iterable_type->is_const();
+    const inner = iterable_type->const_inner();
+
+    var is_pointer = false;
+    var is_const_target = false;
+    var target_type: cir::SemaType = .Placeholder;
+
+    switch (*inner) {
+        case .Pointer(pointee) => {
+            is_pointer = true;
+            is_const_target = is_top_const || pointee->is_const();
+            target_type = expand_sema_type(context, *pointee->const_inner(), span);
+        }
+        else => {
+            is_pointer = false;
+            is_const_target = is_top_const || is_const_qualified_lvalue(context, iterable_expr);
+            target_type = expand_sema_type(context, *inner, span);
+        }
+    }
+
+    // Case A1: InterfaceObject fat pointer with known concrete type
+    switch (target_type.as_interface_object()) {
+        case .Some(interface_obj) => {
+            switch (interface_obj.interface_type.type_decl_id.as_interface()) case .Some(interface_decl_id) else {
+                return .None;
+            }
+
+            switch (match_iterator_interface_decl(context, interface_decl_id)) case .Some(method_name) else {
+                return .None;
+            }
+
+            if ((is_pointer && 
+                is_const_target && 
+                (method_name == "next" || method_name == "next_owned")) ||
+                (item_is_var && is_pointer && is_const_target)) 
+            {
+                var type_str = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    iterable_type
+                );
+
+                diags::report_cannot_mutably_iterate_const(
+                    context->dctx,
+                    context->allocator,
+                    span,
+                    type_str.as_str_const()
+                );
+
+                type_str.free();
+                return .None;
+            }
+
+            const interface_decl =
+                context->decl_tables->interfaces.get_const(interface_decl_id).unwrap();
+
+            switch (interface_decl->method_index(method_name)) case .Some(method_index) else {
+                return .None;
+            }
+
+            const concrete_type = *interface_obj.concrete_type;
+
+            switch (concrete_type.as_named_type()) case .Some(concrete_named) else {
+                return .None;
+            }
+
+            switch (method_decls_of_named_type(
+                context->decl_tables, 
+                &concrete_named
+            )) case .Some(concrete_methods) else {
+                return .None;
+            }
+
+            switch (concrete_methods->get(method_name)) case .Some(method_id) else {
+                return .None;
+            }
+
+            switch (resolve_try_method_dispatch(
+                context,
+                &concrete_type,
+                &concrete_named,
+                method_id,
+                true,
+                span
+            )) case .Some(resolved) else {
+                return .None;
+            }
+
+            var interface_call_dispatch: cir::InterfaceCallDispatch = .Dynamic;
+
+            switch (resolved.dispatch) {
+                case .Monomorph { monomorph_id, .. } => {
+                    context->vtable_registry.set_monomorphized_method(
+                        interface_obj.vtable_id,
+                        method_index,
+                        monomorph_id
+                    );
+                    interface_call_dispatch = .StaticMonomorphized { monomorph_id };
+                }
+                case .Normal { method_decl_id } => {
+                    interface_call_dispatch = .StaticNormal { method_decl_id };
+                }
+                case .Unresolved | .Interface => {}
+            }
+
+            const subst_ret_type = generics::substitute_self_type(
+                context, 
+                &resolved.ret_type, 
+                &concrete_type
+            );
+
+            switch (extract_iterator_option_element(
+                context, 
+                subst_ret_type, 
+                method_name, 
+                span
+            )) case .Some(extracted) else {
+                return .None;
+            }
+
+            return .Some(ResolvedIteratorImpl {
+                next_dispatch: .Interface {
+                    interface_decl_id,
+                    index: method_index,
+                    dispatch: interface_call_dispatch,
+                },
+                option_type: extracted.0,
+                element_type: extracted.1,
+                pass_by_addr: !is_pointer,
+                is_interface_fat_ptr: true,
+            });
+        }
+        case .None => {}
+    }
+
+    switch (target_type.as_named_interface()) {
+        case .Some(interface_decl_id) => {
+            switch (match_iterator_interface_decl(
+                context, 
+                interface_decl_id
+            )) case .Some(method_name) else {
+                return .None;
+            }
+
+            if ((is_pointer && 
+                is_const_target && 
+                (method_name == "next" || method_name == "next_owned")) || 
+                (item_is_var && is_pointer && is_const_target)) 
+            {
+                var type_str = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    iterable_type
+                );
+                
+                diags::report_cannot_mutably_iterate_const(
+                    context->dctx,
+                    context->allocator,
+                    span,
+                    type_str.as_str_const()
+                );
+                
+                type_str.free();
+                return .None;
+            }
+
+            const interface_decl =
+                context->decl_tables->interfaces.get_const(interface_decl_id).unwrap();
+
+            switch (interface_decl->method_index(method_name)) case .Some(method_index) else {
+                return .None;
+            }
+
+            switch (target_type.as_named_type()) case .Some(named_iface) else {
+                return .None;
+            }
+
+            switch (interface_method_return_type(
+                context,
+                interface_decl,
+                &named_iface.type_args,
+                method_name,
+                span
+            )) case .Some(ret_type) else {
+                return .None;
+            }
+
+            switch (extract_iterator_option_element(
+                context, 
+                ret_type, 
+                method_name, 
+                span
+            )) case .Some(extracted) else {
+                return .None;
+            }
+
+            return .Some(ResolvedIteratorImpl {
+                next_dispatch: .Interface {
+                    interface_decl_id,
+                    index: method_index,
+                    dispatch: .Dynamic,
+                },
+                option_type: extracted.0,
+                element_type: extracted.1,
+                pass_by_addr: !is_pointer,
+                is_interface_fat_ptr: true,
+            });
+        }
+        case .None => {}
+    }
+
+    switch (target_type.as_named_type()) case .Some(named_type) else {
+        return .None;
+    }
+
+    switch (implement_interfaces_of_named_type(
+        context->decl_tables, 
+        &named_type
+    )) case .Some(impls) else {
+        return .None;
+    }
+
+    var implements_iter = false;
+    var implements_iter_const = false;
+    var implements_iter_owned = false;
+
+    for (var i: usize = 0; i < impls->len(); i += 1) {
+        const implement_interface = impls->get_const(i).unwrap();
+
+        var interface_id_opt: Option<cir::InterfaceDeclId> = .None;
+
+        switch (implement_interface->ty) {
+            case .Named(impl_named) => {
+                interface_id_opt = impl_named.type_decl_id.as_interface();
+            }
+            case .Unresolved(unresolved) => {
+                switch (unresolved) {
+                    case .GenericInst { base_symbol_id, .. } => {
+                        switch (context->registry->lookup_symbol_as_decl_id(base_symbol_id)) {
+                            case .Some(decl_id) => {
+                                switch (cir::decl_id_as_type_decl_id(decl_id)) {
+                                    case .Some(type_decl_id) => {
+                                        interface_id_opt = type_decl_id.as_interface();
+                                    }
+                                    case .None => {}
+                                }
+                            }
+                            case .None => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+            else => {}
+        }
+
+        switch (interface_id_opt) {
+            case .Some(interface_id) => {
+                const interface_decl =
+                    context->decl_tables->interfaces.get_const(interface_id).unwrap();
+
+                if (interface_decl->generic_params.len() == 1) {
+                    const interface_name = interface_decl->name.as_str_const();
+
+                    if (interface_name == "Iter") {
+                        implements_iter = true;
+                    } else if (interface_name == "IterConst") {
+                        implements_iter_const = true;
+                    } else if (interface_name == "IterOwned") {
+                        implements_iter_owned = true;
+                    }
+                }
+            }
+            case .None => {}
+        }
+    }
+
+    if (!implements_iter && !implements_iter_const && !implements_iter_owned) {
+        return .None;
+    }
+
+    var method_opt: Option<const uint8*> = .None;
+
+    if (is_pointer) {
+        if (item_is_var) {
+            if (is_const_target) {
+                var type_str = format::format_sema_type(
+                    context->allocator,
+                    context->decl_tables,
+                    iterable_type
+                );
+
+                diags::report_cannot_mutably_iterate_const(
+                    context->dctx,
+                    context->allocator,
+                    span,
+                    type_str.as_str_const()
+                );
+
+                type_str.free();
+                return .None;
+            }
+            if (implements_iter) {
+                method_opt = .Some("next");
+            } else if (implements_iter_owned) {
+                method_opt = .Some("next_owned");
+            } else if (implements_iter_const) {
+                method_opt = .Some("next_const");
+            }
+        } else {
+            if (is_const_target) {
+                if (implements_iter_const) {
+                    method_opt = .Some("next_const");
+                } else {
+                    var type_str = format::format_sema_type(
+                        context->allocator,
+                        context->decl_tables,
+                        iterable_type
+                    );
+                    diags::report_cannot_mutably_iterate_const(
+                        context->dctx,
+                        context->allocator,
+                        span,
+                        type_str.as_str_const()
+                    );
+                    type_str.free();
+                    return .None;
+                }
+            } else {
+                if (implements_iter_const) {
+                    method_opt = .Some("next_const");
+                } else if (implements_iter) {
+                    method_opt = .Some("next");
+                } else if (implements_iter_owned) {
+                    method_opt = .Some("next_owned");
+                }
+            }
+        }
+    } else {
+        if (implements_iter_owned) {
+            method_opt = .Some("next_owned");
+        } else if (implements_iter && !is_const_target) {
+            method_opt = .Some("next");
+        } else if (implements_iter_const) {
+            method_opt = .Some("next_const");
+        } else if (implements_iter && is_const_target) {
+            var type_str = format::format_sema_type(
+                context->allocator,
+                context->decl_tables,
+                iterable_type
+            );
+
+            diags::report_cannot_mutably_iterate_const(
+                context->dctx,
+                context->allocator,
+                span,
+                type_str.as_str_const()
+            );
+
+            type_str.free();
+            return .None;
+        }
+    }
+
+    switch (method_opt) case .Some(method_name) else {
+        return .None;
+    }
+
+    switch (method_decls_of_named_type(
+        context->decl_tables, 
+        &named_type
+    )) case .Some(method_decls) else {
+        return .None;
+    }
+
+    switch (method_decls->get(method_name)) case .Some(method_id) else {
+        return .None;
+    }
+
+    switch (resolve_try_method_dispatch(
+        context,
+        &target_type,
+        &named_type,
+        method_id,
+        true,
+        span
+    )) case .Some(resolved) else {
+        return .None;
+    }
+
+    const subst_ret = generics::substitute_self_type(
+        context, 
+        &resolved.ret_type, 
+        &target_type
+    );
+
+    switch (extract_iterator_option_element(
+        context, 
+        subst_ret, 
+        method_name, 
+        span
+    )) case .Some(extracted) else {
+        return .None;
+    }
+
+    return .Some(ResolvedIteratorImpl {
+        next_dispatch: resolved.dispatch,
+        option_type: extracted.0,
+        element_type: extracted.1,
+        pass_by_addr: !is_pointer,
+        is_interface_fat_ptr: false,
+    });
+}
+
 fn analyze_try_expr(
     context: AnalyzerContext*,
     try_expr: cir::TryExpr*
@@ -7105,7 +7679,6 @@ fn analyze_try_expr(
         return .Some(.Err(try_expr->span));
     }
 
-    // Ensure `?` is inside a function
     switch (context->func_env.current_func) case .Some(func_type) else {
         diags::report_try_operator_outside_function(
             context->dctx,
@@ -7115,7 +7688,6 @@ fn analyze_try_expr(
         return .None;
     }
 
-    // Check operand implements Try<V, E>
     const operand_try_opt = resolve_try_impl(
         context, 
         &operand_type, 
@@ -7142,8 +7714,6 @@ fn analyze_try_expr(
         return .None;
     }
 
-    // Check enclosing function's 
-    // return type implements Try<RetV, RetE>
     const ret_type = *func_type.ret_type;
     const ret_try_opt = resolve_try_impl(
         context, 
@@ -7170,7 +7740,6 @@ fn analyze_try_expr(
         return .None;
     }
 
-    // Check error type compatibility
     if (!is_assignable_to(
         context, 
         operand_try.error_type, 
@@ -7256,7 +7825,6 @@ fn analyze_try_catch_expr(
         return .None;
     }
 
-    // Type the optional error binding variable `catch (err)` with E
     switch (try_catch_expr->error_binding) {
         case .Some(var_decl_id) => {
             var var_ = context->decl_tables->vars.get(var_decl_id).unwrap();
@@ -7265,7 +7833,6 @@ fn analyze_try_catch_expr(
         case .None => {}
     }
 
-    // Analyze catch body
     const start_diags = context->dctx->diag_count();
 
     const catch_flow = context->dispatcher.analyze_block_stmt(

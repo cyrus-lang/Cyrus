@@ -1,0 +1,12 @@
+struct Point {
+    pub x: int32,
+    pub y: int32,
+}
+
+pub fn main() {
+    const array = int32[2] { 1, 2 };
+    for ((a, b), x : array) {} //~ ERROR foreach index pattern must be an identifier or `_`
+    
+    const points = Point[1] { Point { x: 1, y: 2 } };
+    for ({ x, y }, p : points) {} //~ ERROR foreach index pattern must be an identifier or `_`
+}

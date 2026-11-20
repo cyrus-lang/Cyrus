@@ -2929,3 +2929,124 @@ pub fn report_conditional_defer_requires_try_return(
 
     mesg.free();
 }
+
+pub fn report_type_is_not_iterable(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    type_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("type `");
+    mesg.push_str(type_name);
+    mesg.push_str("` is not iterable");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_cannot_mutably_iterate_const(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    type_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("cannot mutably iterate over constant type `");
+    mesg.push_str(type_name);
+    mesg.push_str("`");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_invalid_foreach_index_pattern(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    const diag = Diag.new(
+        allocator,
+        .Error,
+        "foreach index pattern must be an identifier or `_`",
+        span
+    );
+    dctx->report(diag);
+}
+
+pub fn report_struct_destructuring_on_non_struct(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    type_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("cannot destructure non-struct type `");
+    mesg.push_str(type_name);
+    mesg.push_str("` with struct pattern");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_struct_destructuring_field_count_mismatch(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    struct_name: const uint8*,
+    expected_count: usize,
+    got_count: usize,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("struct `");
+    mesg.push_str(struct_name);
+    mesg.push_str("` has ");
+    append_usize(&mesg, expected_count);
+    mesg.push_str(" field(s), but pattern specifies ");
+    append_usize(&mesg, got_count);
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_duplicate_field_in_struct_pattern(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    field_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("duplicate field `");
+    mesg.push_str(field_name);
+    mesg.push_str("` in struct destructuring pattern");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_iterator_invalid_next_return_type(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    method_name: const uint8*,
+) {
+    var mesg = String.new(allocator);
+    mesg.push_str("iterator method `");
+    mesg.push_str(method_name);
+    mesg.push_str("` must return `Option<T>`");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}

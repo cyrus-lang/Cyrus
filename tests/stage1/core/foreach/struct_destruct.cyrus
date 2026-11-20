@@ -1,0 +1,61 @@
+// @stdout: p=10,20 mut=11,22 renamed=10,25 rest=10 nested=1,2,9,10,99 priv=77 loop=1:2,3:4,5:6
+
+import std::libc{printf};
+
+struct Point {
+    pub x: int32,
+    pub y: int32,
+}
+
+struct Rect {
+    pub origin: Point,
+    pub size: (int32, int32),
+    pub tag: int32,
+}
+
+struct Secret {
+    val: int32,
+
+    pub fn extract(self: const Self*) int32 {
+        const { val } = *self;
+        return val;
+    }
+}
+
+pub fn main() {
+    const p = Point { x: 10, y: 20 };
+
+    const { x, y } = p;
+    printf("p=%d,%d ", x, y);
+
+    var { x: vx, y: vy } = p;
+    vx += 1;
+    vy += 2;
+    printf("mut=%d,%d ", vx, vy);
+
+    const { x: px, y: var py } = p;
+    py += 5;
+    printf("renamed=%d,%d ", px, py);
+
+    const { x: only_x, .. } = p;
+    printf("rest=%d ", only_x);
+
+    const rect = Rect { origin: Point { x: 1, y: 2 }, size: (9, 10), tag: 99 };
+    const { origin: { x: ox, y: oy }, size: (w, h), tag } = rect;
+    printf("nested=%d,%d,%d,%d,%d ", ox, oy, w, h, tag);
+
+    const s = Secret { val: 77 };
+    printf("priv=%d ", s.extract());
+
+    const points = Point[3] {
+        Point { x: 1, y: 2 },
+        Point { x: 3, y: 4 },
+        Point { x: 5, y: 6 },
+    };
+    printf("loop=");
+    for (i, const { x: lx, y: ly } : &points) {
+        if (i > 0) { printf(","); }
+        printf("%d:%d", lx, ly);
+    }
+    printf("\n");
+}

@@ -351,6 +351,20 @@ fn specialize_stmt(
             specialize_block(context, for_stmt.body, decl_map);
             *kind = .For(for_stmt);
         }
+        case .Foreach(var foreach_stmt) => {
+            switch (foreach_stmt.index_pattern) {
+                case .Some(var idx_pat) => {
+                    specialize_tuple_export_pattern(context, &idx_pat, decl_map);
+                    foreach_stmt.index_pattern = .Some(idx_pat);
+                }
+                case .None => {}
+            }
+
+            specialize_tuple_export_pattern(context, &foreach_stmt.item_pattern, decl_map);
+            specialize_expr(context, &foreach_stmt.iterable, decl_map);
+            specialize_block(context, foreach_stmt.body, decl_map);
+            *kind = .Foreach(foreach_stmt);
+        }
         case .Switch(var switch_stmt) => {
             specialize_expr(context, &switch_stmt.operand, decl_map);
 
@@ -509,6 +523,12 @@ fn specialize_tuple_export_pattern(
             for (var i: usize = 0; i < patterns.len(); i += 1) {
                 const inner = patterns.get(i).unwrap();
                 specialize_tuple_export_pattern(context, inner, decl_map);
+            }
+        }
+        case .Struct { fields, .. } => {
+            for (var i: usize = 0; i < fields.len(); i += 1) {
+                const field = fields.get(i).unwrap();
+                specialize_tuple_export_pattern(context, &field->pattern, decl_map);
             }
         }
         case .Ident(var_decl_id) => {
@@ -903,6 +923,17 @@ fn collect_and_instantiate_fresh_var_decls(
 
             collect_fresh_var_decls_in_block(context, for_stmt.body, decl_map);
         }
+        case .Foreach(foreach_stmt) => {
+            switch (foreach_stmt.index_pattern) {
+                case .Some(idx_pat) => {
+                    collect_fresh_var_decls_of_tuple_pattern(context, &idx_pat, decl_map);
+                }
+                case .None => {}
+            }
+
+            collect_fresh_var_decls_of_tuple_pattern(context, &foreach_stmt.item_pattern, decl_map);
+            collect_fresh_var_decls_in_block(context, foreach_stmt.body, decl_map);
+        }
         case .Expr(expr) => {
             switch (expr.kind) {
                 case .Lambda(lambda) => {
@@ -1060,6 +1091,12 @@ fn collect_fresh_var_decls_of_tuple_pattern(
             for (var i: usize = 0; i < patterns.len(); i += 1) {
                 const inner = patterns.get_const(i).unwrap();
                 collect_fresh_var_decls_of_tuple_pattern(context, inner, decl_map);
+            }
+        }
+        case .Struct { fields, .. } => {
+            for (var i: usize = 0; i < fields.len(); i += 1) {
+                const field = fields.get_const(i).unwrap();
+                collect_fresh_var_decls_of_tuple_pattern(context, &field->pattern, decl_map);
             }
         }
         case .Ident(var_decl_id) => {
@@ -1898,6 +1935,18 @@ pub fn monomorphize_interface_object_methods(
             }
 
             generics::push_generic_env(context, object_method_generic_env);
+
+            const prev_object = context->func_env.current_object;
+            context->func_env.current_object = .Some(*concrete_type);
+            
+            switch (normalize_sema_type(context, method_decl_storage.func_decl.ret_type, span, 0)) {
+                case .Some(normalized_type) => {
+                    method_decl_storage.func_decl.ret_type = normalized_type;
+                }
+                case .None => {}
+            }
+
+            context->func_env.current_object = prev_object;
 
             // Substitute function params
             generics::substitute_func_params(

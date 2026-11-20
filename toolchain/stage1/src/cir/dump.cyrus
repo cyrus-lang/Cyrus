@@ -243,6 +243,26 @@ struct DumpContext {
 
                 self->write(")");
             }
+            case .Struct { fields, ignore } => {
+                self->write("{ ");
+
+                for (var i: usize = 0; i < fields.len(); i += 1) {
+                    const field = fields.get_const(i).unwrap();
+                    self->write(field->name.str.as_str_const());
+                    self->write(": ");
+                    self->write_export_pattern(&field->pattern);
+
+                    if (i + 1 != fields.len() || ignore) {
+                        self->write(", ");
+                    }
+                }
+
+                if (ignore) {
+                    self->write("..");
+                }
+
+                self->write(" }");
+            }
             case .Ident(var_decl_id) => {
                 switch (self->tables->vars.get(var_decl_id)) {
                     case .Some(var_decl) => self->write(var_decl->name.as_str_const());
@@ -615,6 +635,25 @@ struct DumpContext {
 
                 self->write(") {\n");
                 self->dump_block_body(for_stmt.body, depth);
+                self->indent(depth);
+                self->write("}\n");
+            }
+            case .Foreach(foreach_stmt) => {
+                self->write("for (");
+
+                switch (foreach_stmt.index_pattern) {
+                    case .Some(idx_pat) => {
+                        self->write_export_pattern(&idx_pat);
+                        self->write(", ");
+                    }
+                    case .None => {}
+                }
+
+                self->write_export_pattern(&foreach_stmt.item_pattern);
+                self->write(" : ");
+                self->write_expr_typed(&foreach_stmt.iterable);
+                self->write(") {\n");
+                self->dump_block_body(foreach_stmt.body, depth);
                 self->indent(depth);
                 self->write("}\n");
             }
