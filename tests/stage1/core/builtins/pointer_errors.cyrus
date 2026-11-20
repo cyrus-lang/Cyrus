@@ -1,0 +1,19 @@
+pub fn bad_offset(value: int32) {
+    @ptr_offset(value, 1); //~ ERROR pointer to an object
+}
+
+pub fn bad_difference(left: int16*, right: int32*) {
+    @ptr_diff(left, right); //~ ERROR expected parameter type
+}
+
+pub fn bad_store(ptr: const uint32*) {
+    @volatile_store(ptr, 0); //~ ERROR pointer to a writable scalar
+}
+
+pub fn bad_load(ptr: void*) {
+    @volatile_load(ptr); //~ ERROR pointer to an object
+}
+
+pub fn bad_move(dst: const uint8*, src: uint8*) {
+    @memmove(dst, src, 1); //~ ERROR expected parameter type
+}

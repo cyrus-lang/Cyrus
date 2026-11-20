@@ -31,7 +31,10 @@ pub fn fold_const_expr_int(
     );
 }
 
-fn contains_global_var_id(list: const Vec<cir::GlobalVarDeclId>*, target: cir::GlobalVarDeclId) Option<usize> {
+fn contains_global_var_id(
+    list: const Vec<cir::GlobalVarDeclId>*, 
+    target: cir::GlobalVarDeclId
+) Option<usize> {
     for (var i: usize = 0; i < list->len(); i += 1) {
         if (*list->get_const(i).unwrap() == target) {
             return .Some(i);
@@ -84,12 +87,19 @@ fn fold_const_expr_int_depth(
                                 return .None;
                             }
 
-                            const global_var_decl = decl_tables->global_vars.get_const(global_var_decl_id).unwrap();
+                            const global_var_decl = 
+                                decl_tables->global_vars.get_const(global_var_decl_id).unwrap();
 
                             switch (global_var_decl->rhs) {
                                 case .Some(rhs) => {
                                     visited->push(global_var_decl_id);
-                                    const res = fold_const_expr_int_depth(decl_tables, registry, &rhs, depth + 1, visited);
+                                    const res = fold_const_expr_int_depth(
+                                        decl_tables, 
+                                        registry, 
+                                        &rhs, 
+                                        depth + 1, 
+                                        visited
+                                    );
                                     visited->pop();
                                     return res;
                                 }

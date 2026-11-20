@@ -328,6 +328,96 @@ pub enum BuiltinKind {
     Slice,
 
     Cast,
+    PtrOffset,
+    PtrDiff,
+    Memmove,
+    VolatileLoad,
+    VolatileStore,
+
+    BitCast,
+    ReadUnaligned,
+    WriteUnaligned,
+
+    PopCount,
+    CountLeadingZeros,
+    CountTrailingZeros,
+    ByteSwap,
+    BitReverse,
+    RotateLeft,
+    RotateRight,
+
+    Abs,
+    Min,
+    Max,
+    Copysign,
+    PositiveDifference,
+    DivCeil,
+    DivFloor,
+    DivTrunc,
+    Mod,
+    Rem,
+
+    Ceil,
+    Floor,
+    Trunc,
+    Round,
+    RoundEven,
+    Sqrt,
+    Cbrt,
+    Pow,
+    Hypot,
+    MulAdd,
+
+    Sin,
+    Cos,
+    Tan,
+    Asin,
+    Acos,
+    Atan,
+    Atan2,
+    Sinh,
+    Cosh,
+    Tanh,
+    Asinh,
+    Acosh,
+    Atanh,
+
+    Exp,
+    Exp2,
+    Expm1,
+    Log,
+    Log2,
+    Log10,
+    Log1p,
+
+    Fmod,
+    Remainder,
+    Ldexp,
+    Ilogb,
+    Logb,
+    Scalbn,
+
+    NextAfter,
+    NextUp,
+    NextDown,
+
+    Erf,
+    Erfc,
+    Gamma,
+
+    IsNan,
+    IsInf,
+    IsFinite,
+    IsNormal,
+    Signbit,
+    Infinity,
+    Nan,
+
+    Breakpoint,
+    FrameAddress,
+    ReturnAddress,
+    Trap,
+
     Memcpy,
     Memset,
     Assert,
@@ -357,36 +447,321 @@ pub struct BuiltinSpec {
 
 pub fn lookup_builtin(name: const uint8*) Option<BuiltinKind> {
     switch (name) {
+        case "count_trailing_zeros" => return .Some(.CountTrailingZeros);
+        case "positive_difference" => return .Some(.PositiveDifference);
+        case "count_leading_zeros" => return .Some(.CountLeadingZeros);
+        case "write_unaligned" => return .Some(.WriteUnaligned);
+        case "volatile_store" => return .Some(.VolatileStore);
+        case "return_address" => return .Some(.ReturnAddress);
+        case "read_unaligned" => return .Some(.ReadUnaligned);
         case "unimplemented" => return .Some(.Unimplemented);
+        case "volatile_load" => return .Some(.VolatileLoad);
+        case "frame_address" => return .Some(.FrameAddress);
+        case "rotate_right" => return .Some(.RotateRight);
         case "unreachable" => return .Some(.Unreachable);
         case "method_name" => return .Some(.MethodName);
         case "module_name" => return .Some(.ModuleName);
+        case "bit_reverse" => return .Some(.BitReverse);
+        case "rotate_left" => return .Some(.RotateLeft);
+        case "breakpoint" => return .Some(.Breakpoint);
+        case "ptr_offset" => return .Some(.PtrOffset);
+        case "round_even" => return .Some(.RoundEven);
+        case "next_after" => return .Some(.NextAfter);
+        case "remainder" => return .Some(.Remainder);
+        case "is_finite" => return .Some(.IsFinite);
+        case "is_normal" => return .Some(.IsNormal);
         case "func_name" => return .Some(.FuncName);
+        case "byte_swap" => return .Some(.ByteSwap);
+        case "pop_count" => return .Some(.PopCount);
         case "file_name" => return .Some(.FileName);
+        case "div_trunc" => return .Some(.DivTrunc);
+        case "next_down" => return .Some(.NextDown);
+        case "div_floor" => return .Some(.DivFloor);
         case "offsetof" => return .Some(.OffsetOf);
+        case "infinity" => return .Some(.Infinity);
+        case "copysign" => return .Some(.Copysign);
+        case "bit_cast" => return .Some(.BitCast);
+        case "div_ceil" => return .Some(.DivCeil);
+        case "ptr_diff" => return .Some(.PtrDiff);
+        case "signbit" => return .Some(.Signbit);
+        case "memmove" => return .Some(.Memmove);
         case "alignof" => return .Some(.AlignOf);
         case "release" => return .Some(.Release);
+        case "next_up" => return .Some(.NextUp);
+        case "mul_add" => return .Some(.MulAdd);
         case "typeof" => return .Some(.TypeOf);
         case "column" => return .Some(.Column);
         case "sizeof" => return .Some(.SizeOf);
         case "memcpy" => return .Some(.Memcpy);
         case "memset" => return .Some(.Memset);
         case "assert" => return .Some(.Assert);
+        case "scalbn" => return .Some(.Scalbn);
+        case "is_nan" => return .Some(.IsNan);
+        case "is_inf" => return .Some(.IsInf);
+        case "gamma" => return .Some(.Gamma);
+        case "log10" => return .Some(.Log10);
+        case "log1p" => return .Some(.Log1p);
+        case "ldexp" => return .Some(.Ldexp);
+        case "ilogb" => return .Some(.Ilogb);
+        case "hypot" => return .Some(.Hypot);
+        case "round" => return .Some(.Round);
+        case "floor" => return .Some(.Floor);
+        case "trunc" => return .Some(.Trunc);
+        case "atan2" => return .Some(.Atan2);
+        case "atanh" => return .Some(.Atanh);
+        case "asinh" => return .Some(.Asinh);
+        case "acosh" => return .Some(.Acosh);
+        case "expm1" => return .Some(.Expm1);
+        case "slice" => return .Some(.Slice);
         case "panic" => return .Some(.Panic);
         case "debug" => return .Some(.Debug);
+        case "logb" => return .Some(.Logb);
+        case "log2" => return .Some(.Log2);
+        case "fmod" => return .Some(.Fmod);
+        case "erfc" => return .Some(.Erfc);
+        case "trap" => return .Some(.Trap);
         case "test" => return .Some(.Test);
         case "line" => return .Some(.Line);
-        case "len" => return .Some(.Len);
-        case "ptr" => return .Some(.Ptr);
-        case "slice" => return .Some(.Slice);
         case "cast" => return .Some(.Cast);
         case "todo" => return .Some(.Todo);
+        case "ceil" => return .Some(.Ceil);
+        case "sqrt" => return .Some(.Sqrt);
+        case "cbrt" => return .Some(.Cbrt);
+        case "asin" => return .Some(.Asin);
+        case "acos" => return .Some(.Acos);
+        case "atan" => return .Some(.Atan);
+        case "sinh" => return .Some(.Sinh);
+        case "cosh" => return .Some(.Cosh);
+        case "tanh" => return .Some(.Tanh);
+        case "exp2" => return .Some(.Exp2);
+        case "len" => return .Some(.Len);
+        case "ptr" => return .Some(.Ptr);
+        case "pow" => return .Some(.Pow);
+        case "abs" => return .Some(.Abs);
+        case "min" => return .Some(.Min);
+        case "max" => return .Some(.Max);
+        case "mod" => return .Some(.Mod);
+        case "rem" => return .Some(.Rem);
+        case "sin" => return .Some(.Sin);
+        case "cos" => return .Some(.Cos);
+        case "tan" => return .Some(.Tan);
+        case "exp" => return .Some(.Exp);
+        case "log" => return .Some(.Log);
+        case "nan" => return .Some(.Nan);
+        case "erf" => return .Some(.Erf);
+
+        else => return .None;
+    }
+}
+
+fn intrinsic_spec(kind: BuiltinKind, name: const uint8*, arity: usize) BuiltinSpec {
+    return BuiltinSpec {
+        kind, name, family: .Intrinsic, phase: .Codegen, form: .Expr,
+        unreachable: false, min_args: arity, max_args: .Some(arity),
+    };
+}
+
+/// Width of a plain integer or floating-point type in bits.
+pub fn plain_type_bit_width(plain: PlainType) Option<usize> {
+    switch (plain) {
+        case .Int8 
+        | .UInt8 => return .Some(8);
+        
+        case .Int16 
+        | .UInt16 
+        | .Float16 => return .Some(16);
+        
+        case .Int32 
+        | .UInt32 
+        | .Float32 => return .Some(32);
+        
+        case .Int64 
+        | .UInt64 
+        | .Float64 
+        | .ISize 
+        | .USize
+        | .IntPtr 
+        | .UIntPtr => return .Some(64);
+
+        case .Int128 
+        | .UInt128 
+        | .Float128 => return .Some(128);
+
+        case .Void | .Null => return .None;
+        case .Bool => return .Some(8);
+    }
+}
+
+pub fn plain_type_size_bytes(plain: PlainType) Option<usize> {
+    switch (plain_type_bit_width(plain)) {
+        case .Some(bits) => return .Some(bits / 8);
+        case .None => return .None;
+    }
+}
+
+pub fn builtin_type_size_bytes(ty: const SemaType*) Option<usize> {
+    switch (*ty->const_inner()) {
+        case .Plain(plain) => return plain_type_size_bytes(plain);
+        case .Pointer => return .Some(8);
+        else => return .None;
+    }
+}
+
+pub fn builtin_integer_bit_width(ty: const SemaType*) Option<usize> {
+    switch (*ty->const_inner()) {
+        case .Plain(plain) => {
+            if (plain.is_integer()) {
+                return plain_type_bit_width(plain);
+            }
+        }
+        else => {}
+    }
+
+    return .None;
+}
+
+/// C library name used to lower this builtin when it maps directly to libm.
+pub fn builtin_math_c_name(kind: BuiltinKind) Option<const uint8*> {
+    switch (kind) {
+        case .RoundEven => return .Some("nearbyint");
+        case .Remainder => return .Some("remainder");
+        case .NextAfter => return .Some("nextafter");
+        case .Copysign => return .Some("copysign");
+        case .Scalbn => return .Some("scalbn");
+        case .Gamma => return .Some("tgamma");
+        case .Floor => return .Some("floor");
+        case .Trunc => return .Some("trunc");
+        case .Round => return .Some("round");
+        case .Hypot => return .Some("hypot");
+        case .Atan2 => return .Some("atan2");
+        case .Asinh => return .Some("asinh");
+        case .Acosh => return .Some("acosh");
+        case .Atanh => return .Some("atanh");
+        case .Expm1 => return .Some("expm1");
+        case .Log10 => return .Some("log10");
+        case .Log1p => return .Some("log1p");
+        case .Ldexp => return .Some("ldexp");
+        case .Ilogb => return .Some("ilogb");
+        case .MulAdd => return .Some("fma");
+        case .Exp2 => return .Some("exp2");
+        case .Log2 => return .Some("log2");
+        case .Fmod => return .Some("fmod");
+        case .Sinh => return .Some("sinh");
+        case .Cosh => return .Some("cosh");
+        case .Tanh => return .Some("tanh");
+        case .Ceil => return .Some("ceil");
+        case .Sqrt => return .Some("sqrt");
+        case .Cbrt => return .Some("cbrt");
+        case .Asin => return .Some("asin");
+        case .Acos => return .Some("acos");
+        case .Atan => return .Some("atan");
+        case .Logb => return .Some("logb");
+        case .Erfc => return .Some("erfc");
+        case .Abs => return .Some("fabs");
+        case .Min => return .Some("fmin");
+        case .Max => return .Some("fmax");
+        case .Log => return .Some("log");
+        case .Erf => return .Some("erf");
+        case .Pow => return .Some("pow");
+        case .Sin => return .Some("sin");
+        case .Cos => return .Some("cos");
+        case .Tan => return .Some("tan");
+        case .Exp => return .Some("exp");
         else => return .None;
     }
 }
 
 pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
     switch (kind) {
+        case .CountTrailingZeros => return intrinsic_spec(kind, "count_trailing_zeros", 1);
+        case .PositiveDifference => return intrinsic_spec(kind, "positive_difference", 2);
+        case .CountLeadingZeros => return intrinsic_spec(kind, "count_leading_zeros", 1);
+        case .WriteUnaligned => return intrinsic_spec(kind, "write_unaligned", 3);
+        case .VolatileStore => return intrinsic_spec(kind, "volatile_store", 2);
+        case .ReadUnaligned => return intrinsic_spec(kind, "read_unaligned", 2);
+        case .ReturnAddress => return intrinsic_spec(kind, "return_address", 0);
+        case .VolatileLoad => return intrinsic_spec(kind, "volatile_load", 1);
+        case .FrameAddress => return intrinsic_spec(kind, "frame_address", 0);
+        case .RotateRight => return intrinsic_spec(kind, "rotate_right", 2);
+        case .BitReverse => return intrinsic_spec(kind, "bit_reverse", 1);
+        case .RotateLeft => return intrinsic_spec(kind, "rotate_left", 2);
+        case .Breakpoint => return intrinsic_spec(kind, "breakpoint", 0);
+        case .PtrOffset => return intrinsic_spec(kind, "ptr_offset", 2);
+        case .RoundEven => return intrinsic_spec(kind, "round_even", 1);
+        case .NextAfter => return intrinsic_spec(kind, "next_after", 2);
+        case .Remainder => return intrinsic_spec(kind, "remainder", 2);
+        case .PopCount => return intrinsic_spec(kind, "pop_count", 1);
+        case .ByteSwap => return intrinsic_spec(kind, "byte_swap", 1);
+        case .DivFloor => return intrinsic_spec(kind, "div_floor", 2);
+        case .DivTrunc => return intrinsic_spec(kind, "div_trunc", 2);
+        case .NextDown => return intrinsic_spec(kind, "next_down", 1);
+        case .IsFinite => return intrinsic_spec(kind, "is_finite", 1);
+        case .IsNormal => return intrinsic_spec(kind, "is_normal", 1);
+        case .Copysign => return intrinsic_spec(kind, "copysign", 2);
+        case .Infinity => return intrinsic_spec(kind, "infinity", 1);
+        case .PtrDiff => return intrinsic_spec(kind, "ptr_diff", 2);
+        case .BitCast => return intrinsic_spec(kind, "bit_cast", 2);
+        case .DivCeil => return intrinsic_spec(kind, "div_ceil", 2);
+        case .Memmove => return intrinsic_spec(kind, "memmove", 3);
+        case .Signbit => return intrinsic_spec(kind, "signbit", 1);
+        case .MulAdd => return intrinsic_spec(kind, "mul_add", 3);
+        case .NextUp => return intrinsic_spec(kind, "next_up", 1);
+        case .Scalbn => return intrinsic_spec(kind, "scalbn", 2);
+        case .IsNan => return intrinsic_spec(kind, "is_nan", 1);
+        case .IsInf => return intrinsic_spec(kind, "is_inf", 1);
+        case .Floor => return intrinsic_spec(kind, "floor", 1);
+        case .Trunc => return intrinsic_spec(kind, "trunc", 1);
+        case .Round => return intrinsic_spec(kind, "round", 1);
+        case .Hypot => return intrinsic_spec(kind, "hypot", 2);
+        case .Atan2 => return intrinsic_spec(kind, "atan2", 2);
+        case .Asinh => return intrinsic_spec(kind, "asinh", 1);
+        case .Acosh => return intrinsic_spec(kind, "acosh", 1);
+        case .Atanh => return intrinsic_spec(kind, "atanh", 1);
+        case .Expm1 => return intrinsic_spec(kind, "expm1", 1);
+        case .Log10 => return intrinsic_spec(kind, "log10", 1);
+        case .Log1p => return intrinsic_spec(kind, "log1p", 1);
+        case .Ldexp => return intrinsic_spec(kind, "ldexp", 2);
+        case .Ilogb => return intrinsic_spec(kind, "ilogb", 1);
+        case .Gamma => return intrinsic_spec(kind, "gamma", 1);
+        case .Ceil => return intrinsic_spec(kind, "ceil", 1);
+        case .Sqrt => return intrinsic_spec(kind, "sqrt", 1);
+        case .Cbrt => return intrinsic_spec(kind, "cbrt", 1);
+        case .Asin => return intrinsic_spec(kind, "asin", 1);
+        case .Acos => return intrinsic_spec(kind, "acos", 1);
+        case .Atan => return intrinsic_spec(kind, "atan", 1);
+        case .Sinh => return intrinsic_spec(kind, "sinh", 1);
+        case .Cosh => return intrinsic_spec(kind, "cosh", 1);
+        case .Tanh => return intrinsic_spec(kind, "tanh", 1);
+        case .Exp2 => return intrinsic_spec(kind, "exp2", 1);
+        case .Log2 => return intrinsic_spec(kind, "log2", 1);
+        case .Fmod => return intrinsic_spec(kind, "fmod", 2);
+        case .Logb => return intrinsic_spec(kind, "logb", 1);
+        case .Erfc => return intrinsic_spec(kind, "erfc", 1);
+        case .Abs => return intrinsic_spec(kind, "abs", 1);
+        case .Min => return intrinsic_spec(kind, "min", 2);
+        case .Max => return intrinsic_spec(kind, "max", 2);
+        case .Mod => return intrinsic_spec(kind, "mod", 2);
+        case .Rem => return intrinsic_spec(kind, "rem", 2);
+        case .Pow => return intrinsic_spec(kind, "pow", 2);
+        case .Sin => return intrinsic_spec(kind, "sin", 1);
+        case .Cos => return intrinsic_spec(kind, "cos", 1);
+        case .Tan => return intrinsic_spec(kind, "tan", 1);
+        case .Exp => return intrinsic_spec(kind, "exp", 1);
+        case .Log => return intrinsic_spec(kind, "log", 1);
+        case .Erf => return intrinsic_spec(kind, "erf", 1);
+        case .Nan => return intrinsic_spec(kind, "nan", 1);
+
+        case .Trap => return BuiltinSpec {
+            kind,
+            name: "trap",
+            family: .Intrinsic,
+            phase: .Codegen,
+            form: .Expr,
+            unreachable: true,
+            min_args: 0,
+            max_args: .Some(0),
+        };
+        
         case .FuncName => return BuiltinSpec {
             kind,
             name: "func_name",

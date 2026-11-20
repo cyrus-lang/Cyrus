@@ -1,0 +1,11 @@
+// @stdout: -3 3
+
+import std::libc{printf};
+
+pub fn main() {
+    var values = int32[3] {10, 20, 30};
+
+    const first = @ptr(values);
+    const end = @ptr_offset(first, 3);
+    printf("%d %d", @cast(int32, @ptr_diff(first, end)), @cast(int32, @ptr_diff(end, first)));
+}

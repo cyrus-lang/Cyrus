@@ -1379,8 +1379,21 @@ pub struct ParserExprs {
         const start = self->state->current_span();
         self->state->next();
 
-        switch (self->state->expect_ident()) case .Some(name) else {
-            return .None;
+        var name: ast::ASTIdent;
+
+        if (self->state->is(.Module)) {
+            name = ast::ASTIdent {
+                str: String.from_str(self->state->allocator, "mod"),
+                span: start,
+            };
+            self->state->next();
+        } else {
+            switch (self->state->expect_ident()) {
+                case .Some(ident) => {
+                    name = ident;
+                }
+                case .None => return .None;
+            }
         }
 
         if (!self->state->expect(.LeftParen)) {

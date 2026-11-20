@@ -1,0 +1,28 @@
+// @stdout: 2
+
+import std::libc{printf};
+
+pub fn main() {
+    const frame = @frame_address();
+    const caller = @return_address();
+    
+    var count: int32 = 0;
+
+    if (frame != 0) {
+        count += 1;
+    }
+
+    if (caller != 0) {
+        count += 1;
+    }
+
+    if (count == 99) {
+        @breakpoint();
+    }
+
+    if (count == 98) {
+        @trap();
+    }
+
+    printf("%d", count);
+}
