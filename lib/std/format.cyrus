@@ -24,7 +24,7 @@ pub interface Format {
 }
 
 pub fn format(fmt: Format) String {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const allocator: Allocator = dynamic LibcAllocator.new();
 
     var out = String.new(allocator);
     var writer: Writer = dynamic StringWriter.new(&out);

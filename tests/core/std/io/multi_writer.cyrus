@@ -8,7 +8,7 @@ import std::string{String};
 import std::libc{printf};
 
 pub fn main() {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const allocator: Allocator = dynamic LibcAllocator.new();
 
     var buffer1 = String.new(allocator);
     defer buffer1.free();

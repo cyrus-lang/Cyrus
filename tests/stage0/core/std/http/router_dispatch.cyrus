@@ -34,7 +34,7 @@ fn dispatch(allocator: Allocator, router: const Router*, raw: const uint8*) {
 }
 
 pub fn main() {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const allocator: Allocator = dynamic LibcAllocator.new();
 
     var router = Router.new(allocator);
     defer router.free();

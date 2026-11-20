@@ -225,7 +225,7 @@ pub struct StructType {
             core::LLVMStructSetBody(self->raw, &empty, 0, bool_to_llvm(packed));
             return;
         }
-        var allocator: Allocator = dynamic LibcAllocator.new();
+        const allocator: Allocator = dynamic LibcAllocator.new();
         var raw_fields: core::LLVMTypeRef* = allocator.alloc(count * @sizeof(core::LLVMTypeRef));
         defer allocator.free(raw_fields);
         for (var i: usize = 0; i < count; i += 1) {

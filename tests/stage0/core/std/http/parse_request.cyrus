@@ -6,7 +6,7 @@ import std::mem{Allocator};
 import std::http{Request};
 
 pub fn main() {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const allocator: Allocator = dynamic LibcAllocator.new();
 
     const raw = "POST /users?id=7 HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello";
 

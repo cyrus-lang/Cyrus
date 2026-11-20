@@ -622,7 +622,7 @@ pub extern "C" {
 pub fn llvm_mesg_to_string(
     ptr: c_char*
 ) String {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const allocator: Allocator = dynamic LibcAllocator.new();
 
     if (ptr == null) {
         return String.new(allocator);
@@ -634,7 +634,7 @@ pub fn llvm_mesg_to_string(
 }
 
 pub fn llvm_error_to_string(err: LLVMErrorRef) String {
-    var allocator: Allocator = dynamic LibcAllocator.new();
+    const allocator: Allocator = dynamic LibcAllocator.new();
     
     if (err == null) {
         return String.new(allocator);
