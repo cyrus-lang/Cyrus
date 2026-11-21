@@ -646,6 +646,7 @@ pub struct Entry {
 }
 
 pub struct BuildProfile {
+    pub allocator: Allocator,
     pub name: String,
     pub opt_level: int32,
     pub has_debug_info: bool,
@@ -653,9 +654,11 @@ pub struct BuildProfile {
     pub has_overflow_checks: bool,
     pub has_lto: bool,
     pub has_strip: bool,
+    pub enabled_features: Vec<String>,
 
     pub fn new(allocator: Allocator, name: const uint8*) Self {
         return Self {
+            allocator: allocator,
             name: String.from_str(allocator, name),
             opt_level: 0,
             has_debug_info: false,
@@ -663,6 +666,7 @@ pub struct BuildProfile {
             has_overflow_checks: false,
             has_lto: false,
             has_strip: false,
+            enabled_features: Vec.new(allocator),
         };
     }
 
@@ -696,8 +700,14 @@ pub struct BuildProfile {
         return self;
     }
 
+    pub fn enable_feature(self: Self*, name: const uint8*) Self* {
+        self->enabled_features.push(String.from_str(self->allocator, name));
+        return self;
+    }
+
     pub fn free(self: Self*) {
         self->name.free();
+        free_strings(&self->enabled_features);
     }
 }
 
@@ -1257,6 +1267,12 @@ pub struct Builder {
             out.push('\t');
             push_bool_str(&out, profile->has_strip);
             out.push('\n');
+
+            for (var k: usize = 0; k < profile->enabled_features.len(); k += 1) {
+                out.push_str("PROF_FEAT\t");
+                push_escaped_tsv_field(&out, profile->enabled_features.get_const(k).unwrap()->as_str_const());
+                out.push('\n');
+            }
         }
 
         for (var i: usize = 0; i < self->generators.len(); i += 1) {
@@ -1339,6 +1355,7 @@ pub struct Builder {
         var current_lib: Library*;
         var current_entry: Entry*;
         var current_gen: Generator*;
+        var current_prof: BuildProfile* = null;
 
         const text = content.as_str_const();
         const total_len = content.len();
@@ -1526,12 +1543,16 @@ pub struct Builder {
                     });
                 } else if (tag == "PROF" && parts.len() >= 8) {
                     const profile = builder.profile(parts.get_const(1).unwrap()->as_str_const());
+                    current_prof = profile;
+
                     profile->optimization(parse_str_as_int32(parts.get_const(2).unwrap()->as_str_const()).unwrap_or(0));
                     profile->debug_info(parts.get_const(3).unwrap()->as_str_const() == "1");
                     profile->assertions(parts.get_const(4).unwrap()->as_str_const() == "1");
                     profile->overflow_checks(parts.get_const(5).unwrap()->as_str_const() == "1");
                     profile->lto(parts.get_const(6).unwrap()->as_str_const() == "1");
                     profile->strip(parts.get_const(7).unwrap()->as_str_const() == "1");
+                } else if (tag == "PROF_FEAT" && current_prof != null && parts.len() >= 2) {
+                    current_prof->enable_feature(parts.get_const(1).unwrap()->as_str_const());
                 } else if (tag == "GEN" && parts.len() >= 3) {
                     current_gen = builder.generator(
                         parts.get_const(1).unwrap()->as_str_const(),

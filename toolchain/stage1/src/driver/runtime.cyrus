@@ -421,6 +421,8 @@ pub fn emit_backend_ir_with_opts(
     );
     defer analyzer_context.free();
 
+    analyzer_context.set_enabled_features(&opts->features);
+
     if (timings != null) {
         timings->analyzer.start();
     }
@@ -454,6 +456,63 @@ pub fn emit_backend_ir_with_opts(
     return 0;
 }
 
+pub fn apply_cli_features(allocator: Allocator, cli_opts: const cli::Opts*, out: Vec<String>*) {
+    switch (cli_opts->find("feature")) {
+        case .Some(opt) => {
+            for (var i: usize = 0; i < opt->values.len(); i += 1) {
+                switch (opt->values.get(i)) {
+                    case .Some(value) => {
+                        switch (*value) {
+                            case .Str(str) => {
+                                var cur = String.new(allocator);
+                                defer cur.free();
+                                
+                                const raw = str.as_str_const();
+                                
+                                var k: usize = 0;
+                                
+                                while (raw[k] != '\0') {
+                                    if (raw[k] == ',') {
+                                        if (!cur.is_empty()) {
+                                            push_unique_feature(allocator, out, cur.as_str_const());
+                                            cur.clear();
+                                        }
+                                    } else {
+                                        cur.push(raw[k]);
+                                    }
+                                    
+                                    k += 1;
+                                }
+                                
+                                if (!cur.is_empty()) {
+                                    push_unique_feature(allocator, out, cur.as_str_const());
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                    else => {}
+                }
+            }
+        }
+        else => {}
+    }
+}
+
+fn push_unique_feature(
+    allocator: Allocator, 
+    list: Vec<String>*, 
+    item: const uint8*
+) {
+    for (var i: usize = 0; i < list->len(); i += 1) {
+        if (list->get_const(i).unwrap()->as_str_const() == item) {
+            return;
+        }
+    }
+
+    list->push(String.from_str(allocator, item));
+}
+
 pub fn compile_source_with_options(
     allocator: Allocator,
     action: cli::ActionContext,
@@ -465,7 +524,8 @@ pub fn compile_source_with_options(
     extra_native_files: const Vec<String>*,
     extra_lib_paths: const Vec<String>*,
     extra_libraries: const Vec<String>*,
-    profile_override: Option<Profile>
+    profile_override: Option<Profile>,
+    extra_features: const Vec<String>*
 ) int32 {
     if (module_merge_mode_unsupported(action.opts)) {
         compile_error("unsupported module merge mode (expected `separate`)");
@@ -547,8 +607,14 @@ pub fn compile_source_with_options(
     apply_stdlib_option(allocator, action.opts, &opts);
 
     switch (profile_override) {
-        case .Some(prof) => opts.profile = prof;
-        case .None => {}
+        case .Some(prof) => {
+            opts.profile = prof;
+        }
+        case .None => {
+            if (!apply_profile_option(action.opts, &opts)) {
+                return 1;
+            }
+        }
     }
 
     if (action.opts->enabled("debug")) {
@@ -559,8 +625,16 @@ pub fn compile_source_with_options(
         opts.profile = .Release;
     }
 
-    if (!apply_profile_option(action.opts, &opts)) {
-        return 1;
+    apply_cli_features(allocator, action.opts, &opts.features);
+
+    if (extra_features != null) {
+        for (var i: usize = 0; i < extra_features->len(); i += 1) {
+            push_unique_feature(
+                allocator, 
+                &opts.features, 
+                extra_features->get_const(i).unwrap()->as_str_const()
+            );
+        }
     }
 
     if (action.cmd->name == "test") {

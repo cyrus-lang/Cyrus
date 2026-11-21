@@ -8872,6 +8872,10 @@ pub struct Emitter {
                         return String.from_str(self->allocator, "\"\"");
                     }
 
+                    case .Feature => {
+                        return String.from_str(self->allocator, "false");
+                    }
+
                     case .FileName => {
                         switch (self->tree_for_source(builtin_func->span.source_id)) {
                             case .Some(tree) => {

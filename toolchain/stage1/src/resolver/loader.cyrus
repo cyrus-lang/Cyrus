@@ -211,6 +211,7 @@ pub struct ResolverOptions {
     pub stdlib_path: Option<String>,
     pub source_dirs: Vec<String>,
     pub module_aliases: Vec<ModuleAlias>,
+    pub features: Vec<String>,
     pub base_path: String,
     pub profile: Profile,
 
@@ -219,6 +220,7 @@ pub struct ResolverOptions {
             base_path: String.from_str(allocator, "."),
             source_dirs: Vec.new(allocator),
             module_aliases: Vec.new(allocator),
+            features: Vec.new(allocator),
             stdlib_path: .None,
             profile: .Debug,
         };
@@ -236,6 +238,8 @@ pub struct ResolverOptions {
             alias.free();
         }
         self->module_aliases.free();
+
+        free_strings(&self->features);
 
         switch (self->stdlib_path) {
             case .Some(path) => path.free();

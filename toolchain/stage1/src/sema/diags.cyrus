@@ -1655,6 +1655,19 @@ pub fn report_builtin_cast_requires_type_argument(
     mesg.free();
 }
 
+pub fn report_builtin_feature_requires_string_literal(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+) {
+    var mesg = String.from_str(allocator, "builtin `@feature` requires a string literal as its argument");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
 pub fn report_cannot_cast(
     dctx: DiagContext*,
     allocator: Allocator,

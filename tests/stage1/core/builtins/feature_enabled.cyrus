@@ -1,0 +1,31 @@
+// @compilerArgs: -F simd -F a,b
+// @stdout: true true true false
+
+import std::libc{printf};
+
+const HAS_SIMD: bool = @feature("simd");
+
+pub fn main() {
+    const a = @feature("a");
+    const b = @feature("b");
+    const other = @feature("other");
+
+    if (!@feature("simd")) {
+        @panic("expected simd feature to be enabled");
+    }
+
+    printf(
+        "%s %s %s %s",
+        bool_str(HAS_SIMD),
+        bool_str(a),
+        bool_str(b),
+        bool_str(other)
+    );
+}
+
+fn bool_str(v: bool) const uint8* {
+    if (v) {
+        return "true";
+    }
+    return "false";
+}

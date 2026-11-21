@@ -151,7 +151,10 @@ pub struct ABIArgInfo {
     [[inline]]
     pub fn is_direct(self: const Self*) bool {
         switch (self->kind) {
-            case .Direct | .DirectCoerce | .DirectPair => return true;
+            case .Direct 
+            | .DirectCoerce 
+            | .DirectPair => return true;
+
             else => return false;
         }
     }
@@ -204,7 +207,8 @@ pub struct ABIArgAttrs {
 }
 
 pub enum ABIArgKind {
-    /// Direct register passing (maybe coerced)
+    /// Direct register passing 
+    /// (maybe coerced)
     Direct {
         coerce_to: Option<cir::SemaType>,
     },
@@ -215,7 +219,8 @@ pub enum ABIArgKind {
         hi: cir::SemaType,
     },
 
-    /// Coerced to a different type and passed directly
+    /// Coerced to a different type
+    /// and passed directly
     DirectCoerce {
         ty: cir::SemaType,
     },
