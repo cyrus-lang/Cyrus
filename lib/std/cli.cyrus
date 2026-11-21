@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::string{String, free_strings};
 import std::mem{Allocator, alloc_init};
 import std::mem::arena{ArenaAllocator};
 import std::libc::types{c_int, c_char};
@@ -8,7 +9,6 @@ import std::io{Writer, StdoutWriter};
 import std::collections{Vec};
 import std::errors{ErrorOr};
 import std::option{Option};
-import std::string{String};
 import std::libc{
     fprintf, printf, strlen,
     strcmp, strtod, strtol,
@@ -30,6 +30,7 @@ pub struct ActionContext {
     pub allocator: Allocator,
     pub opts: Opts*,
     pub args: const Args*,
+    pub extra_args: const Vec<String>*,
     pub cmd: const Cmd*,
 
     pub fn print_help(self: const Self*) {
@@ -70,11 +71,13 @@ pub struct App {
     cmds: Cmds,
     opts: Opts*,
     args: Vec<Value>,
+    extra_args: Vec<String>,
     program_name: uint8*,
 
     pub fn new(allocator: Allocator, opts: Opts*, program_name: uint8*) Self {
         const arena = ArenaAllocator.new(allocator, 4096);
         const args: Vec<Value> = Vec.new(allocator);
+        const extra_args: Vec<String> = Vec.new(allocator);
         const cmds = Cmds.new(allocator);
 
         return Self {
@@ -83,6 +86,7 @@ pub struct App {
             cmds,
             opts,
             args,
+            extra_args,
             program_name
         };
     }
@@ -101,8 +105,9 @@ pub struct App {
 
         switch (self->parse_command_and_args(pargs)) {
             case .Value(cmd) => {
-                // If help option is enabled, only show options
-                // and DO NOT trigger action
+                // If help option is enabled,
+                // only show options and 
+                // DO NOT trigger action
                 if (self->opts->enabled("help")) {
                     cmd->display_help();
                     return .Value(self);
@@ -120,6 +125,7 @@ pub struct App {
                     allocator: self->allocator,
                     opts: self->opts,
                     args: &args,
+                    extra_args: &self->extra_args,
                     cmd: cmd,
                 });
 
@@ -143,10 +149,12 @@ pub struct App {
             const value = self->args.get(i).unwrap();
             value->free();
         }
+
         self->cmds.free();
         self->cmds = Cmds.new(self->allocator);
         self->args.free();
         self->args = Vec.new(self->allocator);
+        free_strings(&self->extra_args);
         self->arena.reset();
     }
 
@@ -158,12 +166,15 @@ pub struct App {
 
         self->cmds.free();
         self->args.free();
+        free_strings(&self->extra_args);
         self->arena.destroy();
     }
 
     fn parse_command_and_args(self: Self*, pargs: ProgramArgs) ErrorOr<Cmd*, Error> {
         const argc = @cast(usize, pargs.argc);
+        
         var i: usize = 1;
+        
         const first_arg = pargs.argv[i];
 
         switch (self->cmds.find(first_arg)) case .Some(var cmd) else {
@@ -182,12 +193,16 @@ pub struct App {
 
             if (strcmp(arg, "--") == 0) {
                 i += 1;
+                
                 while (i < argc) {
                     if (pargs.argv[i]) {
-                        self->args.push(self->parse_value(pargs.argv[i]));
+                        self->extra_args.push(
+                            String.from_str(self->allocator, pargs.argv[i])
+                        );
                     }
                     i += 1;
                 }
+
                 break;
             }
 
@@ -196,6 +211,7 @@ pub struct App {
                     case .Error(err) => return .Error(err);
                     else => {}
                 }
+
                 i += 1;
                 continue;
             }
@@ -223,7 +239,8 @@ pub struct App {
         pargs: ProgramArgs
     ) ErrorOr<(), Error> {
         const arg = pargs.argv[*i];
-        var next_arg: const uint8* = null;
+
+        var next_arg: const uint8*;
 
         if (*i + 1 < @cast(usize, pargs.argc)) {
             next_arg = pargs.argv[*i + 1];
@@ -246,13 +263,14 @@ pub struct App {
         const (is_assign, assign_index) = is_opt_assign(name);
 
         if (is_assign) {
-            const arena_alloc: Allocator = dynamic self->arena;
-            var name_buf: uint8* = arena_alloc.alloc(assign_index + 1);
+            const allocator: Allocator = dynamic self->arena;
+            
+            var name_buf: uint8* = allocator.alloc(assign_index + 1);
+            
             @memcpy(name_buf, name, assign_index);
             name_buf[assign_index] = '\0';
 
             @assert(name[assign_index] == '=', "assign index is wrong");
-
             next_arg = name + assign_index + 1;
             name = name_buf;
         }
@@ -748,7 +766,6 @@ pub struct Cmd {
 
     pub fn free(self: Self*) {
         self->opts.free();
-
         self->sub_cmds->free();
         self->expected_args.free();
         self->allocator.free(self->sub_cmds);
@@ -821,6 +838,7 @@ pub struct Opts {
 
     pub fn display_all(self: const Self*, writer: Writer) {
         writer.writeln("Options:");
+
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
             const option = self->inner.get_owned(i).unwrap();
 
@@ -838,6 +856,7 @@ pub struct Opts {
             writer.write("--");
             writer.write(option->long_name);
         }
+
         writer.write("\n");
     }
 
@@ -967,13 +986,14 @@ pub enum DupPolicy {
 
 pub fn validate(args: const Args*, cmd: const Cmd*) bool {
     const expected_args = &cmd->expected_args;
+    const max_args = expected_args->len();
     const values = args->values();
 
     var min_args: usize = 0;
-    const max_args = expected_args->len();
 
     for (var i: usize = 0; i < max_args; i += 1) {
         const spec = expected_args->get_const(i).unwrap();
+        
         if (spec->required) {
             min_args += 1;
         }
@@ -1013,6 +1033,7 @@ pub fn validate(args: const Args*, cmd: const Cmd*) bool {
                 got_len
             );
         }
+
         help();
         return false;
     }
@@ -1035,6 +1056,7 @@ pub fn validate(args: const Args*, cmd: const Cmd*) bool {
                 got_len
             );
         }
+
         help();
         return false;
     }
@@ -1136,11 +1158,13 @@ fn parse_float(ok: bool*, arg: const uint8*) float64 {
 [[inline]]
 fn is_opt_assign(arg: const uint8*) (bool, usize) {
     const len = @cast(usize, strlen(arg));
+    
     for (var i: usize = 0; i < len; i += 1) {
         if (arg[i] == '=') {
             return (true, i);
         }
     }
+    
     return (false, 0);
 }
 
@@ -1182,6 +1206,7 @@ fn is_ident(str: const uint8*) bool {
     
     // First character must be a letter
     const char = @cast(c_int, @cast(uint8, *str));
+    
     if (isalpha(char) == 0) {
         return false;
     }
@@ -1190,6 +1215,7 @@ fn is_ident(str: const uint8*) bool {
     // Allow letters, digits, underscore, and dash (stop at '=')
     for (var i: usize = 1; str[i] != '\0' && str[i] != '='; i += 1) {
         var char = @cast(c_int, @cast(uint8, str[i]));
+        
         if (isalnum(char) == 0 && (str[i] != '_' && str[i] != '-')) {
             return false;
         }

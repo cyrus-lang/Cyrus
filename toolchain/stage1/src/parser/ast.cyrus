@@ -3,7 +3,7 @@
 
 import std::collections{Vec};
 import std::option{Option};
-import std::string{String};
+import std::string{String, free_strings};
 import std::mem{Allocator};
 import tokens{Span, Token};
 
@@ -20,13 +20,21 @@ pub struct ASTProgram {
     pub nodes: Vec<ASTNode>,
     pub children: Vec<NodeId>,
     pub statements: Option<ASTNodeList>,
+    pub owned_strings: Vec<String>,
 
     pub fn new(allocator: Allocator) Self {
         return Self {
             nodes: Vec.new(allocator),
             children: Vec.new(allocator),
             statements: .None,
+            owned_strings: Vec.new(allocator),
         };
+    }
+
+    pub fn alloc_str(self: Self*, allocator: Allocator, text: const uint8*) String {
+        const s = String.from_str(allocator, text);
+        self->owned_strings.push(s);
+        return s;
     }
 
     pub fn create_node(self: Self*, node: ASTNode) NodeId {
@@ -65,6 +73,7 @@ pub struct ASTProgram {
 
         self->nodes.free();
         self->children.free();
+        free_strings(&self->owned_strings);
     }
 }
 

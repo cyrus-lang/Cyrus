@@ -1,4 +1,4 @@
-// @stdout: 42
+// @stdout: 45
 
 import std::libc{printf};
 
@@ -14,7 +14,7 @@ pub fn main() {
     var op: fn(int32, int32) int32 = undefined;
 
     op = add;
-    printf("%d ", op(20, 22));
+    printf("%d ", op(20, 25));
 
     op = sub;
     printf("\n");

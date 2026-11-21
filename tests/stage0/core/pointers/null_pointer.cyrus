@@ -1,4 +1,4 @@
-// @stdout: null 42
+// @stdout: null 50
 
 import std::libc{printf};
 
@@ -9,7 +9,7 @@ pub fn main() {
         printf("null ");
     }
 
-    var val = 42;
+    var val = 50;
     ptr = &val;
     printf("%d\n", *ptr);
 }

@@ -128,13 +128,15 @@ impl FsModuleLoader {
             let file_path_buf = current_path.join(format!("{}.cyrus", name));
             let dir_path_buf = current_path.join(name);
 
-            let file_exists = if file_path_buf.exists() {
+            let has_base = !current_path.as_os_str().is_empty();
+
+            let file_exists = if has_base && file_path_buf.exists() {
                 Some(file_path_buf.clone())
             } else {
                 find_file_from_sources(file_path_buf.to_string_lossy().as_ref(), &sources)
             };
 
-            let dir_exists = if dir_path_buf.is_dir() {
+            let dir_exists = if has_base && dir_path_buf.is_dir() {
                 Some(dir_path_buf.clone())
             } else {
                 let mut found = None;

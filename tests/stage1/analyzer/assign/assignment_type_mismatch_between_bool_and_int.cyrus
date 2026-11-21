@@ -1,6 +1,6 @@
 fn foo() {
     var x = true;
-    x = 42; //~ ERROR cannot assign rvalue of type `int32` to lvalue of type `bool`
+    x = 50; //~ ERROR cannot assign rvalue of type `int32` to lvalue of type `bool`
 }
 
 pub fn main() {

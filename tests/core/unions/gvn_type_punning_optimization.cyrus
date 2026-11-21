@@ -1,4 +1,4 @@
-// @stdout: 1337 42
+// @stdout: 1337 50
 
 import std::libc{printf};
 
@@ -10,6 +10,6 @@ union PunUnion {
 pub fn main() {
     var u: PunUnion = PunUnion { a: 1337 };
     printf("%d ", u.b);
-    u.b = 42;
+    u.b = 50;
     printf("%d\n", u.a);
 }

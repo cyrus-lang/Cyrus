@@ -1383,7 +1383,7 @@ pub struct ParserExprs {
 
         if (self->state->is(.Module)) {
             name = ast::ASTIdent {
-                str: String.from_str(self->state->allocator, "mod"),
+                str: self->program->alloc_str(self->state->allocator, "mod"),
                 span: start,
             };
             self->state->next();

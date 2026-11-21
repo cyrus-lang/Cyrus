@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    var val: int32 = 42;
+    var val: int32 = 50;
     var ptr = &val;
 
     @assert(ptr, "ptr cannot be null");

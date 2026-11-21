@@ -1,0 +1,1632 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::mem{Allocator, alloc_init};
+import std::mem::libc{LibcAllocator};
+import std::libc{snprintf, strcmp};
+import std::string{
+    push_escaped_tsv_field,
+    unescape_tsv_field,
+    parse_str_as_int32,
+    free_strings,
+    String,
+};
+import std::collections{Vec};
+import std::option{Option};
+import std::path{Path};
+import std::os{File};
+
+/* ************* Target Types ************* */
+
+pub enum OS {
+    Unknown,
+    Linux,
+    Windows,
+    MacOS,
+
+    pub fn as_int(self: Self) int32 {
+        switch (self) {
+            case .Unknown => return 0;
+            case .Linux => return 1;
+            case .Windows => return 2;
+            case .MacOS => return 3;
+        }
+    }
+
+    pub fn from_int(v: int32) Self {
+        switch (v) {
+            case 1 => return .Linux;
+            case 2 => return .Windows;
+            case 3 => return .MacOS;
+            else => return .Unknown;
+        }
+    }
+}
+
+pub enum Arch {
+    X86_64,
+    Aarch64,
+    RiscV64,
+    Wasm32,
+
+    pub fn as_int(self: Self) int32 {
+        switch (self) {
+            case .X86_64 => return 0;
+            case .Aarch64 => return 1;
+            case .RiscV64 => return 2;
+            case .Wasm32 => return 3;
+        }
+    }
+
+    pub fn from_int(v: int32) Self {
+        switch (v) {
+            case 1 => return .Aarch64;
+            case 2 => return .RiscV64;
+            case 3 => return .Wasm32;
+            else => return .X86_64;
+        }
+    }
+}
+
+pub struct Target {
+    pub arch: Arch,
+    pub os: OS,
+}
+
+pub type Host = Target;
+
+pub enum LibraryKind {
+    Static,
+    Shared,
+    Dynamic,
+
+    pub fn as_int(self: Self) int32 {
+        switch (self) {
+            case .Static => return 0;
+            case .Shared => return 1;
+            case .Dynamic => return 2;
+        }
+    }
+
+    pub fn from_int(v: int32) Self {
+        switch (v) {
+            case 1 => return .Shared;
+            case 2 => return .Dynamic;
+            else => return .Static;
+        }
+    }
+}
+
+pub enum DependencyKind {
+    Path,
+    Registry,
+    Git,
+
+    pub fn as_int(self: Self) int32 {
+        switch (self) {
+            case .Path => return 0;
+            case .Registry => return 1;
+            case .Git => return 2;
+        }
+    }
+
+    pub fn from_int(v: int32) Self {
+        switch (v) {
+            case 1 => return .Registry;
+            case 2 => return .Git;
+            else => return .Path;
+        }
+    }
+}
+
+/* ************* Descriptors ************* */
+
+pub struct Define {
+    pub key: String,
+    pub value: String,
+
+    pub fn free(self: Self*) {
+        self->key.free();
+        self->value.free();
+    }
+}
+
+pub struct Dependency {
+    pub kind: DependencyKind,
+    pub value: String,
+    pub git_rev: String,
+    pub is_optional: bool,
+    pub enabled_deps: Vec<String>,
+    pub enabled_defines: Vec<String>,
+    pub allocator: Allocator,
+
+    fn new(
+        kind: DependencyKind, 
+        value: const uint8*, 
+        rev: const uint8*
+    ) Self {
+        const allocator: Allocator = dynamic LibcAllocator.new();
+        
+        return Self {
+            allocator,
+            kind,
+            value: String.from_str(allocator, value),
+            git_rev: String.from_str(allocator, rev),
+            enabled_defines: Vec.new(allocator),
+            enabled_deps: Vec.new(allocator),
+            is_optional: false,
+        };
+    }
+
+    pub fn path(p: const uint8*) Dependency {
+        return Dependency.new(.Path, p, "");
+    }
+
+    pub fn registry(version: const uint8*) Dependency {
+        return Dependency.new(.Registry, version, "");
+    }
+
+    pub fn git(url: const uint8*, rev_or_tag: const uint8*) Dependency {
+        return Dependency.new(.Git, url, rev_or_tag);
+    }
+
+    pub fn optional(var self: Self) Dependency {
+        self.is_optional = true;
+        return self;
+    }
+
+    pub fn enable_dependency(var self: Self, dep_name: const uint8*) Dependency {
+        self.enabled_deps.push(String.from_str(
+            self.allocator, 
+            dep_name
+        ));
+        return self;
+    }
+
+    pub fn enable_define(var self: Self, define_name: const uint8*) Dependency {
+        self.enabled_defines.push(String.from_str(
+            self.allocator, 
+            define_name
+        ));
+        return self;
+    }
+
+    pub fn free(self: Self*) {
+        self->value.free();
+        self->git_rev.free();
+        free_strings(&self->enabled_deps);
+        free_strings(&self->enabled_defines);
+    }
+}
+
+pub struct NamedDependency {
+    pub name: String,
+    pub dep: Dependency,
+
+    pub fn free(self: Self*) {
+        self->name.free();
+        self->dep.free();
+    }
+}
+
+pub struct Feature {
+    pub name: String,
+    pub enabled_deps: Vec<String>,
+    pub enabled_defines: Vec<String>,
+    pub allocator: Allocator,
+
+    pub fn new(allocator: Allocator, name: const uint8*) Self {
+        return Self {
+            name: String.from_str(allocator, name),
+            enabled_deps: Vec.new(allocator),
+            enabled_defines: Vec.new(allocator),
+            allocator,
+        };
+    }
+
+    [[inline]]
+    pub fn enable_dependency(
+        self: Self*, 
+        dep: const uint8*
+    ) Self* {
+        self->enabled_deps.push(String.from_str(
+            self->allocator, 
+            dep
+        ));
+        return self;
+    }
+
+    pub fn enable_define(
+        self: Self*, 
+        define_name: const uint8*
+    ) Self* {
+        self->enabled_defines.push(String.from_str(
+            self->allocator, 
+            define_name
+        ));
+        return self;
+    }
+
+    pub fn free(self: Self*) {
+        self->name.free();
+        free_strings(&self->enabled_deps);
+        free_strings(&self->enabled_defines);
+    }
+}
+
+pub struct Generator {
+    pub name: String,
+    pub tool_path: String,
+    pub inputs: Vec<String>,
+    pub outputs: Vec<String>,
+    pub host: Option<Host>,
+    pub allocator: Allocator,
+
+    pub fn new(
+        allocator: Allocator, 
+        name: const uint8*, 
+        tool_path: const uint8*
+    ) Self {
+        return Self {
+            name: String.from_str(allocator, name),
+            tool_path: String.from_str(allocator, tool_path),
+            inputs: Vec.new(allocator),
+            outputs: Vec.new(allocator),
+            host: .None,
+            allocator,
+        };
+    }
+
+    [[inline]]
+    pub fn input(self: Self*, path: const uint8*) Self* {
+        self->inputs.push(String.from_str(
+            self->allocator, 
+            path
+        ));
+        return self;
+    }
+
+    [[inline]]
+    pub fn output(self: Self*, path: const uint8*) Self* {
+        self->outputs.push(String.from_str(
+            self->allocator, 
+            path
+        ));
+        return self;
+    }
+
+    [[inline]]
+    pub fn for_host(self: Self*, host: Host) Self* {
+        self->host = .Some(host);
+        return self;
+    }
+
+    pub fn free(self: Self*) {
+        self->name.free();
+        self->tool_path.free();
+        free_strings(&self->inputs);
+        free_strings(&self->outputs);
+    }
+}
+
+pub struct GeneratedSource {
+    pub path: String,
+    pub generator_name: String,
+
+    pub fn free(self: Self*) {
+        self->path.free();
+        self->generator_name.free();
+    }
+}
+
+pub struct NativeTargetConfig {
+    pub used_libraries: Vec<String>,
+    pub defines: Vec<Define>,
+    pub link_libraries: Vec<String>,
+    pub c_sources: Vec<String>,
+    pub c_include_dirs: Vec<String>,
+    pub c_flags: Vec<String>,
+    pub asm_sources: Vec<String>,
+    pub native_objects: Vec<String>,
+    pub unsupported_target_msg: Option<String>,
+    pub generated_sources: Vec<GeneratedSource>,
+
+    pub fn new(allocator: Allocator) Self {
+        return Self {
+            used_libraries: Vec.new(allocator),
+            defines: Vec.new(allocator),
+            link_libraries: Vec.new(allocator),
+            c_sources: Vec.new(allocator),
+            c_include_dirs: Vec.new(allocator),
+            c_flags: Vec.new(allocator),
+            asm_sources: Vec.new(allocator),
+            native_objects: Vec.new(allocator),
+            unsupported_target_msg: .None,
+            generated_sources: Vec.new(allocator),
+        };
+    }
+
+    pub fn free(self: Self*) {
+        free_strings(&self->used_libraries);
+
+        for (var i: usize = 0; i < self->defines.len(); i += 1) {
+            var d = self->defines.get_owned(i).unwrap();
+            d.free();
+        }
+        self->defines.free();
+        
+        free_strings(&self->link_libraries);
+        free_strings(&self->c_sources);
+        free_strings(&self->c_include_dirs);
+        free_strings(&self->c_flags);
+        free_strings(&self->asm_sources);
+        free_strings(&self->native_objects);
+        
+        switch (self->unsupported_target_msg) {
+            case .Some(var mesg) => mesg.free();
+            case .None => {}
+        }
+        
+        for (var i: usize = 0; i < self->generated_sources.len(); i += 1) {
+            var entry = self->generated_sources.get_owned(i).unwrap();
+            entry.free();
+        }
+        
+        self->generated_sources.free();
+    }
+}
+
+pub struct Library {
+    pub allocator: Allocator,
+    pub name: String,
+    pub root_path: String,
+    pub kind: LibraryKind,
+    pub native: NativeTargetConfig,
+    pub public_include_dirs: Vec<String>,
+
+    pub fn new(
+        allocator: Allocator, 
+        name: const uint8*, 
+        root_path: const uint8*, 
+        kind: LibraryKind
+    ) Self {
+        return Self {
+            allocator,
+            kind,
+            name: String.from_str(allocator, name),
+            public_include_dirs: Vec.new(allocator),
+            native: NativeTargetConfig.new(allocator),
+            root_path: String.from_str(allocator, root_path),
+        };
+    }
+
+    pub fn public_include_dir(self: Self*, dir: const uint8*) Self* {
+        self->public_include_dirs.push(String.from_str(
+            self->allocator, 
+            dir
+        ));
+        return self;
+    }
+
+    pub fn use_library(self: Self*, lib_name: const uint8*) Self* {
+        self->native.used_libraries.push(String.from_str(
+            self->allocator, 
+            lib_name
+        ));
+        return self;
+    }
+
+    pub fn define(self: Self*, key: const uint8*, value: const uint8*) Self* {
+        self->native.defines.push(Define {
+            key: String.from_str(self->allocator, key),
+            value: String.from_str(self->allocator, value),
+        });
+        return self;
+    }
+
+    pub fn link_library(self: Self*, lib: const uint8*) Self* {
+        self->native.link_libraries.push(String.from_str(
+            self->allocator, 
+            lib
+        ));
+        return self;
+    }
+
+    pub fn c_source(self: Self*, path: const uint8*) Self* {
+        self->native.c_sources.push(String.from_str(
+            self->allocator, 
+            path
+        ));
+        return self;
+    }
+
+    pub fn c_include_dir(self: Self*, dir: const uint8*) Self* {
+        self->native.c_include_dirs.push(String.from_str(
+            self->allocator, 
+            dir
+        ));
+        return self;
+    }
+
+    pub fn c_flag(self: Self*, flag: const uint8*) Self* {
+        self->native.c_flags.push(String.from_str(
+            self->allocator, 
+            flag
+        ));
+        return self;
+    }
+
+    pub fn asm_source(self: Self*, path: const uint8*) Self* {
+        self->native.asm_sources.push(String.from_str(
+            self->allocator, 
+            path
+        ));
+        return self;
+    }
+
+    pub fn native_object(self: Self*, path: const uint8*) Self* {
+        self->native.native_objects.push(String.from_str(
+            self->allocator, 
+            path
+        ));
+        return self;
+    }
+
+    pub fn unsupported_target(self: Self*, message: const uint8*) Self* {
+        switch (self->native.unsupported_target_msg) {
+            case .Some(var prev) => prev.free();
+            case .None => {}
+        }
+        self->native.unsupported_target_msg = .Some(String.from_str(
+            self->allocator, 
+            message
+        ));
+        return self;
+    }
+
+    pub fn generated_source(
+        self: Self*, 
+        path: const uint8*, 
+        generator: const Generator*
+    ) Self* {
+        self->native.generated_sources.push(GeneratedSource {
+            path: String.from_str(self->allocator, path),
+            generator_name: generator->name.clone(self->allocator),
+        });
+        return self;
+    }
+
+    pub fn free(self: Self*) {
+        self->name.free();
+        self->native.free();
+        self->root_path.free();
+        free_strings(&self->public_include_dirs);
+    }
+}
+
+pub struct Entry {
+    pub name: String,
+    pub root_path: String,
+    pub is_default: bool,
+    pub output_name_str: Option<String>,
+    pub native: NativeTargetConfig,
+    pub allocator: Allocator,
+
+    pub fn new(
+        allocator: Allocator, 
+        name: const uint8*, 
+        root_path: const uint8*
+    ) Self {
+        return Self {
+            allocator,
+            is_default: false,
+            output_name_str: .None,
+            name: String.from_str(allocator, name),
+            native: NativeTargetConfig.new(allocator),
+            root_path: String.from_str(allocator, root_path),
+        };
+    }
+
+    pub fn default(self: Self*, is_default: bool) Self* {
+        self->is_default = is_default;
+        return self;
+    }
+
+    pub fn use_library(self: Self*, lib_name: const uint8*) Self* {
+        self->native.used_libraries.push(String.from_str(
+            self->allocator, 
+            lib_name
+        ));
+        return self;
+    }
+
+    pub fn output_name(self: Self*, name: const uint8*) Self* {
+        switch (self->output_name_str) {
+            case .Some(var prev) => prev.free();
+            case .None => {}
+        }
+        self->output_name_str = .Some(String.from_str(
+            self->allocator, 
+            name
+        ));
+        return self;
+    }
+
+    pub fn define(self: Self*, key: const uint8*, value: const uint8*) Self* {
+        self->native.defines.push(Define {
+            key: String.from_str(self->allocator, key),
+            value: String.from_str(self->allocator, value),
+        });
+        return self;
+    }
+
+    pub fn link_library(self: Self*, lib: const uint8*) Self* {
+        self->native.link_libraries.push(String.from_str(
+            self->allocator, 
+            lib
+        ));
+        return self;
+    }
+
+    pub fn c_source(self: Self*, path: const uint8*) Self* {
+        self->native.c_sources.push(String.from_str(
+            self->allocator, 
+            path
+        ));
+        return self;
+    }
+
+    pub fn c_include_dir(self: Self*, dir: const uint8*) Self* {
+        self->native.c_include_dirs.push(String.from_str(
+            self->allocator, 
+            dir
+        ));
+        return self;
+    }
+
+    pub fn c_flag(self: Self*, flag: const uint8*) Self* {
+        self->native.c_flags.push(String.from_str(
+            self->allocator, 
+            flag
+        ));
+        return self;
+    }
+
+    pub fn asm_source(self: Self*, path: const uint8*) Self* {
+        self->native.asm_sources.push(String.from_str(
+            self->allocator, 
+            path
+        ));
+        return self;
+    }
+
+    pub fn native_object(self: Self*, path: const uint8*) Self* {
+        self->native.native_objects.push(String.from_str(
+            self->allocator, 
+            path
+        ));
+        return self;
+    }
+
+    pub fn unsupported_target(self: Self*, message: const uint8*) Self* {
+        switch (self->native.unsupported_target_msg) {
+            case .Some(var prev) => prev.free();
+            case .None => {}
+        }
+        self->native.unsupported_target_msg = .Some(String.from_str(
+            self->allocator, 
+            message
+        ));
+        return self;
+    }
+
+    pub fn generated_source(
+        self: Self*, 
+        path: const uint8*, 
+        generator: const Generator*
+    ) Self* {
+        self->native.generated_sources.push(GeneratedSource {
+            path: String.from_str(self->allocator, path),
+            generator_name: generator->name.clone(self->allocator),
+        });
+        return self;
+    }
+
+    pub fn free(self: Self*) {
+        self->name.free();
+        self->root_path.free();
+
+        switch (self->output_name_str) {
+            case .Some(var out) => out.free();
+            case .None => {}
+        }
+
+        self->native.free();
+    }
+}
+
+pub struct BuildProfile {
+    pub name: String,
+    pub opt_level: int32,
+    pub has_debug_info: bool,
+    pub has_assertions: bool,
+    pub has_overflow_checks: bool,
+    pub has_lto: bool,
+    pub has_strip: bool,
+
+    pub fn new(allocator: Allocator, name: const uint8*) Self {
+        return Self {
+            name: String.from_str(allocator, name),
+            opt_level: 0,
+            has_debug_info: false,
+            has_assertions: false,
+            has_overflow_checks: false,
+            has_lto: false,
+            has_strip: false,
+        };
+    }
+
+    pub fn optimization(self: Self*, level: int32) Self* {
+        self->opt_level = level;
+        return self;
+    }
+
+    pub fn debug_info(self: Self*, enabled: bool) Self* {
+        self->has_debug_info = enabled;
+        return self;
+    }
+
+    pub fn assertions(self: Self*, enabled: bool) Self* {
+        self->has_assertions = enabled;
+        return self;
+    }
+
+    pub fn overflow_checks(self: Self*, enabled: bool) Self* {
+        self->has_overflow_checks = enabled;
+        return self;
+    }
+
+    pub fn lto(self: Self*, enabled: bool) Self* {
+        self->has_lto = enabled;
+        return self;
+    }
+
+    pub fn strip(self: Self*, enabled: bool) Self* {
+        self->has_strip = enabled;
+        return self;
+    }
+
+    pub fn free(self: Self*) {
+        self->name.free();
+    }
+}
+
+pub struct Package {
+    pub name: String,
+    pub version: String,
+    pub edition_str: Option<String>,
+    pub description_str: Option<String>,
+    pub license_str: Option<String>,
+    pub repository_str: Option<String>,
+    pub dependencies: Vec<NamedDependency>,
+    pub features: Vec<Feature*>,
+    pub libraries: Vec<Library*>,
+    pub entries: Vec<Entry*>,
+    pub allocator: Allocator,
+
+    pub fn new(
+        allocator: Allocator, 
+        name: const uint8*, 
+        version: const uint8*
+    ) Self {
+        return Self {
+            allocator,
+            name: String.from_str(allocator, name),
+            version: String.from_str(allocator, version),
+            dependencies: Vec.new(allocator),
+            features: Vec.new(allocator),
+            libraries: Vec.new(allocator),
+            entries: Vec.new(allocator),
+            description_str: .None,
+            repository_str: .None,
+            edition_str: .None,
+            license_str: .None,
+        };
+    }
+
+    pub fn edition(self: Self*, edition: const uint8*) Self* {
+        switch (self->edition_str) {
+            case .Some(var prev) => prev.free();
+            case .None => {}
+        }
+        self->edition_str = .Some(String.from_str(
+            self->allocator, 
+            edition
+        ));
+        return self;
+    }
+
+    pub fn description(self: Self*, desc: const uint8*) Self* {
+        switch (self->description_str) {
+            case .Some(var prev) => prev.free();
+            case .None => {}
+        }
+        self->description_str = .Some(String.from_str(
+            self->allocator, 
+            desc
+        ));
+        return self;
+    }
+
+    pub fn license(self: Self*, license: const uint8*) Self* {
+        switch (self->license_str) {
+            case .Some(var prev) => prev.free();
+            case .None => {}
+        }
+        self->license_str = .Some(String.from_str(
+            self->allocator, 
+            license
+        ));
+        return self;
+    }
+
+    pub fn repository(self: Self*, repo: const uint8*) Self* {
+        switch (self->repository_str) {
+            case .Some(var prev) => prev.free();
+            case .None => {}
+        }
+        self->repository_str = .Some(String.from_str(
+            self->allocator, 
+            repo
+        ));
+        return self;
+    }
+
+    pub fn dependency(self: Self*, name: const uint8*, dep: Dependency) Self* {
+        self->dependencies.push(NamedDependency {
+            name: String.from_str(self->allocator, name),
+            dep,
+        });
+        return self;
+    }
+
+    pub fn feature(self: Self*, name: const uint8*) Feature* {
+        for (var i: usize = 0; i < self->features.len(); i += 1) {
+            const existing = self->features.get_owned(i).unwrap();
+            
+            if (existing->name.as_str_const() == name) {
+                return existing;
+            }
+        }
+
+        const feature = alloc_init(self->allocator, Feature.new(
+            self->allocator, 
+            name
+        ));
+
+        self->features.push(feature);
+        return feature;
+    }
+
+    pub fn library(
+        self: Self*, 
+        name: const uint8*, 
+        root_path: const uint8*, 
+        kind: LibraryKind
+    ) Library* {
+        const lib = alloc_init(self->allocator, Library.new(
+            self->allocator, 
+            name, 
+            root_path, 
+            kind
+        ));
+        self->libraries.push(lib);
+        return lib;
+    }
+
+    pub fn entry(
+        self: Self*, 
+        name: const uint8*, 
+        root_path: const uint8*
+    ) Entry* {
+        const entry = alloc_init(self->allocator, Entry.new(
+            self->allocator, 
+            name, 
+            root_path
+        ));
+        self->entries.push(entry);
+        return entry;
+    }
+
+    pub fn free(self: Self*) {
+        self->name.free();
+        self->version.free();
+
+        switch (self->edition_str) {
+            case .Some(var str) => str.free();
+            case .None => {}
+        }
+        switch (self->description_str) {
+            case .Some(var str) => str.free();
+            case .None => {}
+        }
+        switch (self->license_str) {
+            case .Some(var str) => str.free();
+            case .None => {}
+        }
+        switch (self->repository_str) {
+            case .Some(var str) => str.free();
+            case .None => {}
+        }
+
+        for (var i: usize = 0; i < self->dependencies.len(); i += 1) {
+            var dep = self->dependencies.get_owned(i).unwrap();
+            dep.free();
+        }
+        self->dependencies.free();
+        
+        for (var i: usize = 0; i < self->features.len(); i += 1) {
+            const feature = self->features.get_owned(i).unwrap();
+            feature->free();
+            self->allocator.free(feature);
+        }
+        self->features.free();
+
+        for (var i: usize = 0; i < self->libraries.len(); i += 1) {
+            const lib = self->libraries.get_owned(i).unwrap();
+            lib->free();
+            self->allocator.free(lib);
+        }
+        self->libraries.free();
+        
+        for (var i: usize = 0; i < self->entries.len(); i += 1) {
+            const entry = self->entries.get_owned(i).unwrap();
+            entry->free();
+            self->allocator.free(entry);
+        }
+        self->entries.free();
+    }
+}
+
+/* ************* Builder & Graph Serialization ************* */
+
+fn emit_native_config(
+    out: String*, 
+    prefix: const uint8*, 
+    cfg: const NativeTargetConfig*
+) {
+    for (var i: usize = 0; i < cfg->used_libraries.len(); i += 1) {
+        const lib = cfg->used_libraries.get_const(i).unwrap()->as_str_const();
+        out->push_str(prefix);
+        out->push_str("_USE\t");
+        push_escaped_tsv_field(out, lib);
+        out->push('\n');
+    }
+
+    for (var i: usize = 0; i < cfg->defines.len(); i += 1) {
+        const define = cfg->defines.get_const(i).unwrap();
+        out->push_str(prefix);
+        out->push_str("_DEF\t");
+        push_escaped_tsv_field(out, define->key.as_str_const());
+        out->push('\t');
+        push_escaped_tsv_field(out, define->value.as_str_const());
+        out->push('\n');
+    }
+
+    for (var i: usize = 0; i < cfg->link_libraries.len(); i += 1) {
+        const lib = cfg->link_libraries.get_const(i).unwrap()->as_str_const();
+        out->push_str(prefix);
+        out->push_str("_LINK\t");
+        push_escaped_tsv_field(out, lib);
+        out->push('\n');
+    }
+
+    for (var i: usize = 0; i < cfg->c_sources.len(); i += 1) {
+        const source = cfg->c_sources.get_const(i).unwrap()->as_str_const();
+        out->push_str(prefix);
+        out->push_str("_CSRC\t");
+        push_escaped_tsv_field(out, source);
+        out->push('\n');
+    }
+
+    for (var i: usize = 0; i < cfg->c_include_dirs.len(); i += 1) {
+        const include_dir = cfg->c_include_dirs.get_const(i).unwrap()->as_str_const();
+        out->push_str(prefix);
+        out->push_str("_CINC\t");
+        push_escaped_tsv_field(out, include_dir);
+        out->push('\n');
+    }
+
+    for (var i: usize = 0; i < cfg->c_flags.len(); i += 1) {
+        const flag = cfg->c_flags.get_const(i).unwrap()->as_str_const();
+        out->push_str(prefix);
+        out->push_str("_CFLAG\t");
+        push_escaped_tsv_field(out, flag);
+        out->push('\n');
+    }
+
+    for (var i: usize = 0; i < cfg->asm_sources.len(); i += 1) {
+        const source = cfg->asm_sources.get_const(i).unwrap()->as_str_const();
+        out->push_str(prefix);
+        out->push_str("_ASM\t");
+        push_escaped_tsv_field(out, source);
+        out->push('\n');
+    }
+
+    for (var i: usize = 0; i < cfg->native_objects.len(); i += 1) {
+        const object = cfg->native_objects.get_const(i).unwrap()->as_str_const();
+        out->push_str(prefix);
+        out->push_str("_OBJ\t");
+        push_escaped_tsv_field(out, object);
+        out->push('\n');
+    }
+
+    switch (cfg->unsupported_target_msg) {
+        case .Some(mesg) => {
+            out->push_str(prefix);
+            out->push_str("_UNSUP\t");
+            push_escaped_tsv_field(out, mesg.as_str_const());
+            out->push('\n');
+        }
+        case .None => {}
+    }
+
+    for (var i: usize = 0; i < cfg->generated_sources.len(); i += 1) {
+        const source = cfg->generated_sources.get_const(i).unwrap();
+        out->push_str(prefix);
+        out->push_str("_GENSRC\t");
+        push_escaped_tsv_field(out, source->path.as_str_const());
+        out->push('\t');
+        push_escaped_tsv_field(out, source->generator_name.as_str_const());
+        out->push('\n');
+    }
+}
+
+fn split_fields(allocator: Allocator, line: const uint8*) Vec<String> {
+    var parts: Vec<String> = Vec.new(allocator);
+    var current = String.new(allocator);
+    var i: usize = 0;
+
+    while (line[i] != '\0') {
+        if (line[i] == '\t') {
+            parts.push(unescape_tsv_field(
+                allocator, 
+                current.as_str_const()
+            ));
+            current.clear();
+        } else {
+            current.push(line[i]);
+        }
+
+        i += 1;
+    }
+
+    parts.push(unescape_tsv_field(
+        allocator, 
+        current.as_str_const()
+    ));
+    current.free();
+    return parts;
+}
+
+pub struct Builder {
+    pub allocator: Allocator,
+    pub target_info: Target,
+    pub host_info: Host,
+    pub packages: Vec<Package*>,
+    pub profiles: Vec<BuildProfile*>,
+    pub generators: Vec<Generator*>,
+
+    pub fn new(
+        allocator: Allocator, 
+        target_info: Target, 
+        host_info: Host
+    ) Self {
+        return Self {
+            allocator,
+            host_info,
+            target_info,
+            packages: Vec.new(allocator),
+            profiles: Vec.new(allocator),
+            generators: Vec.new(allocator),
+        };
+    }
+
+    pub fn target(self: const Self*) Target {
+        return self->target_info;
+    }
+
+    pub fn host(self: const Self*) Host {
+        return self->host_info;
+    }
+
+    pub fn package(
+        self: Self*, 
+        name: const uint8*, 
+        version: const uint8*
+    ) Package* {
+        const pkg = alloc_init(self->allocator, Package.new(
+            self->allocator, 
+            name, 
+            version
+        ));
+        self->packages.push(pkg);
+        return pkg;
+    }
+
+    pub fn profile(self: Self*, name: const uint8*) BuildProfile* {
+        for (var i: usize = 0; i < self->profiles.len(); i += 1) {
+            const existing = self->profiles.get_owned(i).unwrap();
+            
+            if (existing->name.as_str_const() == name) {
+                return existing;
+            }
+        }
+
+        const profile = alloc_init(self->allocator, BuildProfile.new(
+            self->allocator, 
+            name
+        ));
+        self->profiles.push(profile);
+        return profile;
+    }
+
+    pub fn generator(
+        self: Self*, 
+        name: const uint8*, 
+        tool_path: const uint8*
+    ) Generator* {
+        const gen = alloc_init(self->allocator, Generator.new(
+            self->allocator, 
+            name, 
+            tool_path
+        ));
+        self->generators.push(gen);
+        return gen;
+    }
+
+    pub fn serialize(self: const Self*, file_path: const uint8*) bool {
+        var out = String.new(self->allocator);
+        defer out.free();
+
+        out.push_str("META\t");
+        push_int32_str(&out, self->target_info.arch.as_int());
+        out.push('\t');
+        push_int32_str(&out, self->target_info.os.as_int());
+        out.push('\t');
+        push_int32_str(&out, self->host_info.arch.as_int());
+        out.push('\t');
+        push_int32_str(&out, self->host_info.os.as_int());
+        out.push('\n');
+
+        for (var p_idx: usize = 0; p_idx < self->packages.len(); p_idx += 1) {
+            const pkg = self->packages.get_owned(p_idx).unwrap();
+            
+            out.push_str("PKG\t");
+            push_escaped_tsv_field(&out, pkg->name.as_str_const());
+            out.push('\t');
+            push_escaped_tsv_field(&out, pkg->version.as_str_const());
+            out.push('\n');
+
+            switch (pkg->edition_str) {
+                case .Some(s) => {
+                    out.push_str("PKG_EDITION\t");
+                    push_escaped_tsv_field(&out, s.as_str_const());
+                    out.push('\n');
+                }
+                case .None => {}
+            }
+            switch (pkg->description_str) {
+                case .Some(s) => {
+                    out.push_str("PKG_DESC\t");
+                    push_escaped_tsv_field(&out, s.as_str_const());
+                    out.push('\n');
+                }
+                case .None => {}
+            }
+            switch (pkg->license_str) {
+                case .Some(s) => {
+                    out.push_str("PKG_LICENSE\t");
+                    push_escaped_tsv_field(&out, s.as_str_const());
+                    out.push('\n');
+                }
+                case .None => {}
+            }
+            switch (pkg->repository_str) {
+                case .Some(s) => {
+                    out.push_str("PKG_REPO\t");
+                    push_escaped_tsv_field(&out, s.as_str_const());
+                    out.push('\n');
+                }
+                case .None => {}
+            }
+
+            for (var i: usize = 0; i < pkg->dependencies.len(); i += 1) {
+                const dep = pkg->dependencies.get_const(i).unwrap();
+                out.push_str("DEP\t");
+                push_escaped_tsv_field(&out, dep->name.as_str_const());
+                out.push('\t');
+                push_int32_str(&out, dep->dep.kind.as_int());
+                out.push('\t');
+                push_escaped_tsv_field(&out, dep->dep.value.as_str_const());
+                out.push('\t');
+                push_escaped_tsv_field(&out, dep->dep.git_rev.as_str_const());
+                out.push('\t');
+                push_bool_str(&out, dep->dep.is_optional);
+                out.push('\n');
+
+                for (var k: usize = 0; k < dep->dep.enabled_deps.len(); k += 1) {
+                    const dep = dep->dep.enabled_deps.get_const(k).unwrap()->as_str_const();
+                    out.push_str("DEP_EDEP\t");
+                    push_escaped_tsv_field(&out, dep);
+                    out.push('\n');
+                }
+
+                for (var k: usize = 0; k < dep->dep.enabled_defines.len(); k += 1) {
+                    const define = dep->dep.enabled_defines.get_const(k).unwrap()->as_str_const();
+                    out.push_str("DEP_EDEF\t");
+                    push_escaped_tsv_field(&out, define);
+                    out.push('\n');
+                }
+            }
+
+            for (var i: usize = 0; i < pkg->features.len(); i += 1) {
+                const feature = pkg->features.get_owned(i).unwrap();
+                
+                out.push_str("FEAT\t");
+                push_escaped_tsv_field(&out, feature->name.as_str_const());
+                out.push('\n');
+
+                for (var k: usize = 0; k < feature->enabled_deps.len(); k += 1) {
+                    const dep = feature->enabled_deps.get_const(k).unwrap()->as_str_const();
+                    out.push_str("FEAT_DEP\t");
+                    push_escaped_tsv_field(&out, dep);
+                    out.push('\n');
+                }
+                
+                for (var k: usize = 0; k < feature->enabled_defines.len(); k += 1) {
+                    const define = feature->enabled_defines.get_const(k).unwrap()->as_str_const();
+                    out.push_str("FEAT_DEF\t");
+                    push_escaped_tsv_field(&out, define);
+                    out.push('\n');
+                }
+            }
+
+            for (var i: usize = 0; i < pkg->libraries.len(); i += 1) {
+                const lib = pkg->libraries.get_owned(i).unwrap();
+                out.push_str("LIB\t");
+                push_escaped_tsv_field(&out, lib->name.as_str_const());
+                out.push('\t');
+                push_escaped_tsv_field(&out, lib->root_path.as_str_const());
+                out.push('\t');
+                push_int32_str(&out, lib->kind.as_int());
+                out.push('\n');
+
+                for (var k: usize = 0; k < lib->public_include_dirs.len(); k += 1) {
+                    const include_dir = 
+                        lib->public_include_dirs.get_const(k).unwrap()->as_str_const();
+
+                    out.push_str("LIB_PUBINC\t");
+                    push_escaped_tsv_field(&out, include_dir);
+                    out.push('\n');
+                }
+
+                emit_native_config(&out, "LIB", &lib->native);
+            }
+
+            for (var i: usize = 0; i < pkg->entries.len(); i += 1) {
+                const entry = pkg->entries.get_owned(i).unwrap();
+
+                out.push_str("ENTRY\t");
+                push_escaped_tsv_field(&out, entry->name.as_str_const());
+                out.push('\t');
+                push_escaped_tsv_field(&out, entry->root_path.as_str_const());
+                out.push('\n');
+
+                out.push_str("ENTRY_DEFAULT\t");
+                push_bool_str(&out, entry->is_default);
+                out.push('\n');
+
+                switch (entry->output_name_str) {
+                    case .Some(oname) => {
+                        out.push_str("ENTRY_OUT\t");
+                        push_escaped_tsv_field(&out, oname.as_str_const());
+                        out.push('\n');
+                    }
+                    case .None => {}
+                }
+
+                emit_native_config(&out, "ENTRY", &entry->native);
+            }
+        }
+
+        for (var i: usize = 0; i < self->profiles.len(); i += 1) {
+            const profile = self->profiles.get_owned(i).unwrap();
+            out.push_str("PROF\t");
+            push_escaped_tsv_field(&out, profile->name.as_str_const());
+            out.push('\t');
+            push_int32_str(&out, profile->opt_level);
+            out.push('\t');
+            push_bool_str(&out, profile->has_debug_info);
+            out.push('\t');
+            push_bool_str(&out, profile->has_assertions);
+            out.push('\t');
+            push_bool_str(&out, profile->has_overflow_checks);
+            out.push('\t');
+            push_bool_str(&out, profile->has_lto);
+            out.push('\t');
+            push_bool_str(&out, profile->has_strip);
+            out.push('\n');
+        }
+
+        for (var i: usize = 0; i < self->generators.len(); i += 1) {
+            const gen = self->generators.get_owned(i).unwrap();
+            out.push_str("GEN\t");
+            push_escaped_tsv_field(&out, gen->name.as_str_const());
+            out.push('\t');
+            push_escaped_tsv_field(&out, gen->tool_path.as_str_const());
+            out.push('\n');
+
+            for (var k: usize = 0; k < gen->inputs.len(); k += 1) {
+                out.push_str("GEN_IN\t");
+                push_escaped_tsv_field(
+                    &out, 
+                    gen->inputs.get_const(k).unwrap()->as_str_const()
+                );
+                out.push('\n');
+            }
+
+            for (var k: usize = 0; k < gen->outputs.len(); k += 1) {
+                out.push_str("GEN_OUT\t");
+                push_escaped_tsv_field(
+                    &out, gen->outputs.get_const(k).unwrap()->as_str_const()
+                );
+                out.push('\n');
+            }
+
+            switch (gen->host) {
+                case .Some(h) => {
+                    out.push_str("GEN_HOST\t");
+                    push_int32_str(&out, h.arch.as_int());
+                    out.push('\t');
+                    push_int32_str(&out, h.os.as_int());
+                    out.push('\n');
+                }
+                case .None => {}
+            }
+        }
+
+        const path = Path.new(self->allocator, file_path);
+        defer path.free();
+
+        switch (File.open(&path, .Write)) case .Value(var file) else {
+            return false;
+        }
+
+        const result = file.write(out.as_str_const());
+        file.close();
+        
+        switch (result) {
+            case .Value => return true;
+            case .Error => return false;
+        }
+    }
+
+    pub fn deserialize(allocator: Allocator, file_path: const uint8*) Option<Builder> {
+        const path = Path.new(allocator, file_path);
+        defer path.free();
+
+        switch (File.open(&path, .Read)) case .Value(var file) else {
+            return .None;
+        }
+        
+        const result = file.read(allocator);
+        file.close();
+        
+        switch (result) case .Value(content) else {
+            return .None;
+        }
+        defer content.free();
+
+        var builder = Builder.new(
+            allocator,
+            Target { arch: .X86_64, os: .Linux },
+            Target { arch: .X86_64, os: .Linux }
+        );
+
+        var current_pkg: Package*;
+        var current_feat: Feature*;
+        var current_lib: Library*;
+        var current_entry: Entry*;
+        var current_gen: Generator*;
+
+        const text = content.as_str_const();
+        const total_len = content.len();
+        
+        var line = String.new(allocator);
+        defer line.free();
+
+        var pos: usize = 0;
+        
+        while (pos <= total_len) {
+            const at_end = pos == total_len;
+            
+            if (!at_end && text[pos] != '\n') {
+                line.push(text[pos]);
+                pos += 1;
+                continue;
+            }
+
+            if (line.len() > 0) {
+                var parts = split_fields(allocator, line.as_str_const());
+                
+                const tag = parts.get_const(0).unwrap()->as_str_const();
+
+                if (tag == "META" && parts.len() >= 5) {
+                    builder.target_info = Target {
+                        arch: Arch.from_int(parse_str_as_int32(parts.get_const(1).unwrap()->as_str_const()).unwrap_or(0)),
+                        os: OS.from_int(parse_str_as_int32(parts.get_const(2).unwrap()->as_str_const()).unwrap_or(0)),
+                    };
+
+                    builder.host_info = Target {
+                        arch: Arch.from_int(parse_str_as_int32(parts.get_const(3).unwrap()->as_str_const()).unwrap_or(0)),
+                        os: OS.from_int(parse_str_as_int32(parts.get_const(4).unwrap()->as_str_const()).unwrap_or(0)),
+                    };
+                } else if (tag == "PKG" && parts.len() >= 3) {
+                    current_pkg = builder.package(
+                        parts.get_const(1).unwrap()->as_str_const(),
+                        parts.get_const(2).unwrap()->as_str_const()
+                    );
+
+                    current_entry = null;
+                    current_feat = null;
+                    current_lib = null;
+                } else if (tag == "PKG_EDITION" && current_pkg != null && parts.len() >= 2) {
+                    current_pkg->edition(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "PKG_DESC" && current_pkg != null && parts.len() >= 2) {
+                    current_pkg->description(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "PKG_LICENSE" && current_pkg != null && parts.len() >= 2) {
+                    current_pkg->license(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "PKG_REPO" && current_pkg != null && parts.len() >= 2) {
+                    current_pkg->repository(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "DEP" && current_pkg != null && parts.len() >= 6) {
+                    const kind = DependencyKind.from_int(parse_str_as_int32(
+                        parts.get_const(2).unwrap()->as_str_const()
+                    ).unwrap_or(0));
+
+                    const value = parts.get_const(3).unwrap()->as_str_const();
+                    const rev = parts.get_const(4).unwrap()->as_str_const();
+                    
+                    var dep: Dependency;
+                    
+                    switch (kind) {
+                        case .Path => dep = Dependency.path(value);
+                        case .Registry => dep = Dependency.registry(value);
+                        case .Git => dep = Dependency.git(value, rev);
+                    }
+                    
+                    dep.is_optional = parts.get_const(5).unwrap()->as_str_const() == "1";
+                    current_pkg->dependency(parts.get_const(1).unwrap()->as_str_const(), dep);
+                } else if (tag == "DEP_EDEP" && 
+                    current_pkg != null && 
+                    parts.len() >= 2 && 
+                    current_pkg->dependencies.len() > 0) 
+                {
+                    const last_dep = current_pkg->dependencies.get(
+                        current_pkg->dependencies.len() - 1
+                    ).unwrap();
+                    
+                    last_dep->dep.enabled_deps.push(
+                        String.from_str(
+                            last_dep->dep.allocator, 
+                            parts.get_const(1).unwrap()->as_str_const()
+                        )
+                    );
+                } else if (tag == "DEP_EDEF" && 
+                    current_pkg != null && 
+                    parts.len() >= 2 && 
+                    current_pkg->dependencies.len() > 0) 
+                {
+                    const last_dep = current_pkg->dependencies.get(
+                        current_pkg->dependencies.len() - 1
+                    ).unwrap();
+
+                    last_dep->dep.enabled_defines.push(
+                        String.from_str(
+                            last_dep->dep.allocator, 
+                            parts.get_const(1).unwrap()->as_str_const()
+                        )
+                    );
+                } else if (tag == "FEAT" && current_pkg != null && parts.len() >= 2) {
+                    current_feat = current_pkg->feature(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "FEAT_DEP" && current_feat != null && parts.len() >= 2) {
+                    current_feat->enable_dependency(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "FEAT_DEF" && current_feat != null && parts.len() >= 2) {
+                    current_feat->enable_define(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB" && current_pkg != null && parts.len() >= 4) {
+                    current_lib = current_pkg->library(
+                        parts.get_const(1).unwrap()->as_str_const(),
+                        parts.get_const(2).unwrap()->as_str_const(),
+                        LibraryKind.from_int(parse_str_as_int32(parts.get_const(3).unwrap()->as_str_const()).unwrap_or(0))
+                    );
+                } else if (tag == "LIB_PUBINC" && current_lib != null && parts.len() >= 2) {
+                    current_lib->public_include_dir(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB_USE" && current_lib != null && parts.len() >= 2) {
+                    current_lib->use_library(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB_DEF" && current_lib != null && parts.len() >= 3) {
+                    current_lib->define(
+                        parts.get_const(1).unwrap()->as_str_const(), 
+                        parts.get_const(2).unwrap()->as_str_const()
+                    );
+                } else if (tag == "LIB_LINK" && current_lib != null && parts.len() >= 2) {
+                    current_lib->link_library(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB_CSRC" && current_lib != null && parts.len() >= 2) {
+                    current_lib->c_source(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB_CINC" && current_lib != null && parts.len() >= 2) {
+                    current_lib->c_include_dir(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB_CFLAG" && current_lib != null && parts.len() >= 2) {
+                    current_lib->c_flag(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB_ASM" && current_lib != null && parts.len() >= 2) {
+                    current_lib->asm_source(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB_OBJ" && current_lib != null && parts.len() >= 2) {
+                    current_lib->native_object(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB_UNSUP" && current_lib != null && parts.len() >= 2) {
+                    current_lib->unsupported_target(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "LIB_GENSRC" && current_lib != null && parts.len() >= 3) {
+                    current_lib->native.generated_sources.push(GeneratedSource {
+                        path: String.from_str(
+                            current_lib->allocator, 
+                            parts.get_const(1).unwrap()->as_str_const()
+                        ),
+                        generator_name: String.from_str(
+                            current_lib->allocator, 
+                            parts.get_const(2).unwrap()->as_str_const()
+                        ),
+                    });
+                } else if (tag == "ENTRY" && current_pkg != null && parts.len() >= 3) {
+                    current_entry = current_pkg->entry(
+                        parts.get_const(1).unwrap()->as_str_const(),
+                        parts.get_const(2).unwrap()->as_str_const()
+                    );
+                } else if (tag == "ENTRY_DEFAULT" && current_entry != null && parts.len() >= 2) {
+                    current_entry->default(parts.get_const(1).unwrap()->as_str_const() == "1");
+                } else if (tag == "ENTRY_OUT" && current_entry != null && parts.len() >= 2) {
+                    current_entry->output_name(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "ENTRY_USE" && current_entry != null && parts.len() >= 2) {
+                    current_entry->use_library(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "ENTRY_DEF" && current_entry != null && parts.len() >= 3) {
+                    current_entry->define(
+                        parts.get_const(1).unwrap()->as_str_const(), 
+                        parts.get_const(2).unwrap()->as_str_const()
+                    );
+                } else if (tag == "ENTRY_LINK" && current_entry != null && parts.len() >= 2) {
+                    current_entry->link_library(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "ENTRY_CSRC" && current_entry != null && parts.len() >= 2) {
+                    current_entry->c_source(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "ENTRY_CINC" && current_entry != null && parts.len() >= 2) {
+                    current_entry->c_include_dir(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "ENTRY_CFLAG" && current_entry != null && parts.len() >= 2) {
+                    current_entry->c_flag(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "ENTRY_ASM" && current_entry != null && parts.len() >= 2) {
+                    current_entry->asm_source(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "ENTRY_OBJ" && current_entry != null && parts.len() >= 2) {
+                    current_entry->native_object(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "ENTRY_UNSUP" && current_entry != null && parts.len() >= 2) {
+                    current_entry->unsupported_target(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "ENTRY_GENSRC" && current_entry != null && parts.len() >= 3) {
+                    current_entry->native.generated_sources.push(GeneratedSource {
+                        path: String.from_str(
+                            current_entry->allocator, 
+                            parts.get_const(1).unwrap()->as_str_const()
+                        ),
+                        generator_name: String.from_str(
+                            current_entry->allocator, 
+                            parts.get_const(2).unwrap()->as_str_const()
+                        ),
+                    });
+                } else if (tag == "PROF" && parts.len() >= 8) {
+                    const profile = builder.profile(parts.get_const(1).unwrap()->as_str_const());
+                    profile->optimization(parse_str_as_int32(parts.get_const(2).unwrap()->as_str_const()).unwrap_or(0));
+                    profile->debug_info(parts.get_const(3).unwrap()->as_str_const() == "1");
+                    profile->assertions(parts.get_const(4).unwrap()->as_str_const() == "1");
+                    profile->overflow_checks(parts.get_const(5).unwrap()->as_str_const() == "1");
+                    profile->lto(parts.get_const(6).unwrap()->as_str_const() == "1");
+                    profile->strip(parts.get_const(7).unwrap()->as_str_const() == "1");
+                } else if (tag == "GEN" && parts.len() >= 3) {
+                    current_gen = builder.generator(
+                        parts.get_const(1).unwrap()->as_str_const(),
+                        parts.get_const(2).unwrap()->as_str_const()
+                    );
+                } else if (tag == "GEN_IN" && current_gen != null && parts.len() >= 2) {
+                    current_gen->input(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "GEN_OUT" && current_gen != null && parts.len() >= 2) {
+                    current_gen->output(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "GEN_HOST" && current_gen != null && parts.len() >= 3) {
+                    current_gen->for_host(Target {
+                        arch: Arch.from_int(parse_str_as_int32(parts.get_const(1).unwrap()->as_str_const()).unwrap_or(0)),
+                        os: OS.from_int(parse_str_as_int32(parts.get_const(2).unwrap()->as_str_const()).unwrap_or(0)),
+                    });
+                }
+
+                free_strings(&parts);
+                line.clear();
+            }
+
+            pos += 1;
+        }
+
+        return .Some(builder);
+    }
+
+    pub fn free(self: Self*) {
+        for (var i: usize = 0; i < self->packages.len(); i += 1) {
+            const pkg = self->packages.get_owned(i).unwrap();
+            pkg->free();
+            self->allocator.free(pkg);
+        }
+        self->packages.free();
+
+        for (var i: usize = 0; i < self->profiles.len(); i += 1) {
+            const profile = self->profiles.get_owned(i).unwrap();
+            profile->free();
+            self->allocator.free(profile);
+        }
+        self->profiles.free();
+
+        for (var i: usize = 0; i < self->generators.len(); i += 1) {
+            const gen = self->generators.get_owned(i).unwrap();
+            gen->free();
+            self->allocator.free(gen);
+        }
+        self->generators.free();
+    }
+}
+
+[[link_name("__cyrus_std_build_run")]]
+pub fn __run_build_script(
+    build_fn: fn(Builder*) void,
+    target_arch: int32,
+    target_os: int32,
+    host_arch: int32,
+    host_os: int32,
+    out_path: const uint8*
+) int32 {
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    var builder = Builder.new(
+        allocator,
+        Target {
+            arch: Arch.from_int(target_arch),
+            os: OS.from_int(target_os),
+        },
+        Target {
+            arch: Arch.from_int(host_arch),
+            os: OS.from_int(host_os),
+        }
+    );
+    defer builder.free();
+
+    (build_fn)(&builder);
+
+    if (!builder.serialize(out_path)) {
+        return 1;
+    }
+
+    return 0;
+}
+
+/* ************* Helpers ************* */
+
+fn push_int32_str(out: String*, value: int32) {
+    var buf: uint8[32];
+    snprintf(&buf[0], 32, "%d", value);
+    out->push_str(&buf[0]);
+}
+
+fn push_bool_str(out: String*, value: bool) {
+    if (value) {
+        out->push('1');
+    } else {
+        out->push('0');
+    }
+}

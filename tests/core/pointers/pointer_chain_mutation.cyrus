@@ -1,4 +1,4 @@
-// @stdout: 42 99
+// @stdout: 50 99
 
 import std::libc{printf};
 
@@ -6,7 +6,7 @@ pub fn main() {
     var val = 10;
     var ptr = &val;
 
-    *ptr = 42;
+    *ptr = 50;
     printf("%d ", val);
 
     var pptr = &ptr;

@@ -1,5 +1,5 @@
 fn foo() {
-    var x = 42;
+    var x = 50;
     const y = x.field; //~ ERROR type `int32` does not support field access
 }
 

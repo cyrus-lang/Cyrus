@@ -12,7 +12,7 @@ pub fn main() {
     var nums: int32* = @cast(int32*, allocator.alloc(10 * @sizeof(int32)));
     @assert(nums != null, "allocation should succeed");
 
-    nums[0] = 42;
+    nums[0] = 50;
     nums[9] = 100;
 
     printf("used: %lu, ", fb.bytes_used());
@@ -20,7 +20,7 @@ pub fn main() {
     nums = @cast(int32*, allocator.realloc(nums, 5 * @sizeof(int32)));
     printf("shrunk: %lu, ", fb.bytes_used());
 
-    if (nums[0] == 42) {
+    if (nums[0] == 50) {
         printf("ok\n");
     } else {
         printf("fail\n");

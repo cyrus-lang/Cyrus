@@ -1,5 +1,5 @@
 fn foo() {
-    var x = 42;
+    var x = 50;
     x.method(); //~ ERROR type `int32` does not support method calls
 }
 

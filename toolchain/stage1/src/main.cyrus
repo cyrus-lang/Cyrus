@@ -123,6 +123,21 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->help("Target triple")
     );
 
+    const package_opt = opts.add(
+        *cli::Opt.new(allocator, "package")
+        .short('p')
+        ->arg(.Str)
+        ->help("Entry target name")
+    );
+
+    const feature_opt = opts.add(
+        *cli::Opt.new(allocator, "feature")
+        .short('F')
+        ->arg(.Str)
+        ->policy(.Last)
+        ->help("Enable package feature")
+    );
+
     const color_opt = opts.add(
         *cli::Opt.new(allocator, "color")
         .help("Colored output")
@@ -150,6 +165,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(release_opt)
         ->add_option(debug_opt)
         ->add_option(target_opt)
+        ->add_option(package_opt)
+        ->add_option(feature_opt)
         ->add_option(backend_opt)
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
@@ -170,6 +187,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(release_opt)
         ->add_option(debug_opt)
         ->add_option(target_opt)
+        ->add_option(package_opt)
+        ->add_option(feature_opt)
         ->add_option(backend_opt)
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
@@ -190,6 +209,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(release_opt)
         ->add_option(debug_opt)
         ->add_option(target_opt)
+        ->add_option(package_opt)
+        ->add_option(feature_opt)
         ->add_option(backend_opt)
         ->add_option(output_opt)
         ->add_option(stdlib_opt)

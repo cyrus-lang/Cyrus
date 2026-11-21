@@ -1,9 +1,9 @@
-// @stdout: 42 42
+// @stdout: 50 50
 
 import std::libc{printf};
 
 pub fn main() {
-    var array: int32[5] = int32[5]{10, 20, 30, 40, 42};
+    var array: int32[5] = int32[5]{10, 20, 30, 40, 50};
     var p: int32* = &array[0];
     var e: int32* = &array[4];
 

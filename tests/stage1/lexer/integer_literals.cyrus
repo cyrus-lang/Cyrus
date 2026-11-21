@@ -1,7 +1,7 @@
 // @tokenize
 
 0
-42
+50
 1_000_000
 0x2A
 0Xff
@@ -22,7 +22,7 @@
 
 /*@tokenize
 LITERAL      0            Start: 14           End: 15
-LITERAL      42           Start: 16           End: 18
+LITERAL      50           Start: 16           End: 18
 LITERAL      1000000      Start: 19           End: 28
 LITERAL      42           Start: 29           End: 33
 LITERAL      0            Start: 34           End: 35
@@ -42,5 +42,5 @@ LITERAL      16uint16     Start: 122          End: 130
 LITERAL      32uint32     Start: 131          End: 139
 LITERAL      64uint64     Start: 140          End: 148
 LITERAL      128uint128   Start: 149          End: 159
-EOF          EOF          Start: 1381         End: 1381
+EOF          EOF          Start: 1382         End: 1382
 @tokenize*/
