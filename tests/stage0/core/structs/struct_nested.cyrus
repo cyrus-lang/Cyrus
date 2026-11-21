@@ -1,4 +1,4 @@
-// @stdout: Cyrus 42
+// @stdout: Cyrus 50
 
 import std::libc{printf};
 
@@ -15,7 +15,7 @@ pub fn main() {
     const obj = Outer {
         name: "Cyrus",
         inner: Inner {
-            value: 42
+            value: 50
         }
     };
 

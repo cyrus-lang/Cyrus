@@ -398,3 +398,140 @@ fn hex_digit_value(c: uint8) Option<uint8> {
     }
     return .None;
 }
+
+pub fn parse_str_as_int32(str: const uint8*) Option<int32> {
+    if (str == null || str[0] == '\0') {
+        return .None;
+    }
+
+    switch (parse_str_as_int64(str)) {
+        case .Some(val) => {
+            if (val < -2147483648 || val > 2147483647) {
+                return .None;
+            }
+            return .Some(@cast(int32, val));
+        }
+        case .None => return .None;
+    }
+}
+
+pub fn cstr_contains(haystack: const uint8*, needle: const uint8*) bool {
+    if (haystack == null || needle == null) {
+        return false;
+    }
+
+    const hlen = strlen(haystack);
+    const nlen = strlen(needle);
+
+    if (nlen == 0) {
+        return true;
+    }
+
+    if (hlen < nlen) {
+        return false;
+    }
+
+    const limit = hlen - nlen;
+
+    for (var i: usize = 0; i <= limit; i += 1) {
+        var matched = true;
+
+        for (var j: usize = 0; j < nlen; j += 1) {
+            if (haystack[i + j] != needle[j]) {
+                matched = false;
+                break;
+            }
+        }
+
+        if (matched) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+pub fn cstr_ends_with(str: const uint8*, suffix: const uint8*) bool {
+    if (str == null || suffix == null) {
+        return false;
+    }
+
+    const slen = strlen(str);
+    const suflen = strlen(suffix);
+
+    if (slen < suflen) {
+        return false;
+    }
+
+    const off = slen - suflen;
+
+    for (var i: usize = 0; i < suflen; i += 1) {
+        if (str[off + i] != suffix[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+pub fn push_escaped_tsv_field(out: String*, val: const uint8*) {
+    if (val == null) {
+        return;
+    }
+
+    var i: usize = 0;
+
+    while (val[i] != '\0') {
+        const ch = val[i];
+
+        if (ch == '\\') {
+            out->push('\\');
+            out->push('\\');
+        } else if (ch == '\t') {
+            out->push_str("\\t");
+        } else if (ch == '\n') {
+            out->push_str("\\n");
+        } else if (ch == '\r') {
+            out->push_str("\\r");
+        } else {
+            out->push(ch);
+        }
+
+        i += 1;
+    }
+}
+
+pub fn unescape_tsv_field(allocator: Allocator, val: const uint8*) String {
+    var out = String.new(allocator);
+
+    if (val == null) {
+        return out;
+    }
+
+    var i: usize = 0;
+
+    while (val[i] != '\0') {
+        if (val[i] == '\\' && val[i + 1] != '\0') {
+            const next = val[i + 1];
+
+            if (next == '\\') {
+                out.push('\\');
+            } else if (next == 't') {
+                out.push('\t');
+            } else if (next == 'n') {
+                out.push('\n');
+            } else if (next == 'r') {
+                out.push('\r');
+            } else {
+                out.push(next);
+            }
+
+            i += 2;
+        } else {
+            out.push(val[i]);
+            i += 1;
+        }
+    }
+
+    return out;
+}

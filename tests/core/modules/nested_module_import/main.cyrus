@@ -1,9 +1,9 @@
-// @stdout: Result: 42
+// @stdout: Result: 45
 
 import std::libc{printf};
 import math::helpers::_ops;
 
 pub fn main() {
-    const res: int32 = _ops::add(20, 22);
+    const res: int32 = _ops::add(20, 25);
     printf("Result: %d\n", res);
 }

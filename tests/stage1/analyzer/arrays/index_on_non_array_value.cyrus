@@ -1,4 +1,4 @@
 pub fn main() {
-    var nums = 42;
+    var nums = 50;
     nums[0]; //~ ERROR cannot index non-array value of type `int32`
 }

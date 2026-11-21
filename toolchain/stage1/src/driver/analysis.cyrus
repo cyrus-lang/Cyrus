@@ -180,9 +180,7 @@ pub struct AnalysisContext {
         }
 
         self->owned_source_tokens.free();
-
         self->context->dctx.free();
-
         self->arena.destroy();
     }
 }

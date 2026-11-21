@@ -1,4 +1,4 @@
-// @stdout: 21 -1 42 -1 14\nint 100 int 25.000000 empty -7 8 24\n
+// @stdout: 21 -1 50 -1 14\nint 100 int 25.000000 empty -7 8 24\n
 
 import std::libc{printf};
 
@@ -67,7 +67,7 @@ pub fn main() {
     printf("%d ", a.map(triple).unwrap_or(0));
     printf("%d ", none.map(triple).unwrap_or(-1));
 
-    const inner: Option<int32> = .Some(42);
+    const inner: Option<int32> = .Some(50);
     const nested: Option<Option<int32>> = .Some(inner);
     printf("%d ", flatten(nested).unwrap_or(0));
 

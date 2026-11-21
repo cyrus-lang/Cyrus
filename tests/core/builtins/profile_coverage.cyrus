@@ -1,25 +1,25 @@
-// @stdout: debug validate - 42
+// @stdout: debug validate, 50
 // @compilerArgs: --profile=debug
 
 import std::libc{printf};
 
 @debug()
 fn validate() {
-    printf("debug validate - ");
+    printf("debug validate, ");
 }
 
 @release()
 fn validate() {
-    printf("release validate - ");
+    printf("release validate, ");
 }
 
 @test()
 fn validate() {
-    printf("test validate - ");
+    printf("test validate, ");
 }
 
 @debug()
-const MODE_VAL: int32 = 42;
+const MODE_VAL: int32 = 50;
 
 @release()
 const MODE_VAL: int32 = 99;

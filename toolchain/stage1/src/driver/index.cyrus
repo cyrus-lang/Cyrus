@@ -5,8 +5,8 @@ import std::libc::types{c_unsigned_long_long};
 import std::mem::arena{ArenaAllocator};
 import std::mem{Allocator, alloc_init};
 import std::io{Writer, StdoutWriter};
-import std::libc{printf};
 import std::errors{ErrorOr};
+import std::libc{printf};
 import std::time{Timer};
 import std::path{Path};
 import std::os{File};
@@ -25,14 +25,23 @@ pub struct CompilerContext {
         const sctx = SourceContext.new(allocator);
         const dctx = DiagContext.new(allocator);
         
-        return Self { allocator, dctx, sctx, timings: null };
+        return Self {
+            allocator, 
+            dctx, 
+            sctx, 
+            timings: null
+        };
     }
 
     [[inline]]
     pub fn render_diags(self: const Self*) {
         const writer: Writer = dynamic StdoutWriter.new();
         
-        CompilerDiagRender.new(&self->dctx, &self->sctx, writer).render();
+        CompilerDiagRender.new(
+            &self->dctx, 
+            &self->sctx, 
+            writer
+        ).render();
     }
 
     pub fn free(self: Self*) {

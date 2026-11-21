@@ -3288,11 +3288,114 @@ fn resolve_expr(
     }
 }
 
+fn try_resolve_type_scoped_member(
+    ctx: TraverseContext*,
+    module_import: const ast::ASTModuleImport*
+) Option<cir::Expr> {
+    const seg_count = module_import->segments.len();
+    
+    if (seg_count < 2) {
+        return .None;
+    }
+
+    const last_seg = module_import->segments.get_const(seg_count - 1).unwrap();
+    
+    var member_ident: ast::ASTIdent;
+    
+    switch (*last_seg) {
+        case .SubModule(ident) => member_ident = ident;
+        case .Single => return .None;
+    }
+
+    const first_seg = module_import->segments.get_const(0).unwrap();
+    
+    var first_ident: ast::ASTIdent;
+    
+    switch (*first_seg) {
+        case .SubModule(ident) => first_ident = ident;
+        case .Single => return .None;
+    }
+
+    var current_symbol: cir::SymbolId;
+    var prefix_span = first_ident.span;
+
+    switch (ctx->lookup_symbol_binding(first_ident.str.as_str_const())) {
+        case .Some(binding) => {
+            current_symbol = binding->symbol_for_profiles(ctx->active_profiles, ctx->profile);
+            
+            if (is_poisoned_symbol(ctx, current_symbol)) {
+                return .None;
+            }
+        }
+        case .None => return .None;
+    }
+
+    for (var idx: usize = 1; idx + 1 < seg_count; idx += 1) {
+        const seg = module_import->segments.get_const(idx).unwrap();
+        
+        var seg_ident: ast::ASTIdent;
+        
+        switch (*seg) {
+            case .SubModule(ident) => seg_ident = ident;
+            case .Single => return .None;
+        }
+
+        prefix_span = prefix_span.merge(seg_ident.span);
+
+        switch (ctx->registry->lookup_binding_in_scope(current_symbol, seg_ident.str.as_str_const())) {
+            case .Some(next_binding) => {
+                current_symbol = next_binding->symbol_for_profiles(ctx->active_profiles, ctx->profile);
+                
+                if (is_poisoned_symbol(ctx, current_symbol)) {
+                    return .None;
+                }
+            }
+            case .None => return .None;
+        }
+    }
+
+    switch (ctx->registry->lookup_symbol_as_decl_id(current_symbol)) {
+        case .Some(decl_id) => {
+            if (cir::decl_id_as_type_decl_id(decl_id).is_some()) {
+                report_if_symbol_is_private(ctx, current_symbol, prefix_span);
+
+                const base_expr = cir::Expr.new(
+                    .Symbol(.Unresolved {
+                        symbol_id: current_symbol,
+                        span: prefix_span,
+                    }),
+                    prefix_span
+                );
+
+                return .Some(cir::Expr.new(
+                    .FieldAccess(cir::FieldAccess {
+                        operand: alloc_init(ctx->allocator, base_expr),
+                        name: String.from_str(ctx->allocator, member_ident.str.as_str_const()),
+                        dispatch: .Unresolved,
+                        ty: .None,
+                        is_thin_arrow: false,
+                        span: module_import->span,
+                    }),
+                    module_import->span
+                ));
+            }
+        }
+        case .None => {}
+    }
+
+    return .None;
+}
+
 fn resolve_module_import_expr(
     ctx: TraverseContext*,
     program: const ast::ASTProgram*,
     module_import: const ast::ASTModuleImport*
 ) Option<cir::Expr> {
+    switch (try_resolve_type_scoped_member(ctx, module_import)) {
+        case .Some(resolved) => return .Some(resolved);
+        case .None => {}
+    }
+
     if (module_import->segments.len() == 1) {
         const segment = module_import->segments.get_const(0).unwrap();
 
@@ -3755,6 +3858,24 @@ fn resolve_func_call(
     program: const ast::ASTProgram*,
     func_call: const ast::ASTFuncCall*
 ) Option<cir::Expr> {
+    var is_module_import = false;
+    
+    switch (*program->nodes.get_const(func_call->operand).unwrap()) {
+        case .Expr(ast_expr) => {
+            switch (ast_expr) {
+                case .ModuleImport(_) => is_module_import = true;
+                else => {}
+            }
+        }
+        case .Type(ast_type) => {
+            switch (ast_type) {
+                case .ModuleImport(_) => is_module_import = true;
+                else => {}
+            }
+        }
+        else => {}
+    }
+
     switch (resolve_expr_node(ctx, program, func_call->operand)) {
         case .Some(operand) => {
             var args: Vec<cir::Expr> = Vec.new(ctx->allocator);
@@ -3766,6 +3887,23 @@ fn resolve_func_call(
 
             switch (resolve_type_args(ctx, program, &func_call->type_args)) {
                 case .Some(type_args) => {
+                    if (is_module_import) {
+                        switch (operand.kind) {
+                            case .FieldAccess(fa) => {
+                                return .Some(cir::Expr.new(.MethodCall(cir::MethodCall {
+                                    name: fa.name,
+                                    operand: fa.operand,
+                                    args,
+                                    type_args,
+                                    dispatch: .Unresolved,
+                                    is_thin_arrow: false,
+                                    span: func_call->span,
+                                }), func_call->span));
+                            }
+                            else => {}
+                        }
+                    }
+
                     return .Some(cir::Expr.new(.FuncCall(cir::FuncCall {
                         operand: alloc_init(ctx->allocator, operand),
                         args,

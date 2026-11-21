@@ -1,4 +1,4 @@
-// @stdout: 42 100
+// @stdout: 50 100
 
 import std::libc{printf};
 
@@ -8,7 +8,7 @@ union AliasUnion {
 }
 
 pub fn main() {
-    var u: AliasUnion = AliasUnion { i64_val: 42 };
+    var u: AliasUnion = AliasUnion { i64_val: 50 };
     printf("%d ", u.i32_val);
     
     u.i32_val = 100;

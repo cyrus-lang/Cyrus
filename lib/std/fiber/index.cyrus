@@ -26,7 +26,6 @@ pub struct Fiber {
 
     stack: fcontext::FContextState*,
     context: fcontext::FContext,
-    
 
     pub fn create(entry: FiberFn, data: void*) ErrorOr<Fiber*, ()> {
         const entry_fn: fcontext::FContextFn = trampoline;
@@ -111,6 +110,6 @@ fn trampoline(trans: fcontext::FContextTransfer) {
     fcontext::fcontext_swap(caller, null);
 
     // Reaching here would mean somebody
-    // resumed a completed fiber!
+    // resumed a completed fiber
     libc::abort();
 }

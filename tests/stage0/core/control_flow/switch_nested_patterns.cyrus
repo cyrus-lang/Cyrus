@@ -1,4 +1,4 @@
-// @stdout: OK(42)\nERR(error)\nPending\n
+// @stdout: OK(50)\nERR(error)\nPending\n
 
 import std::libc{printf};
 
@@ -23,7 +23,7 @@ fn display_result(r: Result<int32, const uint8*>) {
 }
 
 pub fn main() {
-    display_result(Result.Ok(42));
+    display_result(Result.Ok(50));
     display_result(Result.Err("error"));
     display_result(Result.Pending);
 }

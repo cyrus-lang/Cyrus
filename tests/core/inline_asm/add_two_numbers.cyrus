@@ -1,11 +1,11 @@
-// @stdout: 42
+// @stdout: 45
 
 import std::libc{printf};
 
 pub fn main() {
     var result: int32 = 0;
     var a: int32 = 10;
-    var b: int32 = 32;
+    var b: int32 = 35;
 
     @asm(
         "movl %1, %0; addl %2, %0"

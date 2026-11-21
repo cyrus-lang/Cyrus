@@ -1746,6 +1746,117 @@ def build_and_run_stage0(
             )
 
 
+def run_build_project_test(
+    cfg: Config,
+    project_dir: Path,
+    *,
+    compiler: Path,
+) -> None:
+    """Copy a `tests/stage1/build/<name>` project to a temp dir and execute its `test.toml` cases."""
+    if tomllib is None:
+        raise RuntimeError("Python 3.11+ `tomllib` is required to run build system tests")
+
+    toml_path = project_dir / "test.toml"
+    if toml_path.is_file():
+        data = tomllib.loads(toml_path.read_text())
+        cases = data.get("case") or []
+    else:
+        cases = [{"name": "default", "args": ["run"], "cwd": "."}]
+
+    if not cases:
+        raise RuntimeError(f"{toml_path} defines no `[[case]]` entries")
+
+    with tempfile.TemporaryDirectory(prefix="cyrus_build_test_") as tmp_str:
+        tmpdir = Path(tmp_str)
+        work_proj = tmpdir / project_dir.name
+        shutil.copytree(project_dir, work_proj)
+
+        env = os.environ.copy()
+        env["TMPDIR"] = env["TEMP"] = env["TMP"] = str(tmpdir)
+        env["CYRUS_STDLIB_PATH"] = str(cfg.stdlib_path)
+
+        for idx, case in enumerate(cases):
+            case_name = str(case.get("name", f"case_{idx}"))
+            raw_args = [str(a) for a in (case.get("args") or ["run"])]
+            if "--stdlib" not in " ".join(raw_args):
+                stdlib_flag = f"--stdlib={cfg.stdlib_path}"
+                if "--" in raw_args:
+                    sep = raw_args.index("--")
+                    cmd_args = raw_args[:sep] + [stdlib_flag] + raw_args[sep:]
+                else:
+                    cmd_args = raw_args + [stdlib_flag]
+            else:
+                cmd_args = raw_args
+
+            cwd_spec = str(case.get("cwd", "."))
+            if cwd_spec == "parent":
+                case_cwd = work_proj.parent
+            elif cwd_spec == ".":
+                case_cwd = work_proj
+            else:
+                case_cwd = work_proj / cwd_spec
+
+            proc = run_cmd(
+                [str(compiler), *cmd_args],
+                capture=True,
+                check=False,
+                env=env,
+                cwd=case_cwd,
+            )
+
+            expected_rc = int(case.get("exit_code", 0))
+            if proc.returncode != expected_rc:
+                combined = strip_ansi(((proc.stdout or "") + "\n" + (proc.stderr or "")).strip())
+                raise RuntimeError(
+                    f"[{case_name}] expected exit code {expected_rc}, got {proc.returncode}:\n{combined}"
+                )
+
+            actual_stdout = normalize_runtime_text(proc.stdout or "", work_proj)
+            actual_stderr = normalize_runtime_text(proc.stderr or "", work_proj)
+            combined_out = (actual_stdout + "\n" + actual_stderr).strip()
+
+            if "run_binary" in case:
+                bin_path = work_proj / str(case["run_binary"])
+                if not bin_path.is_file():
+                    raise RuntimeError(f"[{case_name}] expected built binary `{bin_path}` to exist")
+                bin_args = [str(a) for a in (case.get("binary_args") or [])]
+                bin_proc = run_cmd(
+                    [str(bin_path), *bin_args],
+                    capture=True,
+                    check=False,
+                    env=env,
+                    cwd=work_proj,
+                )
+                bin_rc = int(case.get("binary_exit_code", 0))
+                if bin_proc.returncode != bin_rc:
+                    raise RuntimeError(
+                        f"[{case_name}] binary `{bin_path.name}` exited with {bin_proc.returncode} (expected {bin_rc})"
+                    )
+                actual_stdout = normalize_runtime_text(bin_proc.stdout or "", work_proj)
+
+            if "stdout" in case:
+                expected_stdout = normalize_runtime_text(str(case["stdout"]), work_proj)
+                if actual_stdout != expected_stdout:
+                    raise RuntimeError(
+                        f"[{case_name}] stdout mismatch:\n"
+                        + render_diff(expected_stdout, actual_stdout, expected_label="expected", actual_label="actual")
+                    )
+
+            if "stdout_contains" in case:
+                needle = str(case["stdout_contains"])
+                if needle not in actual_stdout:
+                    raise RuntimeError(
+                        f"[{case_name}] expected stdout to contain {needle!r}, got:\n{actual_stdout}"
+                    )
+
+            if "stderr_contains" in case:
+                needle = str(case["stderr_contains"])
+                if needle not in combined_out:
+                    raise RuntimeError(
+                        f"[{case_name}] expected output to contain {needle!r}, got:\n{combined_out}"
+                    )
+
+
 def run_single_test(
     cfg: Config,
     stage: str,
@@ -1761,6 +1872,19 @@ def run_single_test(
         relative_name = str(file_path.relative_to(base_path))
     except ValueError:
         relative_name = file_path.name
+
+    build_tests_root = (cfg.tests_for("stage1") / "build").resolve()
+    if (
+        stage == "stage1"
+        and file_path.name == "build.cyrus"
+        and file_path.resolve().parent.parent == build_tests_root
+    ):
+        proj_name = f"build/{file_path.parent.name}"
+        try:
+            run_build_project_test(cfg, file_path.parent, compiler=compiler)
+            return TestOutcome("passed", proj_name)
+        except (RuntimeError, CommandFailed, ValueError, OSError) as exc:
+            return TestOutcome("failed", proj_name, str(exc))
 
     try:
         content = file_path.read_text()
@@ -1998,6 +2122,20 @@ def _is_module_entry(f: Path) -> bool:
     return re.search(r"//\s*@(stdout|stderr|stdin|args|parse|beforeCompile|compilerArgs)\b", content) is None
 
 
+def _is_inside_build_project(f: Path, stage: str) -> Optional[Path]:
+    """If `f` lies inside `tests/stage1/build/<proj>/...`, return `<proj>/build.cyrus`."""
+    if stage != "stage1":
+        return None
+    parts = f.resolve().parts
+    for i in range(len(parts) - 2):
+        if parts[i] == "stage1" and parts[i + 1] == "build":
+            proj_dir = Path(*parts[: i + 3])
+            manifest = proj_dir / "build.cyrus"
+            if manifest.is_file():
+                return manifest
+    return None
+
+
 def discover_tests(paths: Sequence[Path], stage: str) -> Tuple[Path, List[Path]]:
     """Return (base_path, test_files) for the given paths/stage."""
     test_files: List[Path] = []
@@ -2013,14 +2151,18 @@ def discover_tests(paths: Sequence[Path], stage: str) -> Tuple[Path, List[Path]]
                 raise SystemExit(f"error: {p} is not a .cyrus file")
             if p.name.startswith("_"):
                 continue
-            test_files.append(p)
+            proj_manifest = _is_inside_build_project(p, stage)
+            test_files.append(proj_manifest or p)
             base_path = base_path or p.parent
         elif p.is_dir():
-            found = sorted(
-                f for f in p.rglob("*.cyrus")
-                if not f.name.startswith("_") and not _is_module_entry(f)
-            )
-            test_files.extend(found)
+            for f in sorted(p.rglob("*.cyrus")):
+                proj_manifest = _is_inside_build_project(f, stage)
+                if proj_manifest is not None:
+                    if f.resolve() == proj_manifest.resolve():
+                        test_files.append(f)
+                    continue
+                if not f.name.startswith("_") and not _is_module_entry(f):
+                    test_files.append(f)
             base_path = base_path or p
         else:
             raise SystemExit(f"error: test path '{p}' does not exist")

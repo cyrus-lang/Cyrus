@@ -1,0 +1,675 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::path{Path, dir_of_file, join_path};
+import std::mem::arena{ArenaAllocator};
+import std::io{Writer, StringWriter};
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator};
+import std::libc{getenv};
+import std::os::process;
+import std::os::dir;
+import std::cli;
+import std::os;
+
+import .::index{CompilerConfig, CompilerContext, CompilerTimings};
+import resolver::loader{ResolverOptions, ModuleAlias, Profile};
+import sema::check::index{analyzer_dispatcher};
+import .::codegen{Backend, CodegenContext};
+import sema::context{AnalyzerContext};
+import .::lexical{LexicalContext};
+import resolver::index{Resolver};
+import sema{trigger_analyzer};
+import diags{compile_error};
+import abi::target;
+import escape{
+    push_shell_quoted_arg,
+    push_shell_quoted, 
+};
+
+// FIXME
+extern "C" fn readlink(pathname: const uint8*, buf: uint8*, bufsiz: usize) isize;
+
+/* ************* C Runtime Discovery ************* */
+
+[[inline]]
+pub fn append_list_item(dest: String*, item: const uint8*) {
+    if (!dest->is_empty()) {
+        dest->push('\n');
+    }
+    dest->push_str(item);
+}
+
+pub fn rt_lib_exists_in(allocator: Allocator, dir: const uint8*) bool {
+    var probe = join_path(allocator, dir, "libcyrus_rt.a");
+    defer probe.free();
+
+    return os::is_file(probe.as_str_const());
+}
+
+pub fn find_codegen_c_rt_dir(allocator: Allocator, opts: const cli::Opts*) Option<String> {
+    const env_dir = getenv("CYRUS_CODEGEN_C_LIB_DIR");
+
+    if (env_dir != null && env_dir[0] != '\0') {
+        if (rt_lib_exists_in(allocator, env_dir)) {
+            return .Some(String.from_str(allocator, env_dir));
+        }
+    }
+
+    switch (opts->find("stdlib")) {
+        case .Some(opt) => {
+            switch (opt->values.get(0)) {
+                case .Some(value) => {
+                    switch (*value) {
+                        case .Str(str) => {
+                            var candidate = join_path(
+                                allocator,
+                                str.as_str_const(),
+                                "../../toolchain/stage1/src/codegen/c/build"
+                            );
+
+                            if (rt_lib_exists_in(allocator, candidate.as_str_const())) {
+                                return .Some(candidate);
+                            }
+
+                            candidate.free();
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    const env_stdlib = getenv("CYRUS_STDLIB_PATH");
+
+    if (env_stdlib != null && env_stdlib[0] != '\0') {
+        var candidate = join_path(
+            allocator,
+            env_stdlib,
+            "../../toolchain/stage1/src/codegen/c/build"
+        );
+
+        if (rt_lib_exists_in(allocator, candidate.as_str_const())) {
+            return .Some(candidate);
+        }
+
+        candidate.free();
+    }
+
+    var exe_buf: uint8[4096];
+    const n = readlink("/proc/self/exe", &exe_buf[0], 4095);
+
+    if (n > 0) {
+        exe_buf[@cast(usize, n)] = '\0';
+
+        var exe_dir = dir_of_file(allocator, &exe_buf[0]);
+        defer exe_dir.free();
+
+        if (rt_lib_exists_in(allocator, exe_dir.as_str_const())) {
+            return .Some(String.from_str(allocator, exe_dir.as_str_const()));
+        }
+
+        var repo_candidate = join_path(
+            allocator,
+            exe_dir.as_str_const(),
+            "../../src/codegen/c/build"
+        );
+
+        if (rt_lib_exists_in(allocator, repo_candidate.as_str_const())) {
+            return .Some(repo_candidate);
+        }
+
+        repo_candidate.free();
+    }
+
+    if (rt_lib_exists_in(allocator, "toolchain/stage1/src/codegen/c/build")) {
+        return .Some(String.from_str(allocator, "toolchain/stage1/src/codegen/c/build"));
+    }
+
+    if (rt_lib_exists_in(allocator, "src/codegen/c/build")) {
+        return .Some(String.from_str(allocator, "src/codegen/c/build"));
+    }
+
+    return .None;
+}
+
+pub fn append_c_runtime_link_flags(
+    allocator: Allocator,
+    opts: const cli::Opts*,
+    lib_paths: String*,
+    libraries: String*
+) bool {
+    switch (find_codegen_c_rt_dir(allocator, opts)) {
+        case .Some(var rt_dir) => {
+            defer rt_dir.free();
+            append_list_item(lib_paths, rt_dir.as_str_const());
+            append_list_item(libraries, "cyrus_rt");
+            append_list_item(libraries, "m");
+            return true;
+        }
+        case .None => {
+            compile_error("could not locate runtime library `libcyrus_rt.a`");
+            return false;
+        }
+    }
+}
+
+/* ************* Process Execution ************* */
+
+pub fn decode_wait_status(exit_status: int32) int32 {
+    if (exit_status == -1) {
+        return 1;
+    }
+
+    const child_status = @cast(uint32, exit_status);
+    const termination_signal = child_status & 0x7f;
+
+    if (termination_signal != 0) {
+        return 128 + @cast(int32, termination_signal);
+    }
+
+    return @cast(int32, (child_status >> 8) & 0xff);
+}
+
+pub fn run_compiled_binary(
+    allocator: Allocator,
+    bin_path: const uint8*,
+    extra_args: const Vec<String>*
+) int32 {
+    var cmd = String.new(allocator);
+    defer cmd.free();
+
+    push_shell_quoted(&cmd, bin_path);
+
+    if (extra_args != null) {
+        for (var i: usize = 0; i < extra_args->len(); i += 1) {
+            const arg = extra_args->get_const(i).unwrap()->as_str_const();
+            push_shell_quoted_arg(&cmd, arg);
+        }
+    }
+
+    return decode_wait_status(process::exec(cmd.as_str_const()));
+}
+
+/* ************* Compilation Pipeline ************* */
+
+pub fn output_option(action: cli::ActionContext) Option<String> {
+    switch (action.opts->find("output")) {
+        case .Some(opt) => {
+            switch (opt->values.get(0)) {
+                case .Some(value) => {
+                    switch (*value) {
+                        case .Str(str) => return .Some(str.clone(action.allocator));
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return .None;
+}
+
+pub fn backend_from_action(action: cli::ActionContext) Option<Backend> {
+    const allocator = action.allocator;
+
+    var name = String.from_str(allocator, "c");
+    defer name.free();
+
+    switch (action.opts->find("backend")) {
+        case .Some(opt) => {
+            switch (opt->values.get(0)) {
+                case .Some(value) => {
+                    switch (*value) {
+                        case .Str(str) => {
+                            name.free();
+                            name = str.clone(allocator);
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return Backend.from_str(name.as_str_const());
+}
+
+pub fn target_from_action(action: cli::ActionContext) Option<abi::target::TargetInfo> {
+    switch (action.opts->find("target")) {
+        case .Some(opt) => {
+            switch (opt->values.get(0)) {
+                case .Some(value) => {
+                    switch (*value) {
+                        case .Str(str) => {
+                            return abi::target::TargetInfo.from_triple(str.as_str_const());
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return .Some(abi::target::TargetInfo.host());
+}
+
+pub fn apply_stdlib_option(
+    allocator: Allocator,
+    ctx_opts: const cli::Opts*,
+    opts: ResolverOptions*
+) {
+    switch (ctx_opts->find("stdlib")) case .Some(opt) else {
+        return;
+    }
+
+    switch (opt->values.get(0)) case .Some(value) else {
+        return;
+    }
+
+    switch (*value) case .Str(value_str) else {
+        return;
+    }
+
+    var stdlib = value_str.clone(allocator);
+
+    switch (opts->stdlib_path) {
+        case .Some(var prev) => {
+            prev.free();
+        }
+        else => {}
+    }
+
+    opts->stdlib_path = .Some(stdlib);
+}
+
+pub fn apply_profile_option(
+    ctx_opts: const cli::Opts*,
+    opts: ResolverOptions*
+) bool {
+    switch (ctx_opts->find("profile")) case .Some(opt) else {
+        return true;
+    }
+
+    switch (opt->values.get(0)) case .Some(value) else {
+        return true;
+    }
+
+    switch (*value) case .Str(value_str) else {
+        return true;
+    }
+
+    if (value_str.as_str_const() == "release") {
+        opts->profile = .Release;
+        return true;
+    }
+
+    if (value_str.as_str_const() == "debug") {
+        opts->profile = .Debug;
+        return true;
+    }
+
+    if (value_str.as_str_const() == "test") {
+        opts->profile = .Test;
+        return true;
+    }
+
+    compile_error("invalid profile (expected `debug`, `release`, or `test`)");
+    return false;
+}
+
+pub fn collect_opt_values(opts: cli::Opts*, name: const uint8*, dest: String*) void {
+    switch (opts->find(name)) case .Some(opt) else {
+        return;
+    }
+
+    for (var i: usize = 0; i < opt->values.len(); i += 1) {
+        switch (opt->values.get(i)) {
+            case .Some(value) => {
+                switch (*value) {
+                    case .Str(str) => append_list_item(dest, str.as_str_const());
+                    else => {}
+                }
+            }
+            else => {}
+        }
+    }
+}
+
+pub fn module_merge_mode_unsupported(opts: cli::Opts*) bool {
+    switch (opts->find("module-merge-mode")) case .Some(opt) else {
+        return false;
+    }
+
+    switch (opt->values.get(0)) case .Some(value) else {
+        return false;
+    }
+
+    switch (*value) case .Str(str) else {
+        return false;
+    }
+
+    return str.as_str_const() != "separate";
+}
+
+pub fn emit_backend_ir_with_opts(
+    allocator: Allocator,
+    file_path: const uint8*,
+    opts: const ResolverOptions*,
+    codegen: CodegenContext*,
+    writer: Writer,
+    timings: CompilerTimings*
+) int32 {
+    var arena = ArenaAllocator.new(allocator, 65536);
+    defer arena.destroy();
+
+    var context = CompilerContext.new(allocator);
+    defer context.free();
+
+    context.timings = timings;
+
+    const lexical = LexicalContext.new(&context);
+
+    var resolver = Resolver.new(allocator, &lexical, opts);
+    defer resolver.free();
+
+    const path = Path.new(allocator, file_path);
+
+    switch (lexical.tokenize_source(path)) case .Value(var source_tokens) else {
+        return 1;
+    }
+    defer source_tokens.free();
+
+    switch (lexical.parse_source(source_tokens)) case .Value(var program) else {
+        return 1;
+    }
+    defer program.free();
+
+    if (timings != null) {
+        timings->resolver.start();
+    }
+
+    resolver.resolve_entry(source_tokens.source_id, file_path, &program);
+
+    if (timings != null) {
+        timings->resolver.stop();
+    }
+
+    if (context.dctx.has_errors()) {
+        context.render_diags();
+        return 1;
+    }
+
+    var analyzer_context = AnalyzerContext.new(
+        dynamic arena,
+        &context.dctx,
+        &resolver.global_symbols,
+        &resolver.decl_tables,
+        resolver.program_trees,
+        analyzer_dispatcher()
+    );
+    defer analyzer_context.free();
+
+    if (timings != null) {
+        timings->analyzer.start();
+    }
+
+    trigger_analyzer(&analyzer_context);
+
+    if (timings != null) {
+        timings->analyzer.stop();
+    }
+
+    if (context.dctx.has_errors()) {
+        context.render_diags();
+        return 1;
+    }
+
+    if (timings != null) {
+        timings->codegen.start();
+    }
+
+    codegen->emit(
+        &context, 
+        &resolver, 
+        &analyzer_context, 
+        writer
+    );
+
+    if (timings != null) {
+        timings->codegen.stop();
+    }
+
+    return 0;
+}
+
+pub fn compile_source_with_options(
+    allocator: Allocator,
+    action: cli::ActionContext,
+    file_path: const uint8*,
+    output_path: const String*,
+    target_override: Option<abi::target::TargetInfo>,
+    extra_source_dirs: const Vec<String>*,
+    module_aliases: const Vec<ModuleAlias>*,
+    extra_native_files: const Vec<String>*,
+    extra_lib_paths: const Vec<String>*,
+    extra_libraries: const Vec<String>*,
+    profile_override: Option<Profile>
+) int32 {
+    if (module_merge_mode_unsupported(action.opts)) {
+        compile_error("unsupported module merge mode (expected `separate`)");
+        return 1;
+    }
+
+    switch (backend_from_action(action)) case .Some(var backend) else {
+        compile_error("unknown backend (expected `c` or `llvm`)");
+        return 1;
+    }
+
+    var target: abi::target::TargetInfo;
+
+    switch (target_override) {
+        case .Some(target_) => {
+            target = target_;
+        }
+        case .None => {
+            switch (target_from_action(action)) case .Some(target_) else {
+                compile_error("unsupported target triple");
+                return 1;
+            }
+            target = target_;
+        }
+    }
+
+    const config = CompilerConfig {
+        enable_timing: action.opts->enabled("time"),
+    };
+
+    var timings = CompilerTimings.new();
+    var timings_ptr: CompilerTimings*;
+
+    if (config.enable_timing) {
+        timings_ptr = &timings;
+        timings.total.start();
+    }
+
+    var opts = ResolverOptions.new(allocator);
+    defer opts.free();
+
+    opts.base_path.free();
+    opts.base_path = dir::cwd(allocator);
+    opts.source_dirs.push(dir_of_file(allocator, file_path));
+
+    if (extra_source_dirs != null) {
+        for (var i: usize = 0; i < extra_source_dirs->len(); i += 1) {
+            const source_dir = extra_source_dirs->get_const(i).unwrap()->clone(allocator);
+            opts.source_dirs.push(source_dir);
+        }
+    }
+
+    if (module_aliases != null) {
+        for (var i: usize = 0; i < module_aliases->len(); i += 1) {
+            const alias = module_aliases->get_const(i).unwrap();
+
+            var file_path: Option<String> = .None;
+            
+            switch (alias->file_path) {
+                case .Some(path) => file_path = .Some(path.clone(allocator));
+                case .None => {}
+            }
+
+            var dir_path: Option<String> = .None;
+            
+            switch (alias->dir_path) {
+                case .Some(path) => dir_path = .Some(path.clone(allocator));
+                case .None => {}
+            }
+
+            opts.module_aliases.push(ModuleAlias {
+                name: alias->name.clone(allocator),
+                file_path: file_path,
+                dir_path: dir_path,
+            });
+        }
+    }
+
+    apply_stdlib_option(allocator, action.opts, &opts);
+
+    switch (profile_override) {
+        case .Some(prof) => opts.profile = prof;
+        case .None => {}
+    }
+
+    if (action.opts->enabled("debug")) {
+        opts.profile = .Debug;
+    }
+
+    if (action.opts->enabled("release")) {
+        opts.profile = .Release;
+    }
+
+    if (!apply_profile_option(action.opts, &opts)) {
+        return 1;
+    }
+
+    if (action.cmd->name == "test") {
+        opts.profile = .Test;
+    }
+
+    var codegen = CodegenContext.new(allocator, backend, target);
+
+    var out = String.new(allocator);
+    defer out.free();
+
+    {
+        const writer: Writer = dynamic StringWriter.new(&out);
+
+        const status = emit_backend_ir_with_opts(
+            allocator,
+            file_path,
+            &opts,
+            &codegen,
+            writer,
+            timings_ptr
+        );
+
+        if (status != 0) {
+            return status;
+        }
+    }
+
+    var extra_files = String.new(allocator);
+    defer extra_files.free();
+
+    var lib_paths = String.new(allocator);
+    defer lib_paths.free();
+
+    var libraries = String.new(allocator);
+    defer libraries.free();
+
+    collect_opt_values(action.opts, "z", &extra_files);
+
+    if (extra_native_files != null) {
+        for (var i: usize = 0; i < extra_native_files->len(); i += 1) {
+            append_list_item(
+                &extra_files, 
+                extra_native_files->get_const(i).unwrap()->as_str_const()
+            );
+        }
+    }
+
+    collect_opt_values(action.opts, "L", &lib_paths);
+
+    if (extra_lib_paths != null) {
+        for (var i: usize = 0; i < extra_lib_paths->len(); i += 1) {
+            append_list_item(
+                &lib_paths, 
+                extra_lib_paths->get_const(i).unwrap()->as_str_const()
+            );
+        }
+    }
+
+    collect_opt_values(action.opts, "l", &libraries);
+
+    if (extra_libraries != null) {
+        for (var i: usize = 0; i < extra_libraries->len(); i += 1) {
+            append_list_item(
+                &libraries, 
+                extra_libraries->get_const(i).unwrap()->as_str_const()
+            );
+        }
+    }
+
+    switch (backend) {
+        case .C => {
+            if (!append_c_runtime_link_flags(
+                allocator, 
+                action.opts, 
+                &lib_paths, 
+                &libraries
+            )) {
+                return 1;
+            }
+        }
+        else => {}
+    }
+
+    if (config.enable_timing) {
+        timings.linker.start();
+    }
+
+    const build_ok = codegen.build(
+        out.as_str_const(),
+        output_path->as_str_const(),
+        extra_files.as_str_const(),
+        lib_paths.as_str_const(),
+        libraries.as_str_const()
+    );
+
+    if (config.enable_timing) {
+        timings.linker.stop();
+    }
+
+    if (!build_ok) {
+        compile_error("tcc failed to compile the input file");
+        return 1;
+    }
+
+    if (config.enable_timing) {
+        timings.total.stop();
+        timings.print_summary();
+    }
+
+    return 0;
+}

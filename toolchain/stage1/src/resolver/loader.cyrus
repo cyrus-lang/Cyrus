@@ -45,34 +45,54 @@ pub struct ProfileSet {
 
     [[inline]]
     pub fn all() Self {
-        return Self { debug: true, release: true, test: true };
+        return Self {
+            debug: true, 
+            release: true, 
+            test: true
+        };
     }
 
     [[inline]]
     pub fn none() Self {
-        return Self { debug: false, release: false, test: false };
+        return Self {
+            debug: false, 
+            release: false, 
+            test: false
+        };
     }
 
     [[inline]]
     pub fn only_debug() Self {
-        return Self { debug: true, release: false, test: false };
+        return Self { 
+            debug: true, 
+            release: false, 
+            test: false
+        };
     }
 
     [[inline]]
     pub fn only_release() Self {
-        return Self { debug: false, release: true, test: false };
+        return Self { 
+            debug: false, 
+            release: true, 
+            test: false
+        };
     }
 
     [[inline]]
     pub fn only_test() Self {
-        return Self { debug: false, release: false, test: true };
+        return Self { 
+            debug: false, 
+            release: false, 
+            test: true
+        };
     }
 
     [[inline]]
     pub fn from_profile(profile: Profile) Self {
         switch (profile) {
-            case .Debug => return Self.only_debug();
             case .Release => return Self.only_release();
+            case .Debug => return Self.only_debug();
             case .Test => return Self.only_test();
         }
     }
@@ -139,10 +159,12 @@ pub struct ProfileSet {
 
     pub fn append_to(self: Self, out: String*) {
         var added = false;
+
         if (self.debug) {
             out->push_str("debug");
             added = true;
         }
+        
         if (self.release) {
             if (added) {
                 out->push_str(", ");
@@ -150,6 +172,7 @@ pub struct ProfileSet {
             out->push_str("release");
             added = true;
         }
+
         if (self.test) {
             if (added) {
                 out->push_str(", ");
@@ -157,8 +180,29 @@ pub struct ProfileSet {
             out->push_str("test");
             added = true;
         }
+
         if (!added) {
             out->push_str("none");
+        }
+    }
+}
+
+pub struct ModuleAlias {
+    pub name: String,
+    pub file_path: Option<String>,
+    pub dir_path: Option<String>,
+
+    pub fn free(self: Self*) {
+        self->name.free();
+
+        switch (self->file_path) {
+            case .Some(var path) => path.free();
+            case .None => {}
+        }
+
+        switch (self->dir_path) {
+            case .Some(var path) => path.free();
+            case .None => {}
         }
     }
 }
@@ -166,6 +210,7 @@ pub struct ProfileSet {
 pub struct ResolverOptions {
     pub stdlib_path: Option<String>,
     pub source_dirs: Vec<String>,
+    pub module_aliases: Vec<ModuleAlias>,
     pub base_path: String,
     pub profile: Profile,
 
@@ -173,6 +218,7 @@ pub struct ResolverOptions {
         return Self {
             base_path: String.from_str(allocator, "."),
             source_dirs: Vec.new(allocator),
+            module_aliases: Vec.new(allocator),
             stdlib_path: .None,
             profile: .Debug,
         };
@@ -184,6 +230,12 @@ pub struct ResolverOptions {
             dir.free();
         }
         self->source_dirs.free();
+
+        for (var i: usize = 0; i < self->module_aliases.len(); i += 1) {
+            var alias = self->module_aliases.get_owned(i).unwrap();
+            alias.free();
+        }
+        self->module_aliases.free();
 
         switch (self->stdlib_path) {
             case .Some(path) => path.free();
@@ -211,13 +263,9 @@ pub enum LoaderError {
 }
 
 pub struct ResolvedModuleFile {
-    /// Path of the resolved file.
     pub file_path: String,
-    /// Directory names traversed to reach the file.
     pub directory_modules: Vec<String>,
-    /// Name of the final path component, extension stripped.
     pub file_module_name: String,
-    /// How many import segments the walk consumed.
     pub consumed_segments: usize,
 
     pub fn free(self: Self*) {
@@ -303,7 +351,8 @@ pub fn module_name_from_file_path(
     switch (opts->stdlib_path) {
         case .Some(std_path) => {
             if (name.starts_with("stdlib_") ||
-                !is_under_stdlib(allocator, file_path, std_path.as_str_const())) {
+                !is_under_stdlib(allocator, file_path, std_path.as_str_const())) 
+            {
                 return name;
             }
 
@@ -318,15 +367,30 @@ pub fn module_name_from_file_path(
     return name;
 }
 
-fn is_under_stdlib(allocator: Allocator, file_path: const uint8*, std_path: const uint8*) bool {
+fn is_under_stdlib(
+    allocator: Allocator, 
+    file_path: const uint8*, 
+    std_path: const uint8*
+) bool {
     var cwd = dir::cwd(allocator);
     var found = false;
 
-    switch (canonicalize_absolute_path(allocator, cwd.as_str_const(), file_path)) {
+    switch (canonicalize_absolute_path(
+        allocator, 
+        cwd.as_str_const(), 
+        file_path
+    )) {
         case .Some(file) => {
-            switch (canonicalize_absolute_path(allocator, cwd.as_str_const(), std_path)) {
+            switch (canonicalize_absolute_path(
+                allocator, 
+                cwd.as_str_const(), 
+                std_path
+            )) {
                 case .Some(std) => {
-                    found = has_path_prefix(file.as_str_const(), std.as_str_const());
+                    found = has_path_prefix(
+                        file.as_str_const(), 
+                        std.as_str_const()
+                    );
                     std.free();
                 }
                 else => {}
@@ -340,7 +404,10 @@ fn is_under_stdlib(allocator: Allocator, file_path: const uint8*, std_path: cons
     return found;
 }
 
-pub fn last_sub_module_name(allocator: Allocator, segments: const Vec<ASTModuleSegment>*) String {
+pub fn last_sub_module_name(
+    allocator: Allocator, 
+    segments: const Vec<ASTModuleSegment>*
+) String {
     var i = segments->len();
 
     while (i > 0) {
@@ -349,7 +416,10 @@ pub fn last_sub_module_name(allocator: Allocator, segments: const Vec<ASTModuleS
         const seg = segments->get_const(i).unwrap();
 
         switch (*seg) {
-            case .SubModule(ident) => return String.from_str(allocator, ident.str.as_str_const());
+            case .SubModule(ident) => return String.from_str(
+                allocator, 
+                ident.str.as_str_const()
+            );
             else => {}
         }
     }
@@ -437,6 +507,7 @@ pub fn resolve_import(
 
     var sources: Vec<String> = Vec.new(allocator);
     var is_std = false;
+    var alias_prefix: Option<const uint8*> = .None;
 
     const first = names.get_const(0).unwrap();
 
@@ -457,7 +528,12 @@ pub fn resolve_import(
             }
         }
     } else if (relative_level < 0) {
-        switch (relative_search_dir(allocator, opts, current_file_path, relative_level)) {
+        switch (relative_search_dir(
+            allocator, 
+            opts, 
+            current_file_path, 
+            relative_level
+        )) {
             case .Some(search_dir) => {
                 sources.push(search_dir);
             }
@@ -468,9 +544,64 @@ pub fn resolve_import(
             }
         }
     } else {
-        for (var i: usize = 0; i < opts->source_dirs.len(); i += 1) {
-            const source_dir = opts->source_dirs.get_const(i).unwrap();
-            sources.push(String.from_str(allocator, source_dir->as_str_const()));
+        var matched_alias = false;
+
+        const first_str = first->as_str_const();
+
+        for (var i: usize = 0; i < opts->module_aliases.len(); i += 1) {
+            const alias = opts->module_aliases.get_const(i).unwrap();
+            
+            if (alias->name.as_str_const() != first_str) {
+                continue;
+            }
+
+            if (names.len() == 1) {
+                switch (alias->file_path) {
+                    case .Some(path) => {
+                        if (same_file(allocator, path.as_str_const(), current_file_path)) {
+                            free_strings(&sources);
+                            free_strings(&names);
+                            return .Error(.ModuleCannotImportItself);
+                        }
+
+                        var module_file = ResolvedModuleFile {
+                            file_path: String.from_str(allocator, path.as_str_const()),
+                            directory_modules: Vec.new(allocator),
+                            file_module_name: String.from_str(allocator, alias->name.as_str_const()),
+                            consumed_segments: 1,
+                        };
+
+                        free_strings(&sources);
+                        free_strings(&names);
+                        return .Value(module_file);
+                    }
+                    case .None => {}
+                }
+            }
+
+            switch (alias->dir_path) {
+                case .Some(path) => {
+                    matched_alias = true;
+                    alias_prefix = .Some(alias->name.as_str_const());
+                    
+                    var removed = names.remove(0);
+                    removed.free();
+                    
+                    sources.push(String.from_str(
+                        allocator, 
+                        path.as_str_const()
+                    ));
+                    break;
+                }
+                case .None => {}
+            }
+        }
+
+        if (!matched_alias) {
+            for (var i: usize = 0; i < opts->source_dirs.len(); i += 1) {
+                const source_dir = opts->source_dirs.get_const(i).unwrap();
+                sources.push(String.from_str(allocator, source_dir->as_str_const()));
+            }
         }
     }
 
@@ -486,17 +617,27 @@ pub fn resolve_import(
 
     var name_offset: usize = 0;
 
-    if (is_std) {
+    if (is_std || alias_prefix.is_some()) {
         name_offset = 1;
     }
 
-    const result = load_module_segments(allocator, &names, &sources, segments, name_offset);
+    const result = load_module_segments(
+        allocator, 
+        &names, 
+        &sources, 
+        segments, 
+        name_offset
+    );
     free_strings(&sources);
     free_strings(&names);
 
     switch (result) {
         case .Value(var resolved) => {
-            if (same_file(allocator, resolved.file_path.as_str_const(), current_file_path)) {
+            if (same_file(
+                allocator, 
+                resolved.file_path.as_str_const(), 
+                current_file_path
+            )) {
                 resolved.free();
                 return .Error(.ModuleCannotImportItself);
             }
@@ -504,6 +645,14 @@ pub fn resolve_import(
             if (is_std) {
                 resolved.directory_modules.insert(0, String.from_str(allocator, "std"));
                 resolved.consumed_segments += 1;
+            } else {
+                switch (alias_prefix) {
+                    case .Some(aname) => {
+                        resolved.directory_modules.insert(0, String.from_str(allocator, aname));
+                        resolved.consumed_segments += 1;
+                    }
+                    case .None => {}
+                }
             }
 
             return .Value(resolved);
@@ -532,8 +681,9 @@ fn load_module_segments(
 
         var dir_candidate = join_path(allocator, current_path.as_str_const(), name_str);
 
-        const file_hit = find_in_sources(allocator, file_candidate, sources);
-        const dir_hit = find_dir_in_sources(allocator, dir_candidate, sources);
+        const has_base = !current_path.is_empty();
+        const file_hit = find_in_sources(allocator, file_candidate, sources, has_base);
+        const dir_hit = find_dir_in_sources(allocator, dir_candidate, sources, has_base);
 
         switch (file_hit) {
             case .Some(file_path) => {
@@ -543,7 +693,11 @@ fn load_module_segments(
                         conflict_path.free();
                         free_strings(&directory_modules);
                         current_path.free();
-                        return .Error(.DuplicateModule(String.from_str(allocator, name_str)));
+
+                        return .Error(.DuplicateModule(String.from_str(
+                            allocator, 
+                            name_str
+                        )));
                     }
                     case .None => {
                         const result = ResolvedModuleFile {
@@ -563,7 +717,11 @@ fn load_module_segments(
                         const is_last = (i + 1 == names->len());
 
                         if (is_last) {
-                            var index_path = join_path(allocator, dir_path.as_str_const(), INDEX_MODULE_FILENAME);
+                            var index_path = join_path(
+                                allocator, 
+                                dir_path.as_str_const(), 
+                                INDEX_MODULE_FILENAME
+                            );
 
                             if (path_exists(index_path.as_str_const())) {
                                 const result = ResolvedModuleFile {
@@ -601,7 +759,11 @@ fn load_module_segments(
     // If the walk is ended inside a directory,
     // we gotta look for its index file
     if (os::is_dir(current_path.as_str_const())) {
-        var index_path = join_path(allocator, current_path.as_str_const(), INDEX_MODULE_FILENAME);
+        var index_path = join_path(
+            allocator, 
+            current_path.as_str_const(), 
+            INDEX_MODULE_FILENAME
+        );
 
         if (path_exists(index_path.as_str_const())) {
             const result = ResolvedModuleFile {
@@ -640,7 +802,10 @@ fn relative_search_dir(
     current_file_path: const uint8*,
     relative_level: isize,
 ) Option<String> {
-    switch (file_parent(allocator, current_file_path)) case .Some(var current) else {
+    switch (file_parent(
+        allocator, 
+        current_file_path
+    )) case .Some(var current) else {
         return .None;
     }
 
@@ -660,14 +825,17 @@ fn relative_search_dir(
     }
 
     var cwd = dir::cwd(allocator);
+
     const abs = canonicalize_absolute_path(
         allocator, 
         cwd.as_str_const(), 
         current.as_str_const()
     );
+
     switch (abs) case .Some(var search_dir) else {
         return .None;
     }
+    
     cwd.free();
     current.free();
 
@@ -679,13 +847,20 @@ fn relative_search_dir(
         root_cwd.as_str_const(), 
         opts->base_path.as_str_const()
     )) {
-        case .None => root = String.from_str(allocator, opts->base_path.as_str_const());
         case .Some(path) => root = path;
+
+        case .None => root = String.from_str(
+            allocator, 
+            opts->base_path.as_str_const()
+        );
     }
     
     root_cwd.free();
 
-    if (!has_path_prefix(search_dir.as_str_const(), root.as_str_const())) {
+    if (!has_path_prefix(
+        search_dir.as_str_const(), 
+        root.as_str_const()
+    )) {
         search_dir.free();
         root.free();
         return .None;
@@ -695,9 +870,15 @@ fn relative_search_dir(
     return .Some(search_dir);
 }
 
-fn stdlib_modules_path(allocator: Allocator, opts: const ResolverOptions*) Option<String> {
+fn stdlib_modules_path(
+    allocator: Allocator, 
+    opts: const ResolverOptions*
+) Option<String> {
     switch (opts->stdlib_path) {
-        case .Some(path) => return .Some(String.from_str(allocator, path.as_str_const()));
+        case .Some(path) => return .Some(String.from_str(
+            allocator, 
+            path.as_str_const()
+        ));
         else => {}
     }
 
@@ -708,8 +889,9 @@ fn find_in_sources(
     allocator: Allocator,
     candidate: String,
     sources: const Vec<String>*,
+    has_base: bool,
 ) Option<String> {
-    if (path_exists(candidate.as_str_const())) {
+    if (has_base && path_exists(candidate.as_str_const())) {
         return .Some(candidate);
     }
 
@@ -738,8 +920,9 @@ fn find_dir_in_sources(
     allocator: Allocator,
     candidate: String,
     sources: const Vec<String>*,
+    has_base: bool,
 ) Option<String> {
-    if (os::is_dir(candidate.as_str_const())) {
+    if (has_base && os::is_dir(candidate.as_str_const())) {
         return .Some(candidate);
     }
 

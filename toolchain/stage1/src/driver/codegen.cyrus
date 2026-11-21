@@ -33,8 +33,16 @@ pub struct CodegenContext {
     pub backend: Backend,
     pub target: TargetInfo,
 
-    pub fn new(allocator: Allocator, backend: Backend, target: TargetInfo) Self {
-        return Self { allocator, backend, target };
+    pub fn new(
+        allocator: Allocator, 
+        backend: Backend, 
+        target: TargetInfo
+    ) Self {
+        return Self { 
+            allocator, 
+            backend, 
+            target
+        };
     }
 
     pub fn emit(

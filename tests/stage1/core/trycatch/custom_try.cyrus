@@ -1,4 +1,4 @@
-// @stdout: ok=21 err=99 unwrap=42
+// @stdout: ok=21 err=99 unwrap=50
 
 import std::errors{ControlFlow, Try};
 import std::libc{printf};
@@ -42,7 +42,7 @@ pub fn main() {
         case .Fail(e) => printf("err=%d ", e);
     }
 
-    const u = try make_outcome(42) catch {
+    const u = try make_outcome(50) catch {
         return;
     };
     printf("unwrap=%d", u);

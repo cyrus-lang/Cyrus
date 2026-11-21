@@ -17,10 +17,10 @@ import std::format{
     format_int128
 };
 
+import escape{push_c_escaped, push_c_char, push_asm_escaped};
 import abi::helpers{extract_typedef_inner_type};
 import abi::typectx{is_enum_scalar_optimizable};
 import resolver::symbols{GlobalSymbolRegistry};
-import tokens{Span, push_c_escaped, push_c_char};
 import codegen::c::types{TypeEmitter};
 import sema::vtables{VTableRegistry};
 import cir::tables{DeclTables};
@@ -31,6 +31,7 @@ import sema::monomorph{
 };
 import codegen::c::mangle;
 import abi::target{TargetInfo};
+import tokens{Span};
 import parser::ast;
 import cir::clone;
 import ciri;
@@ -9694,6 +9695,7 @@ pub struct Emitter {
 
             case .Abs => {
                 if (first_type.const_inner()->is_float()) {
+                    out.free();
                     out = self->emit_math_expr("fabs", builtin_func, ret_name.as_str_const(), 1);
                 } else {
                     var value = self->builtin_arg_text(builtin_func, 0);
@@ -9718,6 +9720,7 @@ pub struct Emitter {
                         name = "fmax";
                     }
 
+                    out.free();
                     out = self->emit_math_expr(name, builtin_func, ret_name.as_str_const(), 2);
                 } else {
                     var left = self->builtin_arg_text(builtin_func, 0);
@@ -9861,11 +9864,13 @@ pub struct Emitter {
             }
 
             case .Ldexp => {
+                out.free();
                 out = self->emit_math_scale_expr(
                     "ldexp", builtin_func, ret_name.as_str_const()
                 );
             }
             case .Scalbn => {
+                out.free();
                 out = self->emit_math_scale_expr(
                     "scalbn", builtin_func, ret_name.as_str_const()
                 );
@@ -9937,6 +9942,7 @@ pub struct Emitter {
                             else => {}
                         }
 
+                        out.free();
                         out = self->emit_math_expr(
                             name, builtin_func, ret_name.as_str_const(), count
                         );
@@ -10295,32 +10301,6 @@ fn int_literal_c_type_name(plain: const cir::PlainType*) Option<const uint8*> {
         case .Int16 => return .Some("int16_t");
         case .Int8 => return .Some("int8_t");
         else => return .None;
-    }
-}
-
-fn push_asm_escaped(out: String*, raw: const uint8*) {
-    var i: usize = 0;
-
-    while (raw[i] != '\0') {
-        const ch = raw[i];
-
-        if (ch == '\n') {
-            out->push('\\');
-            out->push('n');
-        } else if (ch == '\t') {
-            out->push('\\');
-            out->push('t');
-        } else if (ch == '"') {
-            out->push('\\');
-            out->push('"');
-        } else if (ch == '\\') {
-            out->push('\\');
-            out->push('\\');
-        } else {
-            out->push(ch);
-        }
-
-        i += 1;
     }
 }
 

@@ -20,10 +20,12 @@ import std::libc{
 
 import diags{DiagContext, Diag};
 import source{SourceId};
-import tokens{
+import escape{
     escape_sequence_to_char,
     is_valid_escape,
     unescape_string,
+};
+import tokens{
     IntegerSuffix,
     StringPrefix,
     FloatSuffix,

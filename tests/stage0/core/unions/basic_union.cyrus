@@ -1,4 +1,4 @@
-// @stdout: changed 42
+// @stdout: changed 50
 
 import std::libc{printf};
 
@@ -21,6 +21,6 @@ pub fn main() {
     inst.text_value = "changed";
     printf("%s ", value_as_text(inst));
 
-    inst.int_value = 42;
+    inst.int_value = 50;
     printf("%d\n", value_as_int(inst));
 }

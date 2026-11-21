@@ -1,4 +1,4 @@
-// @stdout: value=42
+// @stdout: value=50
 
 import std::libc{printf};
 
@@ -12,6 +12,6 @@ union Value {
 }
 
 pub fn main() {
-    var v = Value { int_val: 42 };
+    var v = Value { int_val: 50 };
     v.display();
 }

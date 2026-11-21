@@ -1,4 +1,4 @@
-// @stdout: value: 42\nok none\nerr: 7\nnone first: none\nnone first: some(5)\ndepth3: 9\ndepth3: empty\ndepth3: nothing\nstruct nested: 3\nstruct nested: none\nstruct nested: nothing\n
+// @stdout: value: 50\nok none\nerr: 7\nnone first: none\nnone first: some(5)\ndepth3: 9\ndepth3: empty\ndepth3: nothing\nstruct nested: 3\nstruct nested: none\nstruct nested: nothing\n
 
 import std::libc{printf};
 
@@ -84,7 +84,7 @@ fn display_struct(s: StructWrap) {
 }
 
 pub fn main() {
-    display_result(ResultOptionInt.Ok(OptionInt.Some(42)));
+    display_result(ResultOptionInt.Ok(OptionInt.Some(50)));
     display_result(ResultOptionInt.Ok(OptionInt.None));
     display_result(ResultOptionInt.Err(7));
 
