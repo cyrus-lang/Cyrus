@@ -45,10 +45,10 @@ pub struct TypeContext {
             enum_layouts: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
             enum_tags: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
             owned_layouts: Vec.new(allocator),
-            arena,
             target_info,
             registry,
             tables,
+            arena,
         };
     }
 
@@ -279,12 +279,14 @@ pub struct TypeContext {
 
                 for (var i: usize = 0; i < struct_decl->fields.len(); i += 1) {
                     const field = struct_decl->fields.get_const(i).unwrap();
+                    
                     const field_type = cir::substitute_sema_type_with_type_args(
                         dynamic self->arena,
                         &field->ty,
                         &struct_decl->generic_params,
                         &named->type_args
                     );
+                    
                     field_types.push(field_type);
                 }
 
@@ -298,17 +300,20 @@ pub struct TypeContext {
             }
 
             case .Union(union_decl_id) => {
-                const decl = self->tables->unions.get_const(union_decl_id).unwrap();
+                const union_decl = self->tables->unions.get_const(union_decl_id).unwrap();
+                
                 var field_types: Vec<cir::SemaType> = Vec.new(self->allocator());
 
-                for (var i: usize = 0; i < decl->fields.len(); i += 1) {
-                    const field = decl->fields.get_const(i).unwrap();
+                for (var i: usize = 0; i < union_decl->fields.len(); i += 1) {
+                    const field = union_decl->fields.get_const(i).unwrap();
+                    
                     const field_type = cir::substitute_sema_type_with_type_args(
                         dynamic self->arena,
                         &field->ty,
-                        &decl->generic_params,
+                        &union_decl->generic_params,
                         &named->type_args
                     );
+                    
                     field_types.push(field_type);
                 }
 
@@ -464,7 +469,6 @@ pub struct TypeContext {
 
         for (var i: usize = 0; i < types->len(); i += 1) {
             const member_type = types->get_const(i).unwrap();
-
             const member_layout = self->layout_of(member_type);
 
             if (member_layout->size > max_member_size) {
@@ -492,26 +496,29 @@ pub struct TypeContext {
         ));
     }
 
-    pub fn compute_enum_layout(self: Self*, decl: const cir::EnumDecl*) ABITypeLayout* {
-        return self->compute_enum_layout_inner(decl, null);
+    pub fn compute_enum_layout(
+        self: Self*, 
+        enum_decl: const cir::EnumDecl*
+    ) ABITypeLayout* {
+        return self->compute_enum_layout_inner(enum_decl, null);
     }
 
     pub fn compute_enum_layout_inst(
         self: Self*,
-        decl: const cir::EnumDecl*,
+        enum_decl: const cir::EnumDecl*,
         type_args: const cir::TypeArgs*
     ) ABITypeLayout* {
-        return self->compute_enum_layout_inner(decl, type_args);
+        return self->compute_enum_layout_inner(enum_decl, type_args);
     }
 
     fn compute_enum_layout_inner(
         self: Self*,
-        decl: const cir::EnumDecl*,
+        enum_decl: const cir::EnumDecl*,
         type_args: const cir::TypeArgs*
     ) ABITypeLayout* {
-        const tag_type = enum_tag_type(self->tables, self->registry, decl);
+        const tag_type = enum_tag_type(self->tables, self->registry, enum_decl);
 
-        if (is_enum_scalar_optimizable(self->tables, decl)) {
+        if (is_enum_scalar_optimizable(self->tables, enum_decl)) {
             return self->layout_of(&tag_type);
         }
 
@@ -522,8 +529,8 @@ pub struct TypeContext {
         var max_payload_size: uint32 = 0;
         var max_payload_align: uint32 = 1;
 
-        for (var i: usize = 0; i < decl->variants.len(); i += 1) {
-            const variant = decl->variants.get_const(i).unwrap();
+        for (var i: usize = 0; i < enum_decl->variants.len(); i += 1) {
+            const variant = enum_decl->variants.get_const(i).unwrap();
 
             var variant_size: uint32 = 0;
             var variant_align: uint32 = 1;
@@ -542,7 +549,7 @@ pub struct TypeContext {
                                 layout_ty = cir::substitute_sema_type_with_type_args(
                                     dynamic self->arena,
                                     &payload_type,
-                                    &decl->generic_params,
+                                    &enum_decl->generic_params,
                                     type_args
                                 );
                             }
@@ -565,7 +572,7 @@ pub struct TypeContext {
                             field_type = cir::substitute_sema_type_with_type_args(
                                 dynamic self->arena,
                                 &field->ty,
-                                &decl->generic_params,
+                                &enum_decl->generic_params,
                                 type_args
                             );
                         }
@@ -590,7 +597,7 @@ pub struct TypeContext {
                             field_type = cir::substitute_sema_type_with_type_args(
                                 dynamic self->arena,
                                 &field->ty,
-                                &decl->generic_params,
+                                &enum_decl->generic_params,
                                 type_args
                             );
                         }
@@ -615,12 +622,12 @@ pub struct TypeContext {
             }
         }
 
-        if (max_payload_size == 0 && enum_includes_payload(decl)) {
+        if (max_payload_size == 0 && enum_includes_payload(enum_decl)) {
             max_payload_size = 1;
             max_payload_align = 1;
         }
 
-        switch (decl->align) {
+        switch (enum_decl->align) {
             case .Some(explicit_align) => {
                 if (@cast(uint32, explicit_align) > max_payload_align) {
                     max_payload_align = @cast(uint32, explicit_align);
@@ -635,7 +642,7 @@ pub struct TypeContext {
             total_align = max_payload_align;
         }
 
-        switch (decl->align) {
+        switch (enum_decl->align) {
             case .Some(explicit_align) => {
                 if (@cast(uint32, explicit_align) > total_align) {
                     total_align = @cast(uint32, explicit_align);
@@ -667,7 +674,7 @@ pub struct TypeContext {
             field_offset_index += 1;
         }
 
-        if (max_payload_size > 0 || enum_includes_payload(decl)) {
+        if (max_payload_size > 0 || enum_includes_payload(enum_decl)) {
             field_offsets.push(ABIFieldOffsetInfo.normal(
                 field_offset_index,
                 payload_offset,

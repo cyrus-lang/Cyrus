@@ -429,6 +429,7 @@ pub enum BuiltinKind {
     Debug,
     Release,
     Test,
+    Feature,
     Unroll,
 }
 
@@ -549,6 +550,7 @@ pub fn lookup_builtin(name: const uint8*) Option<BuiltinKind> {
         case "log" => return .Some(.Log);
         case "nan" => return .Some(.Nan);
         case "erf" => return .Some(.Erf);
+        case "feature" => return .Some(.Feature);
 
         else => return .None;
     }
@@ -1023,6 +1025,17 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
             form: .Stmt,
             unreachable: false,
             min_args: 0,
+            max_args: .Some(1),
+        };
+
+        case .Feature => return BuiltinSpec {
+            kind,
+            name: "feature",
+            family: .ConstEval,
+            phase: .ConstEval,
+            form: .Expr,
+            unreachable: false,
+            min_args: 1,
             max_args: .Some(1),
         };
         

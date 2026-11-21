@@ -190,7 +190,38 @@ pub fn analyze_expr_non_terminal(
         
         case .Builtin(.BuiltinFunc(var bf)) => {
             expr_type = analyze_builtin_expr(context, &bf);
-            expr->kind = .Builtin(.BuiltinFunc(bf));
+            
+            var folded_to_bool = false;
+            
+            switch (cir::lookup_builtin(bf.name.str.as_str_const())) {
+                case .Some(.Feature) => {
+                    if (bf.args.len() == 1) {
+                        const arg0 = bf.args.get(0).unwrap();
+                        switch (arg0->kind) {
+                            case .Literal(lit) => {
+                                switch (lit.kind) {
+                                    case .String { value, suffix: _ } => {
+                                        const enable = context->is_feature_enabled(value.as_str_const());
+                                        expr->kind = .Literal(cir::LiteralExpr {
+                                            ty: .Some(.Plain(.Bool)),
+                                            kind: .Bool(enable),
+                                            span: bf.span,
+                                        });
+                                        folded_to_bool = true;
+                                    }
+                                    else => {}
+                                }
+                            }
+                            else => {}
+                        }
+                    }
+                }
+                else => {}
+            }
+
+            if (!folded_to_bool) {
+                expr->kind = .Builtin(.BuiltinFunc(bf));
+            }
         }
         
         case .Builtin(.BuiltinBlock(builtin_block)) => {
@@ -2952,8 +2983,43 @@ fn analyze_builtin_func_semantics(
             return analyze_builtin_usize_ret(context, builtin_func);
         }
 
+        case .Feature => return analyze_builtin_feature(context, builtin_func);
+
         else => return .None;
     }
+}
+
+fn analyze_builtin_feature(
+    context: AnalyzerContext*,
+    builtin_func: cir::BuiltinFunc*
+) Option<cir::SemaType> {
+    if (builtin_func->args.len() != 1) {
+        return .None;
+    }
+
+    const arg = builtin_func->args.get(0).unwrap();
+    analyze_expr_non_terminal(context, arg, .None);
+
+    switch (arg->kind) {
+        case .Literal(lit) => {
+            switch (lit.kind) {
+                case .String { value: _, suffix: _ } => {
+                    const ret_type: cir::SemaType = .Plain(.Bool);
+                    builtin_func->ret_type = .Some(ret_type);
+                    return .Some(ret_type);
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    diags::report_builtin_feature_requires_string_literal(
+        context->dctx,
+        context->allocator,
+        arg->span
+    );
+    return .None;
 }
 
 fn analyze_builtin_name_ret(

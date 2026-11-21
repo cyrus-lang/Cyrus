@@ -24,6 +24,7 @@ import .::runtime{
     run_compiled_binary,
     backend_from_action,
     target_from_action,
+    apply_cli_features,
     output_option,
 };
 import .::codegen{Backend, CodegenContext};
@@ -391,7 +392,8 @@ fn compile_file(
         null,
         null,
         null,
-        .None
+        .None,
+        null
     );
 }
 
@@ -488,6 +490,8 @@ fn resolver_opts_from_action_context(action: cli::ActionContext) ErrorOr<Resolve
     if (action.cmd->name == "test") {
         opts.profile = .Test;
     }
+
+    apply_cli_features(allocator, action.opts, &opts.features);
 
     return .Value(opts);
 }

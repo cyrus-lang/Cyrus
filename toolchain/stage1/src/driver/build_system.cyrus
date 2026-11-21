@@ -516,6 +516,27 @@ pub fn build_or_run_project(
 
     const profile_override = resolve_build_profile(action, &builder);
 
+    var active_features: Vec<String> = Vec.new(allocator);
+    defer free_strings(&active_features);
+    
+    for (var i: usize = 0; i < requested_features.len(); i += 1) {
+        const feature = requested_features.get_const(i).unwrap()->as_str_const();
+        push_unique_str(allocator, &active_features, feature);
+    }
+    
+    switch (find_active_build_profile(action, &builder)) {
+        case .Some(profile) => {
+            for (var i: usize = 0; i < profile->enabled_features.len(); i += 1) {
+                push_unique_str(
+                    allocator, 
+                    &active_features, 
+                    profile->enabled_features.get_const(i).unwrap()->as_str_const()
+                );
+            }
+        }
+        case .None => {}
+    }
+
     // 8. Build (and optionally run)
     if (execute) {
         switch (dir::TempDir.create(allocator)) case .Some(run_temp) else {
@@ -539,7 +560,8 @@ pub fn build_or_run_project(
             &extra_native_files,
             null,
             &native_link_libs,
-            profile_override
+            profile_override,
+            &active_features
         );
         if (status != 0) {
             return status;
@@ -571,7 +593,8 @@ pub fn build_or_run_project(
         &extra_native_files,
         null,
         &native_link_libs,
-        profile_override
+        profile_override,
+        &active_features
     );
 }
 
@@ -1272,7 +1295,8 @@ fn run_build_generators(
                     null,
                     null,
                     null,
-                    .None
+                    .None,
+                    null
                 );
                 if (status != 0) {
                     return false;
@@ -1375,7 +1399,7 @@ fn compile_native_source_to_obj(
     return true;
 }
 
-fn resolve_build_profile(action: cli::ActionContext, builder: const build::Builder*) Option<Profile> {
+fn find_active_build_profile(action: cli::ActionContext, builder: const build::Builder*) Option<const build::BuildProfile*> {
     var requested_name: Option<const uint8*> = .None;
 
     switch (action.opts->find("profile")) {
@@ -1406,19 +1430,37 @@ fn resolve_build_profile(action: cli::ActionContext, builder: const build::Build
 
     const name = requested_name.unwrap();
     for (var i: usize = 0; i < builder->profiles.len(); i += 1) {
-        const bp = builder->profiles.get_owned(i).unwrap();
-        if (strcmp(bp->name.as_str_const(), name) == 0) {
-            if (bp->opt_level >= 2 || bp->has_lto || bp->has_strip || strcmp(name, "release") == 0) {
-                return .Some(.Release);
-            }
-            if (strcmp(name, "test") == 0) {
-                return .Some(.Test);
-            }
-            return .Some(.Debug);
+        const profile = builder->profiles.get_owned(i).unwrap();
+
+        if (profile->name.as_str_const() == name) {
+            return .Some(profile);
         }
     }
 
     return .None;
+}
+
+fn resolve_build_profile(action: cli::ActionContext, builder: const build::Builder*) Option<Profile> {
+    switch (find_active_build_profile(action, builder)) {
+        case .Some(profile) => {
+            const name = profile->name.as_str_const();
+
+            if (profile->opt_level >= 2 || 
+                profile->has_lto || 
+                profile->has_strip || 
+                name == "release") 
+            {
+                return .Some(.Release);
+            }
+            
+            if (name == "test") {
+                return .Some(.Test);
+            }
+            
+            return .Some(.Debug);
+        }
+        case .None => return .None;
+    }
 }
 
 /* ************* Small Helpers ************* */

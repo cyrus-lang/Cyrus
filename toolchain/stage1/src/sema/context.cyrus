@@ -43,6 +43,7 @@ pub struct AnalyzerContext {
     pub monomorph_registry: MonomorphRegistry,
     pub vtable_registry: VTableRegistry,
     pub dispatcher: AnalyzerDispatcher,
+    pub enabled_features: const Vec<String>*,
 
     pub fn new(
         allocator: Allocator,
@@ -84,7 +85,26 @@ pub struct AnalyzerContext {
             vtable_registry,
             monomorph_registry,
             dispatcher,
+            enabled_features: null,
         };
+    }
+
+    pub fn set_enabled_features(self: Self*, features: const Vec<String>*) {
+        self->enabled_features = features;
+    }
+
+    pub fn is_feature_enabled(self: const Self*, name: const uint8*) bool {
+        if (self->enabled_features == null) {
+            return false;
+        }
+
+        for (var i: usize = 0; i < self->enabled_features->len(); i += 1) {
+            if (self->enabled_features->get_const(i).unwrap()->as_str_const() == name) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 
     pub fn free(self: Self*) {
