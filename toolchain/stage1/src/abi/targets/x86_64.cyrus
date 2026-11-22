@@ -439,7 +439,15 @@ pub struct X86_64 : TargetABI {
             // C default convention, platform dependent
             case .System | .C => {
                 switch (self->target_info.os) {
-                    case .Linux | .MacOS => return .Some(self->classify_func_sysv(func_type));
+                    case .Linux
+                    | .MacOS
+                    | .FreeBSD
+                    | .NetBSD
+                    | .OpenBSD
+                    | .Android
+                    | .IOS
+                    | .Wasi
+                    | .Freestanding => return .Some(self->classify_func_sysv(func_type));
                     case .Windows => @panic("Windows ABI not implemented yet");
                     case .Unknown => @unreachable();
                 }
@@ -460,7 +468,15 @@ pub struct X86_64 : TargetABI {
             // Fast/Cold optimization hints, same as C convention
             case .Fast | .Cold => {
                 switch (self->target_info.os) {
-                    case .Linux | .MacOS => return .Some(self->classify_func_sysv(func_type));
+                    case .Linux
+                    | .MacOS
+                    | .FreeBSD
+                    | .NetBSD
+                    | .OpenBSD
+                    | .Android
+                    | .IOS
+                    | .Wasi
+                    | .Freestanding => return .Some(self->classify_func_sysv(func_type));
                     case .Windows => @panic("Windows ABI not implemented yet");
                     case .Unknown => @unreachable();
                 }

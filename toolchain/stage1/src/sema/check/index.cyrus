@@ -48,6 +48,7 @@ import .::specialize{
     restore_func_env,
 };
 import .::exprs{
+    validate_and_eval_platform_args,
     builtin_const_mesg_param_type,
     analyze_expr_non_terminal,
     analyze_inline_asm_stmt,
@@ -156,6 +157,21 @@ fn analyze_builtin_block(
 
     if (builtin_kind == .Feature) {
         validate_feature_block_arg(context, builtin_block);
+
+        if (!builtin_block->is_active) {
+            return .Reachable;
+        }
+
+        if (is_toplevel) {
+            analyze_toplevel_stmts(context, &builtin_block->block->stmts);
+            return .Reachable;
+        } else {
+            return analyze_block_stmt(context, builtin_block->block);
+        }
+    }
+
+    if (cir::is_platform_builtin_kind(builtin_kind)) {
+        validate_and_eval_platform_args(context, builtin_kind, &builtin_block->args);
 
         if (!builtin_block->is_active) {
             return .Reachable;
@@ -525,6 +541,22 @@ fn analyze_toplevel_stmt_with_tests(
 
                         if (builtin_kind == .Feature) {
                             validate_feature_block_arg(context, &builtin_block);
+
+                            if (builtin_block.is_active) {
+                                analyze_toplevel_builtin_block_stmts(
+                                    context,
+                                    &builtin_block.block->stmts,
+                                    index,
+                                    staged,
+                                    seen_test_names
+                                );
+                            }
+                        } else if (cir::is_platform_builtin_kind(builtin_kind)) {
+                            validate_and_eval_platform_args(
+                                context,
+                                builtin_kind,
+                                &builtin_block.args
+                            );
 
                             if (builtin_block.is_active) {
                                 analyze_toplevel_builtin_block_stmts(

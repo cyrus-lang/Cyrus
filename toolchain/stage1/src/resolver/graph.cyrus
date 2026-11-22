@@ -28,6 +28,8 @@ import parser::ast{
 };
 import source{SourceId};
 import resolver::diags;
+import abi::target{TargetInfo, PlatformMatch};
+import cir;
 
 /// A resolved import is 
 /// one edge of the module graph.
@@ -230,27 +232,44 @@ pub struct ModuleGraph {
                     self->discover_import(index, &import_, node_id, lexical, opts);
                 }
                 case .Builtin(.BuiltinBlock(builtin_block)) => {
-                    if (builtin_block.name.str.as_str_const() == "feature") {
-                        switch (ast_feature_block_name(program, &builtin_block)) {
-                            case .Some(feature_name) => {
-                                if (is_feature_enabled(&opts->features, feature_name)) {
-                                    const block_node = program->nodes.get_const(builtin_block.block).unwrap();
+                    var block_active = false;
 
-                                    switch (*block_node) {
-                                        case .Block(inner_block) => {
-                                            self->discover_stmt_list(
-                                                index,
-                                                inner_block.stmts.start,
-                                                inner_block.stmts.len,
-                                                lexical,
-                                                opts
-                                            );
-                                        }
-                                        else => {}
-                                    }
+                    switch (cir::lookup_builtin(builtin_block.name.str.as_str_const())) {
+                        case .Some(.Feature) => {
+                            switch (ast_feature_block_name(program, &builtin_block)) {
+                                case .Some(feature_name) => {
+                                    block_active = is_feature_enabled(&opts->features, feature_name);
                                 }
+                                case .None => {}
                             }
-                            case .None => {}
+                        }
+                        case .Some(builtin_kind) => {
+                            if (cir::is_platform_builtin_kind(builtin_kind)) {
+                                block_active = ast_platform_block_active(
+                                    program,
+                                    &builtin_block,
+                                    builtin_kind,
+                                    &opts->target
+                                );
+                            }
+                        }
+                        case .None => {}
+                    }
+
+                    if (block_active) {
+                        const block_node = program->nodes.get_const(builtin_block.block).unwrap();
+
+                        switch (*block_node) {
+                            case .Block(inner_block) => {
+                                self->discover_stmt_list(
+                                    index,
+                                    inner_block.stmts.start,
+                                    inner_block.stmts.len,
+                                    lexical,
+                                    opts
+                                );
+                            }
+                            else => {}
                         }
                     }
                 }
@@ -499,4 +518,48 @@ fn ast_feature_block_name(
     }
 
     return .None;
+}
+
+fn ast_platform_block_active(
+    program: const ASTProgram*,
+    builtin_block: const ASTBuiltinBlock*,
+    builtin_kind: cir::BuiltinKind,
+    target: const TargetInfo*
+) bool {
+    if (builtin_block->args.len() == 0) {
+        return false;
+    }
+
+    var any_matched = false;
+
+    for (var i: usize = 0; i < builtin_block->args.len(); i += 1) {
+        const argument_node_id = builtin_block->args.get_owned(i).unwrap();
+        const argument_node = program->nodes.get_const(argument_node_id).unwrap();
+
+        switch (*argument_node) {
+            case .Expr(.UnnamedEnumValue(enum_value)) => {
+                switch (enum_value.kind) {
+                    case .Plain => {
+                        const variant_name = enum_value.ident.str.as_str_const();
+                        const match_result = target->match_platform_builtin_variant(
+                            builtin_kind,
+                            variant_name
+                        );
+
+                        switch (match_result) {
+                            case .Matched => {
+                                any_matched = true;
+                            }
+                            case .NotMatched => {}
+                            case .UnknownVariant => return false;
+                        }
+                    }
+                    else => return false;
+                }
+            }
+            else => return false;
+        }
+    }
+
+    return any_matched;
 }

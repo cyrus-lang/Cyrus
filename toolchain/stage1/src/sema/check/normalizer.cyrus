@@ -526,11 +526,7 @@ fn fold_type_builtin_as_integer(
                 case .Some(operand) => {
                     switch (operand->ty) {
                         case .Some(ty) => {
-                            const target = TargetInfo {
-                                arch: .X86_64,
-                                os: .Linux,
-                                format: .Elf,
-                            };
+                            const target = context->target;
 
                             var tctx = TypeContext.new(
                                 target,

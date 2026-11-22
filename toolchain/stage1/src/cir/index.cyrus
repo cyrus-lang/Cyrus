@@ -314,8 +314,12 @@ pub struct BuiltinBlock {
             return false;
         }
 
-        return self->name.str.as_str_const() != "feature";
+        return is_profile_builtin_name(self->name.str.as_str_const());
     }
+}
+
+pub fn is_profile_builtin_name(name: const uint8*) bool {
+    return name == "debug" || name == "release" || name == "test";
 }
 
 pub enum BuiltinFamily {
@@ -448,6 +452,13 @@ pub enum BuiltinKind {
     Release,
     Test,
     Feature,
+    Os,
+    Arch,
+    Target,
+    Endian,
+    Format,
+    Abi,
+    Family,
     Unroll,
 }
 
@@ -569,9 +580,30 @@ pub fn lookup_builtin(name: const uint8*) Option<BuiltinKind> {
         case "log" => return .Some(.Log);
         case "nan" => return .Some(.Nan);
         case "erf" => return .Some(.Erf);
+        case "feature" => return .Some(.Feature);
+        case "os" => return .Some(.Os);
+        case "arch" => return .Some(.Arch);
+        case "target" => return .Some(.Target);
+        case "endian" => return .Some(.Endian);
+        case "format" => return .Some(.Format);
+        case "abi" => return .Some(.Abi);
+        case "family" => return .Some(.Family);
 
         else => return .None;
     }
+}
+
+fn platform_builtin_spec(kind: BuiltinKind, name: const uint8*) BuiltinSpec {
+    return BuiltinSpec {
+        kind,
+        name,
+        family: .ConstEval,
+        phase: .Resolver,
+        form: .ExprOrStmt,
+        unreachable: false,
+        min_args: 1,
+        max_args: .None,
+    };
 }
 
 fn intrinsic_spec(kind: BuiltinKind, name: const uint8*, arity: usize) BuiltinSpec {
@@ -1056,9 +1088,28 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
             min_args: 1,
             max_args: .Some(1),
         };
+
+        case .Os => return platform_builtin_spec(kind, "os");
+        case .Arch => return platform_builtin_spec(kind, "arch");
+        case .Target => return platform_builtin_spec(kind, "target");
+        case .Endian => return platform_builtin_spec(kind, "endian");
+        case .Format => return platform_builtin_spec(kind, "format");
+        case .Abi => return platform_builtin_spec(kind, "abi");
+        case .Family => return platform_builtin_spec(kind, "family");
         
         case .Unroll => @panic("builtin spec missing");
     }
+}
+
+pub fn is_platform_builtin_kind(kind: BuiltinKind) bool {
+    switch (kind) {
+        case .Os | .Arch | .Target | .Endian | .Format | .Abi | .Family => return true;
+        else => return false;
+    }
+}
+
+pub fn is_conditional_block_builtin_kind(kind: BuiltinKind) bool {
+    return kind == .Feature || is_platform_builtin_kind(kind);
 }
 
 pub fn is_builtin_unreachable(name: const uint8*) bool {

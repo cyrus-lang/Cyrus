@@ -1668,6 +1668,41 @@ pub fn report_builtin_feature_requires_string_literal(
     mesg.free();
 }
 
+pub fn report_builtin_requires_variant_argument(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    builtin_name: const uint8*,
+) {
+    var mesg = String.from_str(allocator, "builtin `@");
+    mesg.push_str(builtin_name);
+    mesg.push_str("` requires a platform variant literal (e.g. `.Linux`) as argument");
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
+pub fn report_builtin_unknown_platform_variant(
+    dctx: DiagContext*,
+    allocator: Allocator,
+    span: Span,
+    builtin_name: const uint8*,
+    variant_name: const uint8*,
+) {
+    var mesg = String.from_str(allocator, "unknown variant `.");
+    mesg.push_str(variant_name);
+    mesg.push_str("` for builtin `@");
+    mesg.push_str(builtin_name);
+    mesg.push('`');
+
+    const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
+    dctx->report(diag);
+
+    mesg.free();
+}
+
 pub fn report_cannot_cast(
     dctx: DiagContext*,
     allocator: Allocator,

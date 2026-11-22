@@ -616,6 +616,7 @@ fn evaluate_build_script(
     var opts = ResolverOptions.new(allocator);
     defer opts.free();
 
+    opts.target = host_target;
     opts.base_path.free();
     opts.base_path = dir::cwd(allocator);
     opts.source_dirs.push(dir_of_file(allocator, build_file_path));
@@ -661,6 +662,7 @@ fn evaluate_build_script(
     );
     defer analyzer_context.free();
 
+    analyzer_context.set_target(opts.target);
     analyzer_context.set_profile(opts.profile);
     analyzer_context.set_enabled_features(&opts.features);
 
@@ -1624,6 +1626,13 @@ fn target_os_to_build_int(os: abi::target::OS) int32 {
         case .Linux => return 1;
         case .Windows => return 2;
         case .MacOS => return 3;
+        case .FreeBSD => return 4;
+        case .NetBSD => return 5;
+        case .OpenBSD => return 6;
+        case .Android => return 7;
+        case .IOS => return 8;
+        case .Wasi => return 9;
+        case .Freestanding => return 10;
         case .Unknown => return 0;
     }
 }
@@ -1634,5 +1643,9 @@ fn target_arch_to_build_int(arch: abi::target::Arch) int32 {
         case .Aarch64 => return 1;
         case .RiscV64 => return 2;
         case .Wasm32 => return 3;
+        case .X86 => return 4;
+        case .Arm => return 5;
+        case .RiscV32 => return 6;
+        case .Wasm64 => return 7;
     }
 }

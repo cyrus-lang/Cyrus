@@ -1,0 +1,8 @@
+@target(.Wasm)
+struct WasmHandle {
+    pub raw: uint32,
+}
+
+pub fn main() {
+    var handle: WasmHandle; //~ error: type `WasmHandle` not found
+}

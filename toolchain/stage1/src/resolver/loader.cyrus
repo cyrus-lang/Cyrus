@@ -21,6 +21,7 @@ import std::os::env;
 import std::os;
 
 import parser::ast{ASTModuleSegment};
+import abi::target{TargetInfo};
 import tokens{Span, Loc};
 import source{SourceId};
 import cir::format{
@@ -214,6 +215,7 @@ pub struct ResolverOptions {
     pub features: Vec<String>,
     pub base_path: String,
     pub profile: Profile,
+    pub target: TargetInfo,
 
     pub fn new(allocator: Allocator) Self {
         return Self {
@@ -223,6 +225,7 @@ pub struct ResolverOptions {
             features: Vec.new(allocator),
             stdlib_path: .None,
             profile: .Debug,
+            target: TargetInfo.host(),
         };
     }
 

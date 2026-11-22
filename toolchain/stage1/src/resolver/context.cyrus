@@ -10,6 +10,7 @@ import resolver::symbols{GlobalSymbolRegistry, ScopeBinding, SymbolEntry};
 import resolver::loader{Profile, ProfileSet, is_feature_enabled};
 import resolver::scopes{LocalBinding, LocalScope, GenericScope};
 import cir{GenericParamId, LabelId, SymbolId};
+import abi::target{TargetInfo};
 import cir::tables{DeclTables};
 import diags{DiagContext};
 import source{SourceId};
@@ -24,6 +25,7 @@ pub struct TraverseContext {
     pub profile: Profile,
     pub active_profiles: ProfileSet,
     pub enabled_features: const Vec<String>*,
+    pub target: TargetInfo,
     current_scope: Option<cir::SymbolId>,
     scope_table_stack: Vec<cir::SymbolId>,
     local_scopes: Vec<LocalScope>,
@@ -39,7 +41,8 @@ pub struct TraverseContext {
         file_id: SourceId,
         profile: Profile,
         module_scope_id: cir::SymbolId,
-        enabled_features: const Vec<String>*
+        enabled_features: const Vec<String>*,
+        target: TargetInfo
     ) Self {
         return Self {
             allocator,
@@ -51,6 +54,7 @@ pub struct TraverseContext {
             profile,
             active_profiles: ProfileSet.all(),
             enabled_features,
+            target,
             current_scope: .Some(module_scope_id),
             scope_table_stack: Vec.new(allocator),
             local_scopes: Vec.new(allocator),

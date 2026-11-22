@@ -1,0 +1,83 @@
+// @stdout: native=true wasm=false little=true big=false tag=77 local=1 short=1 multi=true
+
+import std::libc{printf};
+
+const IS_BIG: bool = @endian(.Big);
+const IS_WASM: bool = @target(.Wasm);
+const IS_LITTLE: bool = @endian(.Little);
+const IS_NATIVE: bool = @target(.Native);
+const IS_KNOWN_FAMILY: bool = @family(.Unix, .Windows);
+const IS_KNOWN_FORMAT: bool = @format(.Elf, .MachO, .Coff);
+const IS_SUPPORTED_OS: bool = @os(.Linux, .MacOS, .Windows, .FreeBSD);
+const IS_SUPPORTED_ARCH: bool = @arch(.X86_64, .Aarch64, .RiscV64, .X86);
+
+@os(.Linux, .MacOS, .Windows, .FreeBSD)
+struct PlatformTag {
+    pub code: int32,
+}
+
+@os(.Linux, .MacOS, .Windows, .FreeBSD) {
+    pub fn platform_value() int32 {
+        const tag = PlatformTag { code: 77 };
+        return tag.code;
+    }
+}
+
+@target(.Wasm)
+struct WasmOnly {
+    pub missing: UnknownWasmType,
+}
+
+@target(.Wasm) {
+    fn wasm_only_fn() int32 {
+        const value = WasmOnly { missing: 0 };
+        return value.missing;
+    }
+}
+
+pub fn main() {
+    @assert(IS_NATIVE);
+    @assert(!IS_WASM);
+    @assert(IS_LITTLE);
+    @assert(!IS_BIG);
+    @assert(IS_SUPPORTED_OS);
+    @assert(IS_SUPPORTED_ARCH);
+    @assert(IS_KNOWN_FORMAT);
+    @assert(IS_KNOWN_FAMILY);
+    @assert(@target(.Unix) == @family(.Unix));
+
+    var local_hits: int32 = 0;
+    var short_hits: int32 = 0;
+
+    @endian(.Little) {
+        local_hits += 1;
+    }
+
+    @target(.Native) short_hits += 1;
+
+    @target(.Wasm) {
+        local_hits += wasm_only_fn();
+    }
+
+    const multi_match = @os(.Windows, .Linux, .MacOS, .FreeBSD);
+
+    printf(
+        "native=%s wasm=%s little=%s big=%s tag=%d local=%d short=%d multi=%s",
+        bool_str(IS_NATIVE),
+        bool_str(IS_WASM),
+        bool_str(IS_LITTLE),
+        bool_str(IS_BIG),
+        platform_value(),
+        local_hits,
+        short_hits,
+        bool_str(multi_match)
+    );
+}
+
+fn bool_str(value: bool) const uint8* {
+    if (value) {
+        return "true";
+    }
+
+    return "false";
+}

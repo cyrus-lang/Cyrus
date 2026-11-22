@@ -12,6 +12,7 @@ import std::option{Option};
 import .::monomorph{MonomorphRegistry, InstanceSite};
 import resolver::loader{Profile, is_feature_enabled};
 import resolver::symbols{GlobalSymbolRegistry};
+import abi::target{TargetInfo};
 import .::vtables{VTableRegistry};
 import diags{DiagContext};
 import tokens{Span};
@@ -46,6 +47,7 @@ pub struct AnalyzerContext {
     pub dispatcher: AnalyzerDispatcher,
     pub enabled_features: const Vec<String>*,
     pub profile: Profile,
+    pub target: TargetInfo,
 
     pub fn new(
         allocator: Allocator,
@@ -89,6 +91,7 @@ pub struct AnalyzerContext {
             dispatcher,
             enabled_features: null,
             profile: .Debug,
+            target: TargetInfo.host(),
         };
     }
 
@@ -98,6 +101,10 @@ pub struct AnalyzerContext {
 
     pub fn set_profile(self: Self*, profile: Profile) {
         self->profile = profile;
+    }
+
+    pub fn set_target(self: Self*, target: TargetInfo) {
+        self->target = target;
     }
 
     pub fn is_feature_enabled(self: const Self*, feature_name: const uint8*) bool {

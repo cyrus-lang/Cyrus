@@ -8872,7 +8872,17 @@ pub struct Emitter {
                         return String.from_str(self->allocator, "\"\"");
                     }
 
-                    case .Debug | .Release | .Test | .Feature => {
+                    case .Debug
+                    | .Release
+                    | .Test
+                    | .Feature
+                    | .Os
+                    | .Arch
+                    | .Target
+                    | .Endian
+                    | .Format
+                    | .Abi
+                    | .Family => {
                         return String.from_str(self->allocator, "false");
                     }
 
