@@ -3,7 +3,7 @@
 import std::libc{printf};
 
 pub fn main() {
-    var x: @typeof('a');
+    var x: @type_of('a');
     x = 'b';
     printf("%c\n", x);
 }

@@ -78,7 +78,7 @@ pub const SIG_ATOMIC_MAX: types::c_sig_atomic = 2147483647;
 // Computed manually only for x64 system,
 // Must be fixed after implementing comptime.
 // 
-// pub const SIZE_MAX: types::c_size = ((1 << (@sizeof(types::c_size) * 8 - 1)) - 1) * 2 + 1;
+// pub const SIZE_MAX: types::c_size = ((1 << (@size_of(types::c_size) * 8 - 1)) - 1) * 2 + 1;
 // 
 
 pub const SIZE_MAX: types::c_size = 18446744073709551615;

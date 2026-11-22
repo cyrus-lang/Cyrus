@@ -29,7 +29,7 @@ pub struct FixedBufferAllocator : Allocator {
 
     [[inline]]
     pub fn alloc(self: Self*, size: usize) void* {
-        return self->alloc_aligned(size, @sizeof(usize));
+        return self->alloc_aligned(size, @size_of(usize));
     }
 
     [[inline]]

@@ -13,7 +13,7 @@ pub interface Allocator {
 
 [[inline]]
 pub fn alloc_init<T>(allocator: Allocator, value: T) T* {
-	var heap: T* = allocator.alloc(@sizeof(T));
+	var heap: T* = allocator.alloc(@size_of(T));
 	
 	if (!heap) {
 		return null;

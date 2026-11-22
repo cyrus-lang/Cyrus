@@ -343,7 +343,7 @@ impl<'source_file> Parser<'source_file> {
 
             // `Foo*` written in expression position is a pointer type, not
             // a multiplication: the first argument of `@cast(Foo*, ptr)` or
-            // `@sizeof(Foo*)`. It only qualifies as a type when the run of
+            // `@size_of(Foo*)`. It only qualifies as a type when the run of
             // `*` is followed by a delimiter, so `a * b` and `a *= 2` keep
             // being parsed as multiplication and compound assignment.
             if self.peek_token_is(TokenKind::Asterisk) && self.pointer_suffix_ahead() {

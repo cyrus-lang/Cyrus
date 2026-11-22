@@ -980,7 +980,7 @@ pub struct Lexer {
 
     [[inline]]
     fn init_ident(self: Self*, str: String) TokenKind* {
-        var heap: TokenKind* = self->arena.alloc(@sizeof(TokenKind));
+        var heap: TokenKind* = self->arena.alloc(@size_of(TokenKind));
         @assert(heap, "ident allocation failed");
         *heap = TokenKind.Ident(str);
         return heap;
@@ -988,7 +988,7 @@ pub struct Lexer {
 
     [[inline]]
     fn init_string_literal(self: Self*, value: String, suffix: Option<StringPrefix>) TokenKind* {
-        var heap: TokenKind* = self->arena.alloc(@sizeof(TokenKind));
+        var heap: TokenKind* = self->arena.alloc(@size_of(TokenKind));
         @assert(heap, "string literal allocation failed");
         *heap = TokenKind.Literal(Literal.String { value, suffix });
         return heap;

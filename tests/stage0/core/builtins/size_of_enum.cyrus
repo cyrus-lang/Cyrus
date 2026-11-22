@@ -13,6 +13,6 @@ enum WithData {
 }
 
 pub fn main() {
-    printf("%d ", @sizeof(Small));
-    printf("%d\n", @sizeof(WithData));
+    printf("%d ", @size_of(Small));
+    printf("%d\n", @size_of(WithData));
 }

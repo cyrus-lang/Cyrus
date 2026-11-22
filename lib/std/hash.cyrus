@@ -46,7 +46,7 @@ pub fn hash_bytes(bytes: const uint8*, len: usize) uint64 {
 pub fn hash_ptr(ptr: const void*) uint64 {
     const bytes: const uint8* = @cast(const uint8*, @cast(uintptr, ptr));
     
-    return hash_bytes(bytes, @sizeof(const void*));
+    return hash_bytes(bytes, @size_of(const void*));
 }
 
 pub fn eq_str(a: const uint8*, b: const uint8*) bool {

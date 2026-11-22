@@ -97,8 +97,8 @@ pub struct ArenaAllocator : Allocator {
 
         var effective_align = align;
 
-        if (effective_align < @sizeof(usize)) {
-            effective_align = @sizeof(usize);
+        if (effective_align < @size_of(usize)) {
+            effective_align = @size_of(usize);
         }
 
         switch (self->nodes->peek_first()) case .Some(node) else {
@@ -108,7 +108,7 @@ pub struct ArenaAllocator : Allocator {
         var arena = &node->value;
 
         const base_addr = @cast(uintptr, arena->ptr) + arena->used;
-        const aligned_addr = align_up(base_addr + @sizeof(usize), effective_align);
+        const aligned_addr = align_up(base_addr + @size_of(usize), effective_align);
         const total_needed = (aligned_addr - base_addr) + size;
 
         if (arena->used + total_needed <= arena->capacity) {
@@ -137,7 +137,7 @@ pub struct ArenaAllocator : Allocator {
         var new_arena = &new_node->value;
 
         const new_base = @cast(uintptr, new_arena->ptr);
-        const new_aligned = align_up(new_base + @sizeof(usize), effective_align);
+        const new_aligned = align_up(new_base + @size_of(usize), effective_align);
         const new_total = (new_aligned - new_base) + size;
 
         new_arena->used += new_total;
@@ -252,7 +252,7 @@ pub struct ArenaAllocator : Allocator {
         const ptr: uint8* = self->child_allocator.alloc(capacity);
         
         var node: SinglyNode<ArenaNode>* = 
-            self->child_allocator.alloc(@sizeof(SinglyNode<ArenaNode>));
+            self->child_allocator.alloc(@size_of(SinglyNode<ArenaNode>));
         
         *node = SinglyNode {
             value: ArenaNode {

@@ -21,7 +21,7 @@ pub struct LibcAllocator : Allocator {
 
 	pub fn alloc_aligned(self: Self*, size: usize, align: usize) void* {
 		@assert(is_power_of_two(align), "alignment must be power of two");
-		@assert(align >= @sizeof(void*), "alignment must be >= sizeof(void*)");
+		@assert(align >= @size_of(void*), "alignment must be >= size_of(void*)");
 
 		var ptr: void* = null;
 

@@ -203,10 +203,10 @@ impl<'a> AnalysisContext<'a> {
             TypedBuiltinKind::FileName => self.analyze_builtin_file_name(builtin_func),
             TypedBuiltinKind::Line => self.analyze_builtin_line(builtin_func),
             TypedBuiltinKind::Column => self.analyze_builtin_column(builtin_func),
-            TypedBuiltinKind::SizeOf => self.analyze_builtin_sizeof(builtin_func),
-            TypedBuiltinKind::AlignOf => self.analyze_builtin_alignof(builtin_func),
-            TypedBuiltinKind::OffsetOf => self.analyze_builtin_offsetof(builtin_func),
-            TypedBuiltinKind::TypeOf => self.analyze_builtin_typeof(builtin_func),
+            TypedBuiltinKind::SizeOf => self.analyze_builtin_size_of(builtin_func),
+            TypedBuiltinKind::AlignOf => self.analyze_builtin_align_of(builtin_func),
+            TypedBuiltinKind::OffsetOf => self.analyze_builtin_offset_of(builtin_func),
+            TypedBuiltinKind::TypeOf => self.analyze_builtin_type_of(builtin_func),
             TypedBuiltinKind::Memcpy => self.analyze_builtin_memcpy(builtin_func),
             TypedBuiltinKind::Memset => self.analyze_builtin_memset(builtin_func),
             TypedBuiltinKind::Cast => self.analyze_builtin_cast(builtin_func),
@@ -262,7 +262,7 @@ impl<'a> AnalysisContext<'a> {
         Some(ret_type)
     }
 
-    fn analyze_builtin_alignof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+    fn analyze_builtin_align_of(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let operand = builtin_func.args.first_mut().unwrap();
 
         self.analyze_expr_non_terminal(operand, None);
@@ -279,7 +279,7 @@ impl<'a> AnalysisContext<'a> {
         Some(ret_type)
     }
 
-    fn analyze_builtin_sizeof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+    fn analyze_builtin_size_of(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let operand = builtin_func.args.first_mut().unwrap();
 
         self.analyze_expr_non_terminal(operand, None)?;
@@ -298,7 +298,7 @@ impl<'a> AnalysisContext<'a> {
         Some(ret_type)
     }
 
-    fn analyze_builtin_offsetof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+    fn analyze_builtin_offset_of(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         for arg in &mut builtin_func.args {
             self.analyze_expr_non_terminal(arg, None);
         }
@@ -369,7 +369,7 @@ impl<'a> AnalysisContext<'a> {
         Some(ret_type)
     }
 
-    fn analyze_builtin_typeof(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
+    fn analyze_builtin_type_of(&mut self, builtin_func: &mut TypedBuiltinFunc) -> Option<SemaType> {
         let operand = builtin_func.args.first_mut().unwrap();
 
         self.analyze_expr_non_terminal(operand, None);

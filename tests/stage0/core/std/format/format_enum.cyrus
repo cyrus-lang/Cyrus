@@ -17,16 +17,16 @@ enum Color : Format {
                case .Red => writer.write_all("red");
                case .Blue => writer.write_all("blue");
                case .Custom(a, b, c) => {
-                    var buffer: uint8[@sizeof(a)];
+                    var buffer: uint8[@size_of(a)];
                     
                     writer.write("(");
-                    snprintf(&buffer[0], @sizeof(a), "%d", a);
+                    snprintf(&buffer[0], @size_of(a), "%d", a);
                     writer.write(&buffer[0]);
                     writer.write(",");
-                    snprintf(&buffer[0], @sizeof(a), " %d", b);
+                    snprintf(&buffer[0], @size_of(a), " %d", b);
                     writer.write(&buffer[0]);
                     writer.write(",");
-                    snprintf(&buffer[0], @sizeof(a), " %d", c);
+                    snprintf(&buffer[0], @size_of(a), " %d", c);
                     writer.write(&buffer[0]);
                     writer.write(")");
                }

@@ -60,5 +60,5 @@ pub fn main() {
     accs[1].push(7);
     printf("%d %d ", accs[0].total, accs[1].total);
 
-    printf("%d %d\n", @sizeof(Acc<int32>), @sizeof(Acc<float64>));
+    printf("%d %d\n", @size_of(Acc<int32>), @size_of(Acc<float64>));
 }

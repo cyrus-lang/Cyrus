@@ -28,7 +28,7 @@ pub struct Forest {
 
 pub fn main() {
     const tree_count: int32 = 2;
-    var trees: Tree* = malloc(@sizeof(Tree) * @cast(usize, tree_count));
+    var trees: Tree* = malloc(@size_of(Tree) * @cast(usize, tree_count));
     defer free(trees);
 
     trees[0] = Tree { value: 10, children: null };

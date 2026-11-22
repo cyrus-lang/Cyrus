@@ -175,7 +175,7 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     },
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::SizeOf,
-        name: "sizeof",
+        name: "size_of",
         family: TypedBuiltinFamily::ConstEval,
         phase: TypedBuiltinPhase::ConstEval,
         form: TypedBuiltinForm::Expr,
@@ -185,7 +185,7 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     },
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::AlignOf,
-        name: "alignof",
+        name: "align_of",
         family: TypedBuiltinFamily::ConstEval,
         phase: TypedBuiltinPhase::ConstEval,
         form: TypedBuiltinForm::Expr,
@@ -195,7 +195,7 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     },
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::OffsetOf,
-        name: "offsetof",
+        name: "offset_of",
         family: TypedBuiltinFamily::ConstEval,
         phase: TypedBuiltinPhase::ConstEval,
         form: TypedBuiltinForm::Expr,
@@ -205,7 +205,7 @@ pub static BUILTIN_SPECS: &[TypedBuiltinSpec] = &[
     },
     TypedBuiltinSpec {
         kind: TypedBuiltinKind::TypeOf,
-        name: "typeof",
+        name: "type_of",
         family: TypedBuiltinFamily::ConstEval,
         phase: TypedBuiltinPhase::ConstEval,
         form: TypedBuiltinForm::Expr,
@@ -326,10 +326,10 @@ builtin_lookup! {
         "file_name" => TypedBuiltinKind::FileName,
         "line" => TypedBuiltinKind::Line,
         "column" => TypedBuiltinKind:: Column,
-        "sizeof" => TypedBuiltinKind::SizeOf,
-        "alignof" => TypedBuiltinKind::AlignOf,
-        "offsetof" => TypedBuiltinKind::OffsetOf,
-        "typeof" => TypedBuiltinKind::TypeOf,
+        "size_of" => TypedBuiltinKind::SizeOf,
+        "align_of" => TypedBuiltinKind::AlignOf,
+        "offset_of" => TypedBuiltinKind::OffsetOf,
+        "type_of" => TypedBuiltinKind::TypeOf,
 
         // intrinsics
         "cast" => TypedBuiltinKind::Cast,

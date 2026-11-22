@@ -17,7 +17,7 @@ pub struct Vec<T> {
     len: usize,
 
     pub fn new(allocator: Allocator) Self {
-        const data: T* = allocator.alloc(@sizeof(T));
+        const data: T* = allocator.alloc(@size_of(T));
 
         if (!data) {
             @panic("allocation failed");
@@ -35,7 +35,7 @@ pub struct Vec<T> {
     [[inline]]
     pub fn with_capacity(allocator: Allocator, cap: usize) Self {
         if (cap == 0) {
-            const data: T* = allocator.alloc(@sizeof(T));
+            const data: T* = allocator.alloc(@size_of(T));
             
             if (!data) {
                 @panic("allocation failed");
@@ -49,7 +49,7 @@ pub struct Vec<T> {
             };
         }
 
-        const size = checked_mul(cap, @sizeof(T)).unwrap();
+        const size = checked_mul(cap, @size_of(T)).unwrap();
 
         const data: T* = allocator.alloc(size);
 
@@ -69,7 +69,7 @@ pub struct Vec<T> {
             memmove(
                 self->data + original_len,
                 self->data,
-                checked_mul(original_len, @sizeof(T)).unwrap()
+                checked_mul(original_len, @size_of(T)).unwrap()
             );
 
             self->len = checked_add(self->len, original_len).unwrap();
@@ -90,7 +90,7 @@ pub struct Vec<T> {
         memmove(
             self->data + old_len,
             ptr,
-            checked_mul(len, @sizeof(T)).unwrap()
+            checked_mul(len, @size_of(T)).unwrap()
         );
 
         self->len = checked_add(old_len, len).unwrap();
@@ -156,7 +156,7 @@ pub struct Vec<T> {
         const dest: T* = self->data + index + 1;
         const count = self->len - index;
 
-        memmove(dest, src, count * @sizeof(T));
+        memmove(dest, src, count * @size_of(T));
 
         self->data[index] = value;
         self->len += 1;
@@ -293,7 +293,7 @@ pub struct Vec<T> {
 
         const count = self->len - index - 1;
 
-        memmove(dest, src, count * @sizeof(T));
+        memmove(dest, src, count * @size_of(T));
 
         self->len -= 1;
 
@@ -366,7 +366,7 @@ pub struct Vec<T> {
 
         const new_data: T* = self->allocator.realloc(
             self->data,
-            checked_mul(new_cap, @sizeof(T)).unwrap()
+            checked_mul(new_cap, @size_of(T)).unwrap()
         );
 
         if (new_data == null) {

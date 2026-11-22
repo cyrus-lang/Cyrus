@@ -89,5 +89,5 @@ pub fn main() {
     const empty_h: Holder<int32> = Holder { inner: none_opt, tag: "empty" };
     printf("%s %d ", empty_h.tag, empty_h.get_or(-7));
 
-    printf("%d %d\n", @sizeof(Option<int32>), @sizeof(Holder<float64>));
+    printf("%d %d\n", @size_of(Option<int32>), @size_of(Holder<float64>));
 }

@@ -12,9 +12,9 @@ struct KV<K, V> {
 }
 
 pub fn main() {
-    printf("%d ", @sizeof(Box<uint64>));
-    printf("%d ", @sizeof(KV<int32, uint8>));
-    printf("%d ", @sizeof(Box<()>));
-    printf("%d ", @sizeof(KV<(), ()>));
-    printf("%d\n", @sizeof(KV<(), void>));
+    printf("%d ", @size_of(Box<uint64>));
+    printf("%d ", @size_of(KV<int32, uint8>));
+    printf("%d ", @size_of(Box<()>));
+    printf("%d ", @size_of(KV<(), ()>));
+    printf("%d\n", @size_of(KV<(), void>));
 }

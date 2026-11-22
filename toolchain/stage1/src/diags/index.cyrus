@@ -152,7 +152,7 @@ pub struct Diag {
         mesg: const uint8*,
         span: Span
     ) Self* {
-        const self: Diag* = allocator.alloc(@sizeof(Diag));
+        const self: Diag* = allocator.alloc(@size_of(Diag));
         @assert(self, "diag allocation failed");
 
         *self = Self {

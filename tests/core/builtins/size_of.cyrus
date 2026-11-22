@@ -1,0 +1,11 @@
+// @stdout: 4 8 16 8 12
+
+import std::libc{printf};
+
+pub fn main() {
+    printf("%d ", @size_of(int32)); // works 
+    printf("%d ", @size_of(float64)); // works 
+    printf("%d ", @size_of(struct { a: int32*, b: int32* })); 
+    printf("%d ", @size_of(enum(int64) { A, B }));   
+    printf("%d ", @size_of(struct { c: int32, x: struct { a: int32 }, a: int32 }));
+}
