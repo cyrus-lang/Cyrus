@@ -11,9 +11,9 @@ import std::errors{ErrorOr};
 import std::option{Option};
 import std::libc{
     fprintf, printf, strlen,
-    strcmp, strtod, strtol,
-    errno, isalpha, isalnum,
-    stderr, ERANGE
+    isalpha, isalnum, stderr,
+    strtod, strtol, errno,
+    ERANGE
 };
 
 const CLI_ARENA_INITIAL_SIZE: usize = 4096;
@@ -191,7 +191,7 @@ pub struct App {
                 continue;
             }
 
-            if (strcmp(arg, "--") == 0) {
+            if (arg == "--") {
                 i += 1;
                 
                 while (i < argc) {
@@ -522,7 +522,7 @@ pub struct Cmds {
         for (var i: usize = 0; i < self->inner.len(); i += 1) {
             const cmd = self->inner.get_owned(i).unwrap();
 
-            if (strcmp(cmd->name, name) == 0) {
+            if (cmd->name == name) {
                return .Some(cmd);
             }
         }
@@ -615,12 +615,8 @@ pub struct Cmd {
 
             // Check with short name
             switch (opt->short_name) {
-                case .Some(char) => {
-                    // Convert uint8 to uint8* 
-                    // to be able to compare them
-                    const temp: uint8[2] = { char, '\0' };
-
-                    if (strcmp(temp, name) == 0) {
+                case .Some(short_char) => {
+                    if (name[0] == short_char && name[1] == '\0') {
                         return .Some(opt);
                     }
                 }
@@ -628,7 +624,7 @@ pub struct Cmd {
             }
 
             // Check with long name
-            if (strcmp(opt->long_name, name) == 0) {
+            if (opt->long_name == name) {
                return .Some(opt);
             }
         }
@@ -802,12 +798,8 @@ pub struct Opts {
 
             // Check with short name
             switch (opt->short_name) {
-                case .Some(char) => {
-                    // Convert uint8 to uint8* 
-                    // to be able to compare them
-                    const temp: uint8[2] = { char, '\0' };
-
-                    if (strcmp(temp, name) == 0) {
+                case .Some(short_char) => {
+                    if (name[0] == short_char && name[1] == '\0') {
                         return .Some(opt);
                     }
                 }
@@ -815,7 +807,7 @@ pub struct Opts {
             }
 
             // Check with long name
-            if (strcmp(opt->long_name, name) == 0) {
+            if (opt->long_name == name) {
                return .Some(opt);
             }
         }
@@ -1106,15 +1098,19 @@ fn is_value_valid(ty: ValueType, value: Value) bool {
 
 [[inline]]
 fn parse_bool(ok: bool*, arg: const uint8*) bool {
-    if (((strcmp(arg, "true") == 0 || strcmp(arg, "yes") == 0) ||
-        (strcmp(arg, "on") == 0)) || strcmp(arg, "enabled") == 0)
+    if (arg == "true" || 
+        arg == "yes" || 
+        arg == "on" || 
+        arg == "enabled") 
     {
         *ok = true;
         return true;
     }
 
-    if (((strcmp(arg, "false") == 0 || strcmp(arg, "no") == 0) ||
-        (strcmp(arg, "off") == 0)) || strcmp(arg, "disabled") == 0)
+    if (arg == "false" || 
+        arg == "no" || 
+        arg == "off" || 
+        arg == "disabled") 
     {
         *ok = true;
         return false;

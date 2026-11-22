@@ -4025,7 +4025,11 @@ pub struct ParserStmts {
         if (self->state->is(.LeftBrace)) {
             var block: Option<ast::NodeId> = .None;
 
-            if (is_toplevel && args.len() == 0) {
+            const is_named_test_case = is_toplevel &&
+                args.len() > 0 &&
+                name.str.as_str_const() != "feature";
+
+            if (is_toplevel && !is_named_test_case) {
                 switch (self->parse_toplevel_block()) case .Some(toplevel_stmts) else {
                     args.free();
                     self->state->sync();

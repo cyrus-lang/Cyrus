@@ -1,0 +1,4 @@
+@feature(123) //~ error: builtin `@feature` requires a string literal as its argument
+struct BadFeature {}
+
+pub fn main() {}

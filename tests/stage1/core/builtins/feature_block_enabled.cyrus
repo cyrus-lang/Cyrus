@@ -1,0 +1,69 @@
+// @compilerArgs: -F API
+// @stdout: value=42 ver=2 local=1 short=1 expr=true
+
+import std::libc{printf};
+
+const API_ENABLED: bool = @feature("API");
+
+@feature("API")
+struct ApiData {
+    pub value: int32,
+}
+
+@feature("API") {
+    pub const API_VER: int32 = 2;
+
+    pub fn make_data(value: int32) ApiData {
+        return ApiData { value };
+    }
+}
+
+@feature("DISABLED")
+struct Hidden {
+    pub missing: UnknownType,
+}
+
+@feature("DISABLED") {
+    fn hidden_helper() Hidden {
+        return Hidden { missing: 0 };
+    }
+}
+
+pub fn main() {
+    const data = make_data(42);
+    var local_count: int32 = 0;
+    var short_count: int32 = 0;
+    var expr_flag = false;
+
+    @feature("API") {
+        local_count += 1;
+    }
+
+    @feature("API") short_count += 1;
+
+    @feature("DISABLED") {
+        const unused = hidden_helper();
+        printf("%d", unused.missing);
+    }
+
+    if (@feature("API")) {
+        expr_flag = true;
+    }
+
+    printf(
+        "value=%d ver=%d local=%d short=%d expr=%s",
+        data.value,
+        API_VER,
+        local_count,
+        short_count,
+        bool_str(API_ENABLED && expr_flag)
+    );
+}
+
+fn bool_str(value: bool) const uint8* {
+    if (value) {
+        return "true";
+    }
+
+    return "false";
+}

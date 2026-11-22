@@ -7,10 +7,10 @@ import std::option{Option};
 import std::mem{Allocator};
 import std::slices{Slice};
 import std::libc{
-    strlen, strcmp, memmove,
     isspace, tolower, toupper,
     strtol, strtoll, strtoull,
-    strtod, errno, ERANGE
+    strtod, errno, ERANGE,
+    strlen, memmove,
 };
 
 pub struct String {
@@ -197,7 +197,7 @@ pub struct String {
 
     [[inline]]
     pub fn eq(self: const Self*, other: Self*) bool {
-        return strcmp(self->as_str_const(), other->as_str_const()) == 0;
+        return self->as_str_const() == other->as_str_const();
     }
 
     pub fn starts_with(self: const Self*, prefix: const uint8*) bool {

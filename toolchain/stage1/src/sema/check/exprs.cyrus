@@ -188,39 +188,27 @@ pub fn analyze_expr_non_terminal(
             }
         }
         
-        case .Builtin(.BuiltinFunc(var bf)) => {
-            expr_type = analyze_builtin_expr(context, &bf);
-            
-            var folded_to_bool = false;
-            
-            switch (cir::lookup_builtin(bf.name.str.as_str_const())) {
-                case .Some(.Feature) => {
-                    if (bf.args.len() == 1) {
-                        const arg0 = bf.args.get(0).unwrap();
-                        switch (arg0->kind) {
-                            case .Literal(lit) => {
-                                switch (lit.kind) {
-                                    case .String { value, suffix: _ } => {
-                                        const enable = context->is_feature_enabled(value.as_str_const());
-                                        expr->kind = .Literal(cir::LiteralExpr {
-                                            ty: .Some(.Plain(.Bool)),
-                                            kind: .Bool(enable),
-                                            span: bf.span,
-                                        });
-                                        folded_to_bool = true;
-                                    }
-                                    else => {}
-                                }
-                            }
-                            else => {}
-                        }
+        case .Builtin(.BuiltinFunc(var builtin_func)) => {
+            expr_type = analyze_builtin_expr(context, &builtin_func);
+
+            var folded = false;
+
+            if (expr_type.is_some()) {
+                switch (try_fold_condition_builtin(context, &builtin_func)) {
+                    case .Some(condition_value) => {
+                        expr->kind = .Literal(cir::LiteralExpr {
+                            ty: .Some(.Plain(.Bool)),
+                            kind: .Bool(condition_value),
+                            span: builtin_func.span,
+                        });
+                        folded = true;
                     }
+                    case .None => {}
                 }
-                else => {}
             }
 
-            if (!folded_to_bool) {
-                expr->kind = .Builtin(.BuiltinFunc(bf));
+            if (!folded) {
+                expr->kind = .Builtin(.BuiltinFunc(builtin_func));
             }
         }
         
@@ -2983,10 +2971,77 @@ fn analyze_builtin_func_semantics(
             return analyze_builtin_usize_ret(context, builtin_func);
         }
 
+        case .Debug | .Release | .Test => {
+            return analyze_builtin_profile_expr(context, builtin_kind, builtin_func);
+        }
+
         case .Feature => return analyze_builtin_feature(context, builtin_func);
 
         else => return .None;
     }
+}
+
+fn try_fold_condition_builtin(
+    context: AnalyzerContext*,
+    builtin_func: const cir::BuiltinFunc*
+) Option<bool> {
+    switch (cir::lookup_builtin(builtin_func->name.str.as_str_const())) {
+        case .Some(.Feature) => {
+            if (builtin_func->args.len() == 1) {
+                const argument = builtin_func->args.get_const(0).unwrap();
+
+                switch (argument->literal_const_string_value()) {
+                    case .Some(feature_name) => {
+                        return .Some(context->is_feature_enabled(feature_name));
+                    }
+                    case .None => {}
+                }
+            }
+        }
+        case .Some(.Debug) => {
+            if (builtin_func->args.len() == 0) {
+                return .Some(context->profile == .Debug);
+            }
+        }
+        case .Some(.Release) => {
+            if (builtin_func->args.len() == 0) {
+                return .Some(context->profile == .Release);
+            }
+        }
+        case .Some(.Test) => {
+            if (builtin_func->args.len() == 0) {
+                return .Some(context->profile == .Test);
+            }
+        }
+        else => {}
+    }
+
+    return .None;
+}
+
+fn analyze_builtin_profile_expr(
+    context: AnalyzerContext*,
+    builtin_kind: cir::BuiltinKind,
+    builtin_func: cir::BuiltinFunc*
+) Option<cir::SemaType> {
+    const builtin_spec = cir::builtin_spec_of(builtin_kind);
+
+    if (builtin_func->args.len() > 0) {
+        diags::report_builtin_too_many_args(
+            context->dctx,
+            context->allocator,
+            builtin_func->span,
+            builtin_spec.name,
+            0,
+            builtin_func->args.len()
+        );
+        return .None;
+    }
+
+    const ret_type: cir::SemaType = .Plain(.Bool);
+    builtin_func->ret_type = .Some(ret_type);
+
+    return .Some(ret_type);
 }
 
 fn analyze_builtin_feature(
@@ -2997,28 +3052,23 @@ fn analyze_builtin_feature(
         return .None;
     }
 
-    const arg = builtin_func->args.get(0).unwrap();
-    analyze_expr_non_terminal(context, arg, .None);
+    const argument = builtin_func->args.get(0).unwrap();
 
-    switch (arg->kind) {
-        case .Literal(lit) => {
-            switch (lit.kind) {
-                case .String { value: _, suffix: _ } => {
-                    const ret_type: cir::SemaType = .Plain(.Bool);
-                    builtin_func->ret_type = .Some(ret_type);
-                    return .Some(ret_type);
-                }
-                else => {}
-            }
-        }
-        else => {}
+    analyze_expr_non_terminal(context, argument, .None);
+
+    if (argument->literal_const_string_value().is_some()) {
+        const ret_type: cir::SemaType = .Plain(.Bool);
+        builtin_func->ret_type = .Some(ret_type);
+
+        return .Some(ret_type);
     }
 
     diags::report_builtin_feature_requires_string_literal(
         context->dctx,
         context->allocator,
-        arg->span
+        argument->span
     );
+
     return .None;
 }
 
@@ -6755,7 +6805,7 @@ pub fn check_builtin_form(
     actual: cir::BuiltinForm,
     span: Span
 ) bool {
-    if (builtin_spec.form != actual) {
+    if (builtin_spec.form != .ExprOrStmt && builtin_spec.form != actual) {
         diags::report_invalid_builtin_form(
             context->dctx,
             context->allocator,

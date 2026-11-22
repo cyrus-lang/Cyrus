@@ -4,11 +4,12 @@
 import std::option{Option};
 import std::string{String};
 import std::mem{Allocator};
+import std::os::env;
 import std::libc{
     closedir, fopen, fclose,
     getcwd, opendir, mkdtemp,
-    getenv, remove, rmdir,
-    mkdir, chdir,
+    remove, rmdir, mkdir,
+    chdir,
 };
 
 const DEFAULT_DIR_MODE: uint32 = 493; // 0755 in octal
@@ -61,12 +62,9 @@ pub struct TempDir {
     pub fn create(allocator: Allocator) Option<Self> {
         var template = String.new(allocator);
 
-        const tmpdir = getenv("TMPDIR");
-
-        if (tmpdir != null) {
-            template.push_str(tmpdir);
-        } else {
-            template.push_str("/tmp");
+        switch (env::get("TMPDIR")) {
+            case .Some(temp_dir) => template.push_str(temp_dir);
+            case .None => template.push_str("/tmp");
         }
         
         // FIXME: Use a random string/number to make it unique

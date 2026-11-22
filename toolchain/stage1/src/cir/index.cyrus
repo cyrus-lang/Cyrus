@@ -282,6 +282,7 @@ pub enum Builtin {
 pub enum BuiltinForm {
     Expr,
     Stmt,
+    ExprOrStmt,
 }
 
 pub struct BuiltinFunc {
@@ -298,6 +299,23 @@ pub struct BuiltinBlock {
     pub is_toplevel: Option<bool>,
     pub is_active: bool,
     pub span: Span,
+
+    pub fn is_named_test_case(self: const Self*) bool {
+        switch (self->is_toplevel) {
+            case .Some(toplevel) => {
+                if (!toplevel) {
+                    return false;
+                }
+            }
+            case .None => return false;
+        }
+
+        if (self->args.len() == 0) {
+            return false;
+        }
+
+        return self->name.str.as_str_const() != "feature";
+    }
 }
 
 pub enum BuiltinFamily {
@@ -488,6 +506,7 @@ pub fn lookup_builtin(name: const uint8*) Option<BuiltinKind> {
         case "memmove" => return .Some(.Memmove);
         case "alignof" => return .Some(.AlignOf);
         case "release" => return .Some(.Release);
+        case "feature" => return .Some(.Feature);
         case "next_up" => return .Some(.NextUp);
         case "mul_add" => return .Some(.MulAdd);
         case "typeof" => return .Some(.TypeOf);
@@ -550,7 +569,6 @@ pub fn lookup_builtin(name: const uint8*) Option<BuiltinKind> {
         case "log" => return .Some(.Log);
         case "nan" => return .Some(.Nan);
         case "erf" => return .Some(.Erf);
-        case "feature" => return .Some(.Feature);
 
         else => return .None;
     }
@@ -1000,7 +1018,7 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
             name: "debug",
             family: .ConstEval,
             phase: .Resolver,
-            form: .Stmt,
+            form: .ExprOrStmt,
             unreachable: false,
             min_args: 0,
             max_args: .Some(1),
@@ -1011,7 +1029,7 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
             name: "release",
             family: .ConstEval,
             phase: .Resolver,
-            form: .Stmt,
+            form: .ExprOrStmt,
             unreachable: false,
             min_args: 0,
             max_args: .Some(1),
@@ -1022,7 +1040,7 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
             name: "test",
             family: .ConstEval,
             phase: .Resolver,
-            form: .Stmt,
+            form: .ExprOrStmt,
             unreachable: false,
             min_args: 0,
             max_args: .Some(1),
@@ -1032,8 +1050,8 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
             kind,
             name: "feature",
             family: .ConstEval,
-            phase: .ConstEval,
-            form: .Expr,
+            phase: .Resolver,
+            form: .ExprOrStmt,
             unreachable: false,
             min_args: 1,
             max_args: .Some(1),

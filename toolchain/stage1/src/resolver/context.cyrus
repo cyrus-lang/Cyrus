@@ -3,11 +3,12 @@
 
 import std::collections{Vec};
 import std::option{Option};
+import std::string{String};
 import std::mem{Allocator};
 
 import resolver::symbols{GlobalSymbolRegistry, ScopeBinding, SymbolEntry};
+import resolver::loader{Profile, ProfileSet, is_feature_enabled};
 import resolver::scopes{LocalBinding, LocalScope, GenericScope};
-import resolver::loader{Profile, ProfileSet};
 import cir{GenericParamId, LabelId, SymbolId};
 import cir::tables{DeclTables};
 import diags{DiagContext};
@@ -22,6 +23,7 @@ pub struct TraverseContext {
     pub file_id: SourceId,
     pub profile: Profile,
     pub active_profiles: ProfileSet,
+    pub enabled_features: const Vec<String>*,
     current_scope: Option<cir::SymbolId>,
     scope_table_stack: Vec<cir::SymbolId>,
     local_scopes: Vec<LocalScope>,
@@ -37,6 +39,7 @@ pub struct TraverseContext {
         file_id: SourceId,
         profile: Profile,
         module_scope_id: cir::SymbolId,
+        enabled_features: const Vec<String>*
     ) Self {
         return Self {
             allocator,
@@ -47,12 +50,17 @@ pub struct TraverseContext {
             file_id,
             profile,
             active_profiles: ProfileSet.all(),
+            enabled_features,
             current_scope: .Some(module_scope_id),
             scope_table_stack: Vec.new(allocator),
             local_scopes: Vec.new(allocator),
             generic_scopes: Vec.new(allocator),
             next_label_id: 0,
         };
+    }
+
+    pub fn is_feature_enabled(self: const Self*, feature_name: const uint8*) bool {
+        return is_feature_enabled(self->enabled_features, feature_name);
     }
 
     pub fn enter_scope_table(self: Self*, scope_id: cir::SymbolId) {
