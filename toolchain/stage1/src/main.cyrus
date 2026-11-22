@@ -148,9 +148,16 @@ fn app(argc: c_int, argv: c_char**) int32 {
         .help("Print compiler pipeline timing analysis")
     );
 
+    const lib_opt = opts.add(
+        *cli::Opt.new(allocator, "lib")
+        .help("Create a new library project")
+    );
+
     const new_cmd =
         cli::Cmd.new(allocator, "new", command_new)
-        .help("Create new project");
+        .help("Create new project")
+        ->optional_argument(.Str)
+        ->add_option(lib_opt);
 
     const run_cmd =
         cli::Cmd.new(allocator, "run", command_run)

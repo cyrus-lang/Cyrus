@@ -15,6 +15,7 @@ import std::os;
 
 import .::build_system{build_or_run_project, ends_with_build_cyrus};
 import .::index{CompilerConfig, CompilerContext, CompilerTimings};
+import .::template{ProjectKind, create_project};
 import .::runtime{
     module_merge_mode_unsupported,
     compile_source_with_options,
@@ -40,7 +41,21 @@ static var command_exit_code: int32 = 0;
 /* ************* Commands ************* */
 
 pub fn command_new(action: cli::ActionContext) {
-    @todo();
+    const allocator: Allocator = dynamic LibcAllocator.new();
+
+    switch (action.args->get_str(0)) case .Some(project_path) else {
+        compile_error("please provide a project name");
+        command_exit_code = 1;
+        return;
+    }
+
+    var kind = ProjectKind.Executable;
+
+    if (is_library_flag_enabled(action.opts)) {
+        kind = ProjectKind.Library;
+    }
+
+    command_exit_code = create_project(allocator, project_path, kind);
 }
 
 pub fn command_run(action: cli::ActionContext) {
@@ -132,7 +147,9 @@ pub fn command_dump_resolver(action: cli::ActionContext) {
     const analysis_context = AnalysisContext.new(&context, &opts);
     defer analysis_context.free();
 
-    command_exit_code = analysis_context.dump_resolver(file_path.as_str_const());
+    command_exit_code = analysis_context.dump_resolver(
+        file_path.as_str_const()
+    );
 }
 
 pub fn command_dump_analyzer(action: cli::ActionContext) {
@@ -206,11 +223,23 @@ pub fn command_dump_bir(action: cli::ActionContext) {
 
             {
                 const file_writer: Writer = dynamic StringWriter.new(&file_content);
-                const status = emit_backend_ir(allocator, action, &codegen, file_writer, timings_ptr);
+                
+                const status = emit_backend_ir(
+                    allocator, 
+                    action, 
+                    &codegen, 
+                    file_writer, 
+                    timings_ptr
+                );
+                
                 ok = status == 0;
             }
 
-            if (ok && !write_file(allocator, out_path.as_str_const(), file_content.as_str_const())) {
+            if (ok && !write_file(
+                allocator, 
+                out_path.as_str_const(), 
+                file_content.as_str_const()
+            )) {
                 compile_error("failed to write IR output file");
                 command_exit_code = 1;
                 return;
@@ -223,7 +252,13 @@ pub fn command_dump_bir(action: cli::ActionContext) {
             }
         }
         case .None => {
-            command_exit_code = emit_backend_ir(allocator, action, &codegen, writer, timings_ptr);
+            command_exit_code = emit_backend_ir(
+                allocator, 
+                action, 
+                &codegen, 
+                writer, 
+                timings_ptr
+            );
         }
     }
 }
@@ -232,7 +267,7 @@ pub fn command_version(action: cli::ActionContext) {
     printf("Cyrus %s\n", version::COMPILER_VERSION);
 }
 
-/* ************* Single-File & Dispatch ************* */
+/* ************* Helpers ************* */
 
 fn build_or_run(action: cli::ActionContext, execute: bool) int32 {
     const allocator: Allocator = dynamic LibcAllocator.new();
@@ -338,7 +373,12 @@ fn build_or_run_single_file(
         );
     }
 
-    var output_path = resolve_output_path(allocator, action, file_path, "");
+    var output_path = resolve_output_path(
+        allocator, 
+        action, 
+        file_path, 
+        ""
+    );
     defer output_path.free();
 
     return compile_file(allocator, action, &output_path);
@@ -405,7 +445,10 @@ fn write_file(
     const file_path = Path.new(allocator, path);
     defer file_path.free();
 
-    switch (os::File.open(&file_path, .Write)) case .Value(var file) else {
+    switch (os::File.open(
+        &file_path, 
+        .Write
+    )) case .Value(var file) else {
         return false;
     }
 
@@ -435,7 +478,11 @@ fn resolve_output_path(
     var parent_dir = dir_of_file(allocator, file_path);
     defer parent_dir.free();
 
-    var joined = join_path(allocator, parent_dir.as_str_const(), stem.as_str_const());
+    var joined = join_path(
+        allocator, 
+        parent_dir.as_str_const(), 
+        stem.as_str_const()
+    );
 
     var ext = String.from_str(allocator, extension);
     defer ext.free();
@@ -452,7 +499,34 @@ fn resolve_output_path(
     return out;
 }
 
-fn file_path_from_action_context(action: cli::ActionContext) ErrorOr<String, ()> {
+fn is_library_flag_enabled(opts: cli::Opts*) bool {
+    switch (opts->find("lib")) {
+        case .Some(opt) => {
+            if (!opt->enabled) {
+                return false;
+            }
+
+            if (opt->values.len() == 0) {
+                return true;
+            }
+
+            switch (opt->values.get_const(opt->values.len() - 1)) {
+                case .Some(value) => {
+                    switch (*value) {
+                        case .Bool(flag) => return flag;
+                        else => return true;
+                    }
+                }
+                case .None => return true;
+            }
+        }
+        case .None => return false;
+    }
+}
+
+fn file_path_from_action_context(action: cli::ActionContext) 
+    ErrorOr<String, ()> 
+{
     switch (action.args->get_str(0)) case .Some(file_path) else {
         compile_error("please provide an input file");
         return .Error(());
@@ -466,7 +540,9 @@ fn file_path_from_action_context(action: cli::ActionContext) ErrorOr<String, ()>
     return .Value(String.from_str(action.allocator, file_path));
 }
 
-fn resolver_opts_from_action_context(action: cli::ActionContext) ErrorOr<ResolverOptions, ()> {
+fn resolver_opts_from_action_context(action: cli::ActionContext) 
+    ErrorOr<ResolverOptions, ()> 
+{
     const allocator: Allocator = dynamic LibcAllocator.new();
 
     switch (file_path_from_action_context(action)) case .Value(var file_path) else {
@@ -478,7 +554,11 @@ fn resolver_opts_from_action_context(action: cli::ActionContext) ErrorOr<Resolve
 
     opts.base_path.free();
     opts.base_path = dir::cwd(allocator);
-    opts.source_dirs.push(dir_of_file(allocator, file_path.as_str_const()));
+
+    opts.source_dirs.push(dir_of_file(
+        allocator, 
+        file_path.as_str_const()
+    ));
 
     apply_stdlib_option(allocator, action.opts, &opts);
 
@@ -502,7 +582,11 @@ fn resolver_opts_from_action_context(action: cli::ActionContext) ErrorOr<Resolve
         }
     }
 
-    apply_cli_features(allocator, action.opts, &opts.features);
+    apply_cli_features(
+        allocator, 
+        action.opts, 
+        &opts.features
+    );
 
     return .Value(opts);
 }

@@ -74,9 +74,13 @@ pub struct File {
     pub fn write(self: Self*, content: const uint8*) ErrorOr<usize, ()> {
         const content_len = libc::strlen(content);
 
+        if (content_len == 0) {
+            return .Value(0);
+        }
+
         const bytes = libc::fwrite(content, 1, content_len, self->file);
         
-        if (bytes == 0) {
+        if (bytes != content_len) {
             return .Error(());
         } 
 

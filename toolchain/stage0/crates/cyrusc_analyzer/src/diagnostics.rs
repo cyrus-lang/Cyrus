@@ -525,12 +525,6 @@ pub enum AnalyzerDiagKind {
         method_name: String,
     },
 
-    #[error("Instance methods must have self modifier.")]
-    InterfaceMethodsMustHaveSelfModifier,
-
-    #[error("Interface methods must use referenced self. By-value 'self' is not allowed.")]
-    InterfaceMethodsMustUseReferencedSelf,
-
     #[error("Function declarations cannot have generic parameters.")]
     GenericFunctionDeclaration,
 
