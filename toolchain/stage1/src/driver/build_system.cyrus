@@ -61,6 +61,7 @@ pub fn ends_with_build_cyrus(path: const uint8*) bool {
     }
 
     const offset = plen - slen;
+
     if (offset > 0 && path[offset - 1] != '/') {
         return false;
     }
@@ -85,18 +86,17 @@ pub fn build_or_run_project(
         compile_error("unsupported target triple");
         return 1;
     }
+
     const host_target = abi::target::TargetInfo.host();
 
-    var builder: build::Builder;
     switch (evaluate_build_script(
         allocator, 
         action, 
         build_file_path, 
         requested_target,
         host_target
-    )) {
-        case .Some(b) => builder = b;
-        case .None => return 1;
+    )) case .Some(var builder) else {
+        return 1;
     }
     defer builder.free();
 
@@ -165,12 +165,14 @@ pub fn build_or_run_project(
     defer free_generated_sources(&collected_gen_sources);
 
     for (var i: usize = 0; i < requested_features.len(); i += 1) {
-        const fname = requested_features.get_const(i).unwrap()->as_str_const();
-        switch (find_package_feature(pkg, fname)) {
+        const feature_name = requested_features.get_const(i).unwrap()->as_str_const();
+
+        switch (find_package_feature(pkg, feature_name)) {
             case .Some(feat) => {
                 for (var j: usize = 0; j < feat->enabled_deps.len(); j += 1) {
                     push_unique_str(allocator, &enabled_dep_names, feat->enabled_deps.get_const(j).unwrap()->as_str_const());
                 }
+
                 for (var j: usize = 0; j < feat->enabled_defines.len(); j += 1) {
                     native_defines.push(build::Define {
                         key: feat->enabled_defines.get_const(j).unwrap()->clone(allocator),
@@ -180,26 +182,32 @@ pub fn build_or_run_project(
             }
             case .None => {
                 var err = String.from_str(allocator, "unknown feature `");
-                defer err.free();
-                err.push_str(fname);
-                err.push_str("` requested via `-F`/`--feature`");
+                err.push_str(feature_name);
+                err.push_str("` requested via `-F` / `--feature`");
                 compile_error(err.as_str_const());
+                err.free();
                 return 1;
             }
         }
     }
 
-    // Propagate active dependency modifiers (enable_dependency)
+    // Propagate active dependency modifiers 
+    // (enable_dependency)
     var changed = true;
+
     while (changed) {
         changed = false;
+
         for (var i: usize = 0; i < pkg->dependencies.len(); i += 1) {
-            const nd = pkg->dependencies.get_const(i).unwrap();
-            if (nd->dep.is_optional && !vec_contains_str(&enabled_dep_names, nd->name.as_str_const())) {
+            const dep = pkg->dependencies.get_const(i).unwrap();
+
+            if (dep->dep.is_optional && !vec_contains_str(&enabled_dep_names, dep->name.as_str_const())) {
                 continue;
             }
-            for (var j: usize = 0; j < nd->dep.enabled_deps.len(); j += 1) {
-                const sub = nd->dep.enabled_deps.get_const(j).unwrap()->as_str_const();
+            
+            for (var j: usize = 0; j < dep->dep.enabled_deps.len(); j += 1) {
+                const sub = dep->dep.enabled_deps.get_const(j).unwrap()->as_str_const();
+                
                 if (!vec_contains_str(&enabled_dep_names, sub)) {
                     push_unique_str(allocator, &enabled_dep_names, sub);
                     changed = true;
@@ -210,27 +218,28 @@ pub fn build_or_run_project(
 
     // 2. Resolve active package dependencies
     for (var i: usize = 0; i < pkg->dependencies.len(); i += 1) {
-        const nd = pkg->dependencies.get_const(i).unwrap();
-        if (nd->dep.is_optional && !vec_contains_str(&enabled_dep_names, nd->name.as_str_const())) {
+        const dep = pkg->dependencies.get_const(i).unwrap();
+        
+        if (dep->dep.is_optional && !vec_contains_str(&enabled_dep_names, dep->name.as_str_const())) {
             continue;
         }
 
-        for (var j: usize = 0; j < nd->dep.enabled_defines.len(); j += 1) {
+        for (var j: usize = 0; j < dep->dep.enabled_defines.len(); j += 1) {
             native_defines.push(build::Define {
-                key: nd->dep.enabled_defines.get_const(j).unwrap()->clone(allocator),
+                key: dep->dep.enabled_defines.get_const(j).unwrap()->clone(allocator),
                 value: String.from_str(allocator, "1"),
             });
         }
 
-        switch (nd->dep.kind) {
+        switch (dep->dep.kind) {
             case .Path => {
-                var dep_resolved = resolve_project_path(allocator, project_root, nd->dep.value.as_str_const());
+                var dep_resolved = resolve_project_path(allocator, project_root, dep->dep.value.as_str_const());
                 defer dep_resolved.free();
 
                 if (!register_dependency_alias(
                     allocator,
                     action,
-                    nd->name.as_str_const(),
+                    dep->name.as_str_const(),
                     dep_resolved.as_str_const(),
                     requested_target,
                     host_target,
@@ -250,16 +259,26 @@ pub fn build_or_run_project(
                 }
             }
             case .Registry | .Git => {
-                var vendor_candidate = join_path(allocator, "vendor", nd->name.as_str_const());
-                var resolved_vendor = resolve_project_path(allocator, project_root, vendor_candidate.as_str_const());
+                var vendor_candidate = join_path(
+                    allocator, 
+                    "vendor", 
+                    dep->name.as_str_const()
+                );
+                var resolved_vendor = resolve_project_path(
+                    allocator, 
+                    project_root, 
+                    vendor_candidate.as_str_const()
+                );
                 vendor_candidate.free();
                 defer resolved_vendor.free();
 
-                if (os::is_dir(resolved_vendor.as_str_const()) || os::is_file(resolved_vendor.as_str_const())) {
+                if (os::is_dir(resolved_vendor.as_str_const()) || 
+                    os::is_file(resolved_vendor.as_str_const())) 
+                {
                     if (!register_dependency_alias(
                         allocator,
                         action,
-                        nd->name.as_str_const(),
+                        dep->name.as_str_const(),
                         resolved_vendor.as_str_const(),
                         requested_target,
                         host_target,
@@ -279,26 +298,30 @@ pub fn build_or_run_project(
                     }
                 } else {
                     var kind_label: const uint8* = "registry";
-                    if (nd->dep.kind == .Git) {
+                    
+                    if (dep->dep.kind == .Git) {
                         kind_label = "git";
                     }
+
                     var err = String.from_str(allocator, kind_label);
-                    defer err.free();
                     err.push_str(" dependency `");
-                    err.push_str(nd->name.as_str_const());
+                    err.push_str(dep->name.as_str_const());
                     err.push_str("` is not available offline");
                     compile_error(err.as_str_const());
+                    err.free();
                     return 1;
                 }
             }
         }
     }
 
-    // 3. Select target entry (-p / --package or default entry)
-    var entry: const build::Entry*;
-    switch (select_target_entry(allocator, action, pkg)) {
-        case .Some(e) => entry = e;
-        case .None => return 1;
+    // 3. Select target entry
+    switch (select_target_entry(
+        allocator, 
+        action, 
+        pkg
+    )) case .Some(var entry) else {
+        return 1;
     }
 
     switch (entry->native.unsupported_target_msg) {
@@ -317,17 +340,20 @@ pub fn build_or_run_project(
     defer free_strings(&visited_libs);
 
     for (var i: usize = 0; i < entry->native.used_libraries.len(); i += 1) {
-        push_unique_str(allocator, &lib_queue, entry->native.used_libraries.get_const(i).unwrap()->as_str_const());
+        const lib = entry->native.used_libraries.get_const(i).unwrap()->as_str_const();
+        push_unique_str(allocator, &lib_queue, lib);
     }
 
-    var q_idx: usize = 0;
-    while (q_idx < lib_queue.len()) {
-        const lib_name = lib_queue.get_const(q_idx).unwrap()->as_str_const();
-        q_idx += 1;
+    var qid: usize = 0;
+
+    while (qid < lib_queue.len()) {
+        const lib_name = lib_queue.get_const(qid).unwrap()->as_str_const();
+        qid += 1;
 
         if (vec_contains_str(&visited_libs, lib_name)) {
             continue;
         }
+
         push_unique_str(allocator, &visited_libs, lib_name);
 
         switch (find_package_library(pkg, lib_name)) {
@@ -340,7 +366,12 @@ pub fn build_or_run_project(
                     case .None => {}
                 }
 
-                var lib_root = resolve_project_path(allocator, project_root, lib->root_path.as_str_const());
+                var lib_root = resolve_project_path(
+                    allocator, 
+                    project_root, 
+                    lib->root_path.as_str_const()
+                );
+
                 if (!os::is_file(lib_root.as_str_const())) {
                     var err = String.from_str(allocator, "library root file `");
                     defer err.free();
@@ -355,13 +386,13 @@ pub fn build_or_run_project(
                 push_unique_str(allocator, &extra_source_dirs, lib_dir.as_str_const());
 
                 for (var p: usize = 0; p < lib->public_include_dirs.len(); p += 1) {
-                    var inc = resolve_project_path(
+                    var include_dir = resolve_project_path(
                         allocator,
                         project_root,
                         lib->public_include_dirs.get_const(p).unwrap()->as_str_const()
                     );
-                    push_unique_str(allocator, &extra_source_dirs, inc.as_str_const());
-                    inc.free();
+                    push_unique_str(allocator, &extra_source_dirs, include_dir.as_str_const());
+                    include_dir.free();
                 }
 
                 module_aliases.push(ModuleAlias {
@@ -405,7 +436,8 @@ pub fn build_or_run_project(
         }
     }
 
-    // 5. Collect entry native config & verify entry source file
+    // 5. Collect entry native config and
+    // verify entry source file
     append_native_config(
         allocator,
         project_root,
@@ -420,7 +452,11 @@ pub fn build_or_run_project(
         &collected_gen_sources
     );
 
-    var entry_root = resolve_project_path(allocator, project_root, entry->root_path.as_str_const());
+    var entry_root = resolve_project_path(
+        allocator, 
+        project_root, 
+        entry->root_path.as_str_const()
+    );
     defer entry_root.free();
 
     if (!os::is_file(entry_root.as_str_const())) {
@@ -464,14 +500,17 @@ pub fn build_or_run_project(
 
     const needs_c_driver = native_asm_sources.len() > 0 || (
         native_c_sources.len() > 0 && (
-            native_c_inc_dirs.len() > 0 || native_c_flags.len() > 0 || native_defines.len() > 0
+            native_c_inc_dirs.len() > 0 || 
+            native_c_flags.len() > 0 || 
+            native_defines.len() > 0
         )
     );
 
     var native_obj_temp_dir: Option<dir::TempDir> = .None;
     var temp_compiled_objs: Vec<String> = Vec.new(allocator);
 
-    // LIFO cleanup ensures temp .o files are deleted before TempDir::free calls rmdir.
+    // LIFO cleanup ensures temp .o files are 
+    // deleted before TempDir::free calls rmdir
     defer free_option_temp_dir(&native_obj_temp_dir);
     defer free_strings(&temp_compiled_objs);
     defer remove_listed_files(&temp_compiled_objs);
@@ -481,10 +520,12 @@ pub fn build_or_run_project(
             compile_error("failed to create temporary directory for native compilation");
             return 1;
         }
+
         native_obj_temp_dir = .Some(td);
         const td_path = td.path();
 
-        var obj_idx: usize = 0;
+        var object_index: usize = 0;
+
         if (!compile_native_list(
             allocator,
             td_path,
@@ -493,7 +534,7 @@ pub fn build_or_run_project(
             &native_c_inc_dirs,
             &native_c_flags,
             &native_defines,
-            &obj_idx,
+            &object_index,
             &temp_compiled_objs,
             &extra_native_files
         )) {
@@ -508,7 +549,7 @@ pub fn build_or_run_project(
             &native_c_inc_dirs,
             &native_c_flags,
             &native_defines,
-            &obj_idx,
+            &object_index,
             &temp_compiled_objs,
             &extra_native_files
         )) {
@@ -516,7 +557,8 @@ pub fn build_or_run_project(
         }
     } else {
         for (var i: usize = 0; i < native_c_sources.len(); i += 1) {
-            extra_native_files.push(native_c_sources.get_const(i).unwrap()->clone(allocator));
+            const source = native_c_sources.get_const(i).unwrap()->clone(allocator);
+            extra_native_files.push(source);
         }
     }
 
@@ -533,11 +575,8 @@ pub fn build_or_run_project(
     switch (find_active_build_profile(action, &builder)) {
         case .Some(profile) => {
             for (var i: usize = 0; i < profile->enabled_features.len(); i += 1) {
-                push_unique_str(
-                    allocator, 
-                    &active_features, 
-                    profile->enabled_features.get_const(i).unwrap()->as_str_const()
-                );
+                const enabled_feature = profile->enabled_features.get_const(i).unwrap()->as_str_const();
+                push_unique_str(allocator, &active_features, enabled_feature);
             }
         }
         case .None => {}
@@ -573,26 +612,41 @@ pub fn build_or_run_project(
             return status;
         }
 
-        return run_compiled_binary(allocator, run_bin.as_str_const(), action.extra_args);
+        return run_compiled_binary(
+            allocator, 
+            run_bin.as_str_const(), 
+            action.extra_args
+        );
     }
 
-    var out_path: String;
+    var output_path: String;
+    
     switch (output_option(action)) {
-        case .Some(cli_out) => out_path = cli_out;
+        case .Some(path) => {
+            output_path = path;
+        }
         case .None => {
             switch (entry->output_name_str) {
-                case .Some(ent_out) => out_path = resolve_project_path(allocator, project_root, ent_out.as_str_const());
-                case .None => out_path = resolve_project_path(allocator, project_root, entry->name.as_str_const());
+                case .Some(entry_path) => output_path = resolve_project_path(
+                    allocator, 
+                    project_root, 
+                    entry_path.as_str_const()
+                );
+                case .None => output_path = resolve_project_path(
+                    allocator, 
+                    project_root, 
+                    entry->name.as_str_const()
+                );
             }
         }
     }
-    defer out_path.free();
+    defer output_path.free();
 
     return compile_source_with_options(
         allocator,
         action,
         entry_root.as_str_const(),
-        &out_path,
+        &output_path,
         .Some(requested_target),
         &extra_source_dirs,
         &module_aliases,
@@ -674,9 +728,12 @@ fn evaluate_build_script(
     }
 
     var mangled_build: String;
-    switch (find_mangled_build_fn(allocator, &resolver, source_tokens.source_id)) {
-        case .Some(name) => mangled_build = name;
-        case .None => return .None;
+    switch (find_mangled_build_fn(
+        allocator, 
+        &resolver, 
+        source_tokens.source_id
+    )) case .Some(name) else {
+        return .None;
     }
     defer mangled_build.free();
 
@@ -738,7 +795,12 @@ fn evaluate_build_script(
     var libraries = String.new(allocator);
     defer libraries.free();
 
-    if (!append_c_runtime_link_flags(allocator, action.opts, &lib_paths, &libraries)) {
+    if (!append_c_runtime_link_flags(
+        allocator, 
+        action.opts,
+        &lib_paths, 
+        &libraries
+    )) {
         return .None;
     }
 
@@ -755,14 +817,24 @@ fn evaluate_build_script(
         return .None;
     }
 
-    const run_code = run_compiled_binary(allocator, build_bin.as_str_const(), null);
+    const run_code = run_compiled_binary(
+        allocator, 
+        build_bin.as_str_const(), 
+        null
+    );
+
     if (run_code != 0) {
         compile_error("executing `build.cyrus` failed");
         return .None;
     }
 
-    switch (build::Builder.deserialize(allocator, graph_path.as_str_const())) {
-        case .Some(b) => return .Some(b);
+    switch (build::Builder.deserialize(
+        allocator, 
+        graph_path.as_str_const()
+    )) {
+        case .Some(builder) => {
+            return .Some(builder);
+        }
         case .None => {
             compile_error("failed to read serialized build graph from `build.cyrus`");
             return .None;
@@ -777,13 +849,16 @@ fn find_mangled_build_fn(
 ) Option<String> {
     for (var i: usize = 0; i < resolver->program_trees.len(); i += 1) {
         const tree = resolver->program_trees.get_const(i).unwrap();
+        
         if (tree->file_id != entry_source_id) {
             continue;
         }
 
         const count = tree->body_len();
+
         for (var j: usize = 0; j < count; j += 1) {
             const stmt = tree->body_get_const(j);
+
             switch (stmt->kind) {
                 case .FuncDef(func_def) => {
                     if (func_def.name.as_str_const() != "build") {
@@ -804,7 +879,13 @@ fn find_mangled_build_fn(
                         case .Some(decl_id) => {
                             var maps = mangle::new_module_maps(allocator, &resolver->program_trees);
                             maps.test_profile = false;
-                            mangle::build_module_maps(&maps, &resolver->decl_tables, &resolver->program_trees);
+                            
+                            mangle::build_module_maps(
+                                &maps, 
+                                &resolver->decl_tables, 
+                                &resolver->program_trees
+                            );
+                            
                             var mangled = mangle::mangle_func(
                                 allocator,
                                 &maps,
@@ -838,6 +919,7 @@ fn select_target_entry(
     pkg: const build::Package*
 ) Option<const build::Entry*> {
     var requested_pkg_name: Option<const uint8*> = .None;
+
     switch (action.opts->find("package")) {
         case .Some(opt) => {
             switch (opt->values.get(0)) {
@@ -864,20 +946,21 @@ fn select_target_entry(
             }
 
             var err = String.from_str(allocator, "entry `");
-            defer err.free();
-
             err.push_str(entry_name);
             err.push_str("` not found in `build.cyrus`");
             compile_error(err.as_str_const());
+            err.free();
             return .None;
         }
         case .None => {
             for (var i: usize = 0; i < pkg->entries.len(); i += 1) {
-                const ent = pkg->entries.get_owned(i).unwrap();
-                if (ent->is_default) {
+                const entry = pkg->entries.get_owned(i).unwrap();
+
+                if (entry->is_default) {
                     return .Some(ent);
                 }
             }
+
             if (pkg->entries.len() == 1) {
                 return .Some(pkg->entries.get_owned(0).unwrap());
             } else if (pkg->entries.len() == 0) {
@@ -899,47 +982,51 @@ fn validate_native_inputs(
     asm_sources: const Vec<String>*
 ) bool {
     for (var i: usize = 0; i < c_inc_dirs->len(); i += 1) {
-        const inc = c_inc_dirs->get_const(i).unwrap()->as_str_const();
-        if (!os::is_dir(inc)) {
+        const include_dir = c_inc_dirs->get_const(i).unwrap()->as_str_const();
+
+        if (!os::is_dir(include_dir)) {
             var err = String.from_str(allocator, "C include directory `");
-            defer err.free();
-            err.push_str(inc);
+            err.push_str(include_dir);
             err.push_str("` does not exist");
             compile_error(err.as_str_const());
+            err.free();
             return false;
         }
     }
 
     for (var i: usize = 0; i < native_objs->len(); i += 1) {
-        const obj = native_objs->get_const(i).unwrap()->as_str_const();
-        if (!os::is_file(obj)) {
+        const object = native_objs->get_const(i).unwrap()->as_str_const();
+
+        if (!os::is_file(object)) {
             var err = String.from_str(allocator, "native object `");
-            defer err.free();
-            err.push_str(obj);
+            err.push_str(object);
             err.push_str("` does not exist");
             compile_error(err.as_str_const());
+            err.free();
             return false;
         }
     }
 
     for (var i: usize = 0; i < c_sources->len(); i += 1) {
-        const cs = c_sources->get_const(i).unwrap()->as_str_const();
-        if (!os::is_file(cs)) {
+        const source = c_sources->get_const(i).unwrap()->as_str_const();
+        
+        if (!os::is_file(source)) {
             var err = String.from_str(allocator, "C source `");
-            defer err.free();
-            err.push_str(cs);
+            err.push_str(source);
             err.push_str("` does not exist");
             compile_error(err.as_str_const());
+            err.free();
             return false;
         }
     }
 
     for (var i: usize = 0; i < asm_sources->len(); i += 1) {
-        const asm_path = asm_sources->get_const(i).unwrap()->as_str_const();
-        if (!os::is_file(asm_path)) {
+        const source = asm_sources->get_const(i).unwrap()->as_str_const();
+
+        if (!os::is_file(source)) {
             var err = String.from_str(allocator, "assembly source `");
             defer err.free();
-            err.push_str(asm_path);
+            err.push_str(source);
             err.push_str("` does not exist");
             compile_error(err.as_str_const());
             return false;
@@ -957,16 +1044,17 @@ fn compile_native_list(
     c_inc_dirs: const Vec<String>*,
     c_flags: const Vec<String>*,
     defines: const Vec<build::Define>*,
-    obj_idx: usize*,
+    object_index: usize*,
     temp_compiled_objs: Vec<String>*,
     extra_native_files: Vec<String>*
 ) bool {
     for (var i: usize = 0; i < sources->len(); i += 1) {
         var obj_name: uint8[64];
-        snprintf(&obj_name[0], 64, "%s_%lu.o", prefix, @cast(uint64, *obj_idx));
-        *obj_idx += 1;
+        snprintf(&obj_name[0], 64, "%s_%lu.o", prefix, @cast(uint64, *object_index));
+        *object_index += 1;
 
         var obj_path = join_path(allocator, temp_dir_path, &obj_name[0]);
+
         if (!compile_native_source_to_obj(
             allocator,
             sources->get_const(i).unwrap()->as_str_const(),
@@ -1008,16 +1096,19 @@ fn append_native_config(
     }
 
     for (var i: usize = 0; i < cfg->link_libraries.len(); i += 1) {
-        push_unique_str(allocator, out_link_libs, cfg->link_libraries.get_const(i).unwrap()->as_str_const());
+        const lib = cfg->link_libraries.get_const(i).unwrap()->as_str_const();
+        push_unique_str(allocator, out_link_libs, lib);
     }
 
     for (var i: usize = 0; i < cfg->c_sources.len(); i += 1) {
-        var resolved = resolve_project_path(allocator, base_dir, cfg->c_sources.get_const(i).unwrap()->as_str_const());
+        const source = cfg->c_sources.get_const(i).unwrap()->as_str_const();
+        var resolved = resolve_project_path(allocator, base_dir, source);
         out_c_sources->push(resolved);
     }
 
     for (var i: usize = 0; i < cfg->c_include_dirs.len(); i += 1) {
-        var resolved = resolve_project_path(allocator, base_dir, cfg->c_include_dirs.get_const(i).unwrap()->as_str_const());
+        const include_dir = cfg->c_include_dirs.get_const(i).unwrap()->as_str_const();
+        var resolved = resolve_project_path(allocator, base_dir, include_dir);
         out_c_inc_dirs->push(resolved);
     }
 
@@ -1026,21 +1117,29 @@ fn append_native_config(
     }
 
     for (var i: usize = 0; i < cfg->asm_sources.len(); i += 1) {
-        var resolved = resolve_project_path(allocator, base_dir, cfg->asm_sources.get_const(i).unwrap()->as_str_const());
+        const source = cfg->asm_sources.get_const(i).unwrap()->as_str_const();
+        var resolved = resolve_project_path(allocator, base_dir, source);
         out_asm_sources->push(resolved);
     }
 
     for (var i: usize = 0; i < cfg->native_objects.len(); i += 1) {
-        var resolved = resolve_project_path(allocator, base_dir, cfg->native_objects.get_const(i).unwrap()->as_str_const());
+        const object = cfg->native_objects.get_const(i).unwrap()->as_str_const();
+        var resolved = resolve_project_path(allocator, base_dir, object);
         out_native_objs->push(resolved);
     }
 
     for (var i: usize = 0; i < cfg->generated_sources.len(); i += 1) {
-        const gs = cfg->generated_sources.get_const(i).unwrap();
-        var resolved = resolve_project_path(allocator, base_dir, gs->path.as_str_const());
+        const source = cfg->generated_sources.get_const(i).unwrap();
+
+        var resolved = resolve_project_path(
+            allocator, 
+            base_dir, 
+            source->path.as_str_const()
+        );
+
         out_gen_sources->push(build::GeneratedSource {
             path: resolved,
-            generator_name: gs->generator_name.clone(allocator),
+            generator_name: source->generator_name.clone(allocator),
         });
     }
 }
@@ -1049,7 +1148,7 @@ fn register_dependency_alias(
     allocator: Allocator,
     action: cli::ActionContext,
     dep_name: const uint8*,
-    dep_path_resolved: const uint8*,
+    dependenct_path_resolved: const uint8*,
     requested_target: abi::target::TargetInfo,
     host_target: abi::target::TargetInfo,
     extra_source_dirs: Vec<String>*,
@@ -1064,30 +1163,33 @@ fn register_dependency_alias(
     out_native_objs: Vec<String>*,
     out_gen_sources: Vec<build::GeneratedSource>*
 ) bool {
-    if (os::is_file(dep_path_resolved)) {
-        var dir = dir_of_file(allocator, dep_path_resolved);
+    if (os::is_file(dependenct_path_resolved)) {
+        var dir = dir_of_file(allocator, dependenct_path_resolved);
         push_unique_str(allocator, extra_source_dirs, dir.as_str_const());
         module_aliases->push(ModuleAlias {
             name: String.from_str(allocator, dep_name),
-            file_path: .Some(String.from_str(allocator, dep_path_resolved)),
+            file_path: .Some(String.from_str(
+                allocator, 
+                dependenct_path_resolved
+            )),
             dir_path: .Some(dir),
         });
         push_unique_str(allocator, alias_names, dep_name);
         return true;
     }
 
-    if (!os::is_dir(dep_path_resolved)) {
+    if (!os::is_dir(dependenct_path_resolved)) {
         var err = String.from_str(allocator, "local dependency path `");
-        defer err.free();
-        err.push_str(dep_path_resolved);
+        err.push_str(dependenct_path_resolved);
         err.push_str("` for `");
         err.push_str(dep_name);
         err.push_str("` does not exist");
         compile_error(err.as_str_const());
+        err.free();
         return false;
     }
 
-    var dep_manifest = join_path(allocator, dep_path_resolved, "build.cyrus");
+    var dep_manifest = join_path(allocator, dependenct_path_resolved, "build.cyrus");
     defer dep_manifest.free();
 
     if (os::is_file(dep_manifest.as_str_const())) {
@@ -1098,11 +1200,16 @@ fn register_dependency_alias(
             requested_target,
             host_target
         )) {
-            case .Some(var dep_builder) => {
-                defer dep_builder.free();
-                if (dep_builder.packages.len() > 0) {
-                    const dep_pkg: const build::Package* = dep_builder.packages.get_owned(0).unwrap();
-                    var chosen_lib: Option<const build::Library*> = find_package_library(dep_pkg, dep_name);
+            case .Some(var dependency_builder) => {
+                defer dependency_builder.free();
+
+                if (dependency_builder.packages.len() > 0) {
+                    const dep_pkg: const build::Package* = 
+                        dependency_builder.packages.get_owned(0).unwrap();
+
+                    var chosen_lib: Option<const build::Library*> = 
+                        find_package_library(dep_pkg, dep_name);
+
                     switch (chosen_lib) {
                         case .None => {
                             if (dep_pkg->libraries.len() > 0) {
@@ -1122,7 +1229,12 @@ fn register_dependency_alias(
                                 case .None => {}
                             }
 
-                            var lib_root = resolve_project_path(allocator, dep_path_resolved, lib->root_path.as_str_const());
+                            var lib_root = resolve_project_path(
+                                allocator, 
+                                dependenct_path_resolved, 
+                                lib->root_path.as_str_const()
+                            );
+
                             if (!os::is_file(lib_root.as_str_const())) {
                                 lib_root.free();
                                 compile_error("dependency library root file does not exist");
@@ -1133,13 +1245,17 @@ fn register_dependency_alias(
                             push_unique_str(allocator, extra_source_dirs, lib_dir.as_str_const());
 
                             for (var p: usize = 0; p < lib->public_include_dirs.len(); p += 1) {
-                                var inc = resolve_project_path(
+                                var include_dir = resolve_project_path(
                                     allocator,
-                                    dep_path_resolved,
+                                    dependenct_path_resolved,
                                     lib->public_include_dirs.get_const(p).unwrap()->as_str_const()
                                 );
-                                push_unique_str(allocator, extra_source_dirs, inc.as_str_const());
-                                inc.free();
+                                push_unique_str(
+                                    allocator, 
+                                    extra_source_dirs, 
+                                    include_dir.as_str_const()
+                                );
+                                include_dir.free();
                             }
 
                             module_aliases->push(ModuleAlias {
@@ -1147,11 +1263,12 @@ fn register_dependency_alias(
                                 file_path: .Some(lib_root),
                                 dir_path: .Some(lib_dir),
                             });
+                            
                             push_unique_str(allocator, alias_names, dep_name);
 
                             append_native_config(
                                 allocator,
-                                dep_path_resolved,
+                                dependenct_path_resolved,
                                 &lib->native,
                                 out_defines,
                                 out_link_libs,
@@ -1173,6 +1290,7 @@ fn register_dependency_alias(
     }
 
     var found_file: Option<String> = .None;
+
     const candidates: const uint8*[4] = {
         "src/lib.cyrus",
         "src/index.cyrus",
@@ -1181,22 +1299,31 @@ fn register_dependency_alias(
     };
 
     for (var i: usize = 0; i < 4; i += 1) {
-        var probe = join_path(allocator, dep_path_resolved, candidates[i]);
-        if (os::is_file(probe.as_str_const())) {
-            found_file = .Some(probe);
+        var path = join_path(
+            allocator, 
+            dependenct_path_resolved, 
+            candidates[i]
+        );
+
+        if (os::is_file(path.as_str_const())) {
+            found_file = .Some(path);
             break;
         }
-        probe.free();
+        path.free();
     }
 
     switch (found_file) {
-        case .Some(var fp) => {
-            var dp = dir_of_file(allocator, fp.as_str_const());
-            push_unique_str(allocator, extra_source_dirs, dp.as_str_const());
+        case .Some(var file_path) => {
+            var dir_path = dir_of_file(allocator, file_path.as_str_const());
+            push_unique_str(
+                allocator, 
+                extra_source_dirs, 
+                dir_path.as_str_const()
+            );
             module_aliases->push(ModuleAlias {
                 name: String.from_str(allocator, dep_name),
-                file_path: .Some(fp),
-                dir_path: .Some(dp),
+                file_path: .Some(file_path),
+                dir_path: .Some(dir_path),
             });
             push_unique_str(allocator, alias_names, dep_name);
             return true;
@@ -1204,9 +1331,15 @@ fn register_dependency_alias(
         case .None => {}
     }
 
-    var src_dir = join_path(allocator, dep_path_resolved, "src");
+    var src_dir = join_path(allocator, dependenct_path_resolved, "src");
+
     if (os::is_dir(src_dir.as_str_const())) {
-        push_unique_str(allocator, extra_source_dirs, src_dir.as_str_const());
+        push_unique_str(
+            allocator, 
+            extra_source_dirs, 
+            src_dir.as_str_const()
+        );
+        
         module_aliases->push(ModuleAlias {
             name: String.from_str(allocator, dep_name),
             file_path: .None,
@@ -1214,15 +1347,26 @@ fn register_dependency_alias(
         });
     } else {
         src_dir.free();
-        push_unique_str(allocator, extra_source_dirs, dep_path_resolved);
+        push_unique_str(
+            allocator, 
+            extra_source_dirs, 
+            dependenct_path_resolved
+        );
         module_aliases->push(ModuleAlias {
             name: String.from_str(allocator, dep_name),
             file_path: .None,
-            dir_path: .Some(String.from_str(allocator, dep_path_resolved)),
+            dir_path: .Some(String.from_str(
+                allocator, 
+                dependenct_path_resolved
+            )),
         });
     }
 
-    push_unique_str(allocator, alias_names, dep_name);
+    push_unique_str(
+        allocator, 
+        alias_names, 
+        dep_name
+    );
     return true;
 }
 
@@ -1238,17 +1382,18 @@ fn run_build_generators(
     defer free_strings(&ran_gens);
 
     for (var i: usize = 0; i < gen_sources->len(); i += 1) {
-        const gs = gen_sources->get_const(i).unwrap();
+        const source = gen_sources->get_const(i).unwrap();
 
         var gen_ptr: const build::Generator*;
-        switch (find_builder_generator(builder, gs->generator_name.as_str_const())) {
-            case .Some(g) => gen_ptr = g;
+
+        switch (find_builder_generator(builder, source->generator_name.as_str_const())) {
+            case .Some(gen) => gen_ptr = gen;
             case .None => {
                 var err = String.from_str(allocator, "unknown generator `");
-                defer err.free();
-                err.push_str(gs->generator_name.as_str_const());
+                err.push_str(source->generator_name.as_str_const());
                 err.push_str("`");
                 compile_error(err.as_str_const());
+                err.free();
                 return false;
             }
         }
@@ -1260,30 +1405,35 @@ fn run_build_generators(
                 gen_ptr->inputs.get_const(j).unwrap()->as_str_const()
             );
             defer in_path.free();
+
             if (!os::is_file(in_path.as_str_const()) && !os::is_dir(in_path.as_str_const())) {
                 var err = String.from_str(allocator, "declared generator input `");
-                defer err.free();
                 err.push_str(in_path.as_str_const());
                 err.push_str("` does not exist");
                 compile_error(err.as_str_const());
+                err.free();
                 return false;
             }
         }
 
-        if (os::is_file(gs->path.as_str_const())) {
+        if (os::is_file(source->path.as_str_const())) {
             continue;
         }
 
         if (!vec_contains_str(&ran_gens, gen_ptr->name.as_str_const())) {
-            var tool_path = resolve_project_path(allocator, project_root, gen_ptr->tool_path.as_str_const());
+            var tool_path = resolve_project_path(
+                allocator, 
+                project_root, 
+                gen_ptr->tool_path.as_str_const()
+            );
             defer tool_path.free();
 
             if (!os::is_file(tool_path.as_str_const())) {
                 var err = String.from_str(allocator, "generator tool `");
-                defer err.free();
                 err.push_str(tool_path.as_str_const());
                 err.push_str("` does not exist");
                 compile_error(err.as_str_const());
+                err.free();
                 return false;
             }
 
@@ -1342,10 +1492,10 @@ fn run_build_generators(
             push_unique_str(allocator, &ran_gens, gen_ptr->name.as_str_const());
         }
 
-        if (!os::is_file(gs->path.as_str_const())) {
+        if (!os::is_file(source->path.as_str_const())) {
             var err = String.from_str(allocator, "declared generated source `");
             defer err.free();
-            err.push_str(gs->path.as_str_const());
+            err.push_str(source->path.as_str_const());
             err.push_str("` was not created by generator");
             compile_error(err.as_str_const());
             return false;
@@ -1389,12 +1539,16 @@ fn compile_native_source_to_obj(
 
     for (var i: usize = 0; i < defines->len(); i += 1) {
         const def = defines->get_const(i).unwrap();
+
         var flag = String.from_str(allocator, "-D");
+        
         flag.push_str(def->key.as_str_const());
+        
         if (!def->value.is_empty()) {
             flag.push('=');
             flag.push_str(def->value.as_str_const());
         }
+        
         push_shell_quoted_arg(&cmd, flag.as_str_const());
         flag.free();
     }
@@ -1409,17 +1563,20 @@ fn compile_native_source_to_obj(
 
     if (decode_wait_status(process::exec(cmd.as_str_const())) != 0) {
         var err = String.from_str(allocator, "failed to compile native source `");
-        defer err.free();
         err.push_str(src_path);
         err.push_str("`");
         compile_error(err.as_str_const());
+        err.free();
         return false;
     }
 
     return true;
 }
 
-fn find_active_build_profile(action: cli::ActionContext, builder: const build::Builder*) Option<const build::BuildProfile*> {
+fn find_active_build_profile(
+    action: cli::ActionContext, 
+    builder: const build::Builder*
+) Option<const build::BuildProfile*> {
     var requested_name: Option<const uint8*> = .None;
 
     switch (action.opts->find("profile")) {
@@ -1460,7 +1617,10 @@ fn find_active_build_profile(action: cli::ActionContext, builder: const build::B
     return .None;
 }
 
-fn resolve_build_profile(action: cli::ActionContext, builder: const build::Builder*) Option<Profile> {
+fn resolve_build_profile(
+    action: cli::ActionContext, 
+    builder: const build::Builder*
+) Option<Profile> {
     switch (find_active_build_profile(action, builder)) {
         case .Some(profile) => {
             const name = profile->name.as_str_const();
@@ -1522,10 +1682,15 @@ fn push_comma_split_values(allocator: Allocator, list: Vec<String>*, raw: const 
     defer cur.free();
 
     var i: usize = 0;
+
     while (raw[i] != '\0') {
         if (raw[i] == ',') {
             if (!cur.is_empty()) {
-                push_unique_str(allocator, list, cur.as_str_const());
+                push_unique_str(
+                    allocator, 
+                    list, 
+                    cur.as_str_const()
+                );
                 cur.clear();
             }
         } else {
@@ -1586,24 +1751,24 @@ fn find_builder_generator(
 
 fn free_module_aliases(aliases: Vec<ModuleAlias>*) {
     for (var i: usize = 0; i < aliases->len(); i += 1) {
-        var a = aliases->get_owned(i).unwrap();
-        a.free();
+        var alias = aliases->get_owned(i).unwrap();
+        alias.free();
     }
     aliases->free();
 }
 
 fn free_defines(defs: Vec<build::Define>*) {
     for (var i: usize = 0; i < defs->len(); i += 1) {
-        var d = defs->get_owned(i).unwrap();
-        d.free();
+        var define = defs->get_owned(i).unwrap();
+        define.free();
     }
     defs->free();
 }
 
 fn free_generated_sources(gens: Vec<build::GeneratedSource>*) {
     for (var i: usize = 0; i < gens->len(); i += 1) {
-        var g = gens->get_owned(i).unwrap();
-        g.free();
+        var gen = gens->get_owned(i).unwrap();
+        gen.free();
     }
     gens->free();
 }
