@@ -50,6 +50,7 @@ import .::normalizer{
 import tokens{IntegerSuffix, FloatSuffix, Span};
 import resolver::symbols{is_decl_const};
 import sema::context{AnalyzerContext};
+import abi::target{PlatformMatch};
 import sema::generics;
 import sema::context;
 import sema::format;
@@ -2977,8 +2978,100 @@ fn analyze_builtin_func_semantics(
 
         case .Feature => return analyze_builtin_feature(context, builtin_func);
 
+        case .Os | .Arch | .Target | .Endian | .Format | .Abi | .Family => {
+            return analyze_builtin_platform_expr(context, builtin_kind, builtin_func);
+        }
+
         else => return .None;
     }
+}
+
+fn eval_platform_args(
+    context: AnalyzerContext*,
+    builtin_kind: cir::BuiltinKind,
+    args: const Vec<cir::Expr>*,
+    emit_diags: bool
+) Option<bool> {
+    if (args->len() == 0) {
+        return .None;
+    }
+
+    const builtin_spec = cir::builtin_spec_of(builtin_kind);
+    var all_valid = true;
+    var any_matched = false;
+
+    for (var i: usize = 0; i < args->len(); i += 1) {
+        const argument = args->get_const(i).unwrap();
+
+        switch (argument->kind) {
+            case .UnnamedEnumValue(enum_value) => {
+                switch (enum_value.kind) {
+                    case .Unit => {
+                        const variant_name = enum_value.ident.str.as_str_const();
+                        const match_result = context->target.match_platform_builtin_variant(
+                            builtin_kind,
+                            variant_name
+                        );
+
+                        switch (match_result) {
+                            case .Matched => {
+                                any_matched = true;
+                            }
+                            case .NotMatched => {}
+                            case .UnknownVariant => {
+                                if (emit_diags) {
+                                    diags::report_builtin_unknown_platform_variant(
+                                        context->dctx,
+                                        context->allocator,
+                                        argument->span,
+                                        builtin_spec.name,
+                                        variant_name
+                                    );
+                                }
+                                all_valid = false;
+                            }
+                        }
+                    }
+                    else => {
+                        if (emit_diags) {
+                            diags::report_builtin_requires_variant_argument(
+                                context->dctx,
+                                context->allocator,
+                                argument->span,
+                                builtin_spec.name
+                            );
+                        }
+                        all_valid = false;
+                    }
+                }
+            }
+            else => {
+                if (emit_diags) {
+                    diags::report_builtin_requires_variant_argument(
+                        context->dctx,
+                        context->allocator,
+                        argument->span,
+                        builtin_spec.name
+                    );
+                }
+                all_valid = false;
+            }
+        }
+    }
+
+    if (!all_valid) {
+        return .None;
+    }
+
+    return .Some(any_matched);
+}
+
+pub fn validate_and_eval_platform_args(
+    context: AnalyzerContext*,
+    builtin_kind: cir::BuiltinKind,
+    args: const Vec<cir::Expr>*
+) Option<bool> {
+    return eval_platform_args(context, builtin_kind, args, true);
 }
 
 fn try_fold_condition_builtin(
@@ -3013,10 +3106,39 @@ fn try_fold_condition_builtin(
                 return .Some(context->profile == .Test);
             }
         }
+        case .Some(builtin_kind) => {
+            if (cir::is_platform_builtin_kind(builtin_kind)) {
+                return eval_platform_args(
+                    context,
+                    builtin_kind,
+                    &builtin_func->args,
+                    false
+                );
+            }
+        }
         else => {}
     }
 
     return .None;
+}
+
+fn analyze_builtin_platform_expr(
+    context: AnalyzerContext*,
+    builtin_kind: cir::BuiltinKind,
+    builtin_func: cir::BuiltinFunc*
+) Option<cir::SemaType> {
+    if (validate_and_eval_platform_args(
+        context,
+        builtin_kind,
+        &builtin_func->args
+    ).is_none()) {
+        return .None;
+    }
+
+    const ret_type: cir::SemaType = .Plain(.Bool);
+    builtin_func->ret_type = .Some(ret_type);
+
+    return .Some(ret_type);
 }
 
 fn analyze_builtin_profile_expr(

@@ -816,10 +816,10 @@ pub struct TypeContext {
                 var align: uint32 = 16;
 
                 switch (self->target_info.arch) {
-                    case .X86_64 | .Aarch64 | .RiscV64 => {
+                    case .X86_64 | .Aarch64 | .RiscV64 | .Wasm64 => {
                         align = 16;
                     }
-                    case .Wasm32 => {
+                    case .X86 | .Arm | .RiscV32 | .Wasm32 => {
                         align = 8;
                     }
                 }
@@ -837,10 +837,10 @@ pub struct TypeContext {
                 var float_align: uint32 = 16;
 
                 switch (self->target_info.arch) {
-                    case .X86_64 | .Aarch64 | .RiscV64 => {
+                    case .X86_64 | .Aarch64 | .RiscV64 | .Wasm64 => {
                         float_align = 16;
                     }
-                    case .Wasm32 => {
+                    case .X86 | .Arm | .RiscV32 | .Wasm32 => {
                         float_align = 8;
                     }
                 }

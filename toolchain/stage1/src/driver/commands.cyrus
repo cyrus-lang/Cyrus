@@ -491,6 +491,17 @@ fn resolver_opts_from_action_context(action: cli::ActionContext) ErrorOr<Resolve
         opts.profile = .Test;
     }
 
+    switch (target_from_action(action)) {
+        case .Some(target) => {
+            opts.target = target;
+        }
+        case .None => {
+            compile_error("unsupported target triple");
+            opts.free();
+            return .Error(());
+        }
+    }
+
     apply_cli_features(allocator, action.opts, &opts.features);
 
     return .Value(opts);

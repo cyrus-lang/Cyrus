@@ -425,6 +425,7 @@ pub fn emit_backend_ir_with_opts(
     );
     defer analyzer_context.free();
 
+    analyzer_context.set_target(opts->target);
     analyzer_context.set_profile(opts->profile);
     analyzer_context.set_enabled_features(&opts->features);
 
@@ -572,6 +573,7 @@ pub fn compile_source_with_options(
     var opts = ResolverOptions.new(allocator);
     defer opts.free();
 
+    opts.target = target;
     opts.base_path.free();
     opts.base_path = dir::cwd(allocator);
     opts.source_dirs.push(dir_of_file(allocator, file_path));

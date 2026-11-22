@@ -237,14 +237,18 @@ fn app(argc: c_int, argv: c_char**) int32 {
         .help("Resolve modules and dump the symbol table")
         ->optional_argument(.Str)
         ->add_option(stdlib_opt)
-        ->add_option(profile_opt);
+        ->add_option(profile_opt)
+        ->add_option(target_opt)
+        ->add_option(feature_opt);
 
     const dump_analyze_cmd =
         cli::Cmd.new(allocator, "analyzer", command_dump_analyzer)
         .help("Analyze modules and dump the CIR")
         ->optional_argument(.Str)
         ->add_option(stdlib_opt)
-        ->add_option(profile_opt);
+        ->add_option(profile_opt)
+        ->add_option(target_opt)
+        ->add_option(feature_opt);
 
     const dump_bir_cmd =
         cli::Cmd.new(allocator, "bir", command_dump_bir)
@@ -253,6 +257,7 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(stdlib_opt)
         ->add_option(profile_opt)
         ->add_option(target_opt)
+        ->add_option(feature_opt)
         ->add_option(backend_opt)
         ->add_option(output_opt)
         ->add_option(time_opt);

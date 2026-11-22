@@ -1,0 +1,8 @@
+@os(.Linux, .Bogus) //~ error: unknown variant `.Bogus` for builtin `@os`
+fn invalid_os_block() {}
+
+pub fn main() {
+    const a = @os(.Solaris); //~ error: unknown variant `.Solaris` for builtin `@os`
+    const b = @target("Wasm"); //~ error: builtin `@target` requires a platform variant literal (e.g. `.Linux`) as argument
+    const c = @arch(); //~ error: builtin `@arch` expects at least 1 argument(s), but 0 were provided
+}

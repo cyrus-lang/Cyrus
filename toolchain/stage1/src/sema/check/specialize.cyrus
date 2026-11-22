@@ -789,6 +789,7 @@ fn specialize_expr(
 
         case .Slice(slice_expr) => {
             specialize_expr(context, slice_expr.operand, decl_map);
+
             switch (slice_expr.start) {
                 case .Some(start) => specialize_expr(context, start, decl_map);
                 case .None => {}

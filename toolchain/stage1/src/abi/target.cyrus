@@ -27,8 +27,13 @@ fn cstr_eq_slice(a: const uint8*, start: usize, end: usize, lit: const uint8*) b
     return i == len;
 }
 
-fn next_triple_part(triple: const uint8*, pos: usize*, out_start: usize*, out_end: usize*) bool {
-    const start = *pos;
+fn next_triple_part(
+    triple: const uint8*,
+    cursor: usize*,
+    out_start: usize*,
+    out_end: usize*
+) bool {
+    const start = *cursor;
 
     if (triple[start] == '\0') {
         return false;
@@ -41,11 +46,13 @@ fn next_triple_part(triple: const uint8*, pos: usize*, out_start: usize*, out_en
 
     *out_start = start;
     *out_end = end;
+
     if (triple[end] == '-') {
-        *pos = end + 1;
+        *cursor = end + 1;
     } else {
-        *pos = end;
+        *cursor = end;
     }
+
     return true;
 }
 
@@ -54,51 +61,83 @@ pub enum OS {
     Linux,
     Windows,
     MacOS,
+    FreeBSD,
+    NetBSD,
+    OpenBSD,
+    Android,
+    IOS,
+    Wasi,
+    Freestanding,
 }
 
 pub enum Arch {
     X86_64,
+    X86,
     Aarch64,
+    Arm,
     RiscV64,
+    RiscV32,
     Wasm32,
+    Wasm64,
 }
 
 pub enum ObjectFormat {
     Elf,
     MachO,
     Coff,
+    Wasm,
+}
+
+pub enum Endian {
+    Little,
+    Big,
+}
+
+pub enum Abi {
+    None,
+    Gnu,
+    Musl,
+    Msvc,
+    Eabi,
+}
+
+pub enum PlatformMatch {
+    Matched,
+    NotMatched,
+    UnknownVariant,
 }
 
 pub struct TargetInfo {
     pub arch: Arch,
     pub os: OS,
     pub format: ObjectFormat,
+    pub abi: Abi,
 
     pub fn pointer_size(self: const Self*) uint32 {
         switch (self->arch) {
-            case .X86_64 | .Aarch64 | .RiscV64 => return 8;
-            case .Wasm32 => return 4;
+            case .X86_64 | .Aarch64 | .RiscV64 | .Wasm64 => return 8;
+            case .X86 | .Arm | .RiscV32 | .Wasm32 => return 4;
         }
     }
 
     pub fn pointer_align(self: const Self*) uint32 {
         switch (self->arch) {
-            case .X86_64 | .Aarch64 | .RiscV64 => return 8;
-            case .Wasm32 => return 4;
+            case .X86_64 | .Aarch64 | .RiscV64 | .Wasm64 => return 8;
+            case .X86 | .Arm | .RiscV32 | .Wasm32 => return 4;
         }
     }
 
     pub fn int_bit_width(self: const Self*) uint32 {
         switch (self->arch) {
-            case .X86_64 | .Aarch64 | .RiscV64 => return 64;
-            case .Wasm32 => return 32;
+            case .X86_64 | .Aarch64 | .RiscV64 | .Wasm64 => return 64;
+            case .X86 | .Arm | .RiscV32 | .Wasm32 => return 32;
         }
     }
 
     pub fn pointer_bit_width(self: const Self*) uint32 {
         switch (self->arch) {
-            case .X86_64 | .Aarch64 | .RiscV64 => return 64;
-            case .Wasm32 => return 32;
+            case .X86_64 | .Aarch64 | .RiscV64 | .Wasm64 => return 64;
+            case .X86 | .Arm | .RiscV32 | .Wasm32 => return 32;
         }
     }
 
@@ -107,11 +146,189 @@ pub struct TargetInfo {
         return self->int_bit_width() == 64;
     }
 
+    [[inline]]
+    pub fn is_32bit(self: const Self*) bool {
+        return self->pointer_bit_width() == 32;
+    }
+
     pub fn c_int_bit_width(self: const Self*) uint32 {
-        switch (self->arch) {
-            case .X86_64 | .Aarch64 | .RiscV64 => return 32;
-            case .Wasm32 => return 32;
+        return 32;
+    }
+
+    pub fn endian(self: const Self*) Endian {
+        return .Little;
+    }
+
+    pub fn is_wasm(self: const Self*) bool {
+        return self->arch == .Wasm32 || self->arch == .Wasm64;
+    }
+
+    pub fn is_native(self: const Self*) bool {
+        return !self->is_wasm();
+    }
+
+    pub fn is_unix(self: const Self*) bool {
+        switch (self->os) {
+            case .Linux
+            | .MacOS
+            | .FreeBSD
+            | .NetBSD
+            | .OpenBSD
+            | .Android
+            | .IOS => return true;
+            else => return false;
         }
+    }
+
+    pub fn is_posix(self: const Self*) bool {
+        return self->is_unix() || self->os == .Wasi;
+    }
+
+    pub fn match_platform_builtin_variant(
+        self: const Self*,
+        builtin_kind: cir::BuiltinKind,
+        variant_name: const uint8*
+    ) PlatformMatch {
+        switch (builtin_kind) {
+            case .Os => return self->match_os_variant(variant_name);
+            case .Arch => return self->match_arch_variant(variant_name);
+            case .Target => return self->match_target_variant(variant_name);
+            case .Endian => return self->match_endian_variant(variant_name);
+            case .Format => return self->match_format_variant(variant_name);
+            case .Abi => return self->match_abi_variant(variant_name);
+            case .Family => return self->match_family_variant(variant_name);
+            else => return .UnknownVariant;
+        }
+    }
+
+    fn match_os_variant(self: const Self*, variant_name: const uint8*) PlatformMatch {
+        if (variant_name == "Linux") {
+            return bool_to_platform_match(self->os == .Linux);
+        } else if (variant_name == "Windows") {
+            return bool_to_platform_match(self->os == .Windows);
+        } else if (variant_name == "MacOS") {
+            return bool_to_platform_match(self->os == .MacOS);
+        } else if (variant_name == "FreeBSD") {
+            return bool_to_platform_match(self->os == .FreeBSD);
+        } else if (variant_name == "NetBSD") {
+            return bool_to_platform_match(self->os == .NetBSD);
+        } else if (variant_name == "OpenBSD") {
+            return bool_to_platform_match(self->os == .OpenBSD);
+        } else if (variant_name == "Android") {
+            return bool_to_platform_match(self->os == .Android);
+        } else if (variant_name == "IOS") {
+            return bool_to_platform_match(self->os == .IOS);
+        } else if (variant_name == "Wasi") {
+            return bool_to_platform_match(self->os == .Wasi);
+        } else if (variant_name == "Freestanding") {
+            return bool_to_platform_match(self->os == .Freestanding);
+        } else if (variant_name == "Unknown") {
+            return bool_to_platform_match(self->os == .Unknown);
+        }
+
+        return .UnknownVariant;
+    }
+
+    fn match_arch_variant(self: const Self*, variant_name: const uint8*) PlatformMatch {
+        if (variant_name == "X86_64") {
+            return bool_to_platform_match(self->arch == .X86_64);
+        } else if (variant_name == "X86") {
+            return bool_to_platform_match(self->arch == .X86);
+        } else if (variant_name == "Aarch64") {
+            return bool_to_platform_match(self->arch == .Aarch64);
+        } else if (variant_name == "Arm") {
+            return bool_to_platform_match(self->arch == .Arm);
+        } else if (variant_name == "RiscV64") {
+            return bool_to_platform_match(self->arch == .RiscV64);
+        } else if (variant_name == "RiscV32") {
+            return bool_to_platform_match(self->arch == .RiscV32);
+        } else if (variant_name == "Wasm32") {
+            return bool_to_platform_match(self->arch == .Wasm32);
+        } else if (variant_name == "Wasm64") {
+            return bool_to_platform_match(self->arch == .Wasm64);
+        }
+
+        return .UnknownVariant;
+    }
+
+    fn match_target_variant(self: const Self*, variant_name: const uint8*) PlatformMatch {
+        if (variant_name == "Wasm") {
+            return bool_to_platform_match(self->is_wasm());
+        } else if (variant_name == "Native") {
+            return bool_to_platform_match(self->is_native());
+        } else if (variant_name == "Unix") {
+            return bool_to_platform_match(self->is_unix());
+        } else if (variant_name == "Posix") {
+            return bool_to_platform_match(self->is_posix());
+        }
+
+        const arch_match = self->match_arch_variant(variant_name);
+
+        if (arch_match != .UnknownVariant) {
+            return arch_match;
+        }
+
+        if (variant_name != "Unknown") {
+            return self->match_os_variant(variant_name);
+        }
+
+        return .UnknownVariant;
+    }
+
+    fn match_endian_variant(self: const Self*, variant_name: const uint8*) PlatformMatch {
+        if (variant_name == "Little") {
+            return bool_to_platform_match(self->endian() == .Little);
+        } else if (variant_name == "Big") {
+            return bool_to_platform_match(self->endian() == .Big);
+        }
+
+        return .UnknownVariant;
+    }
+
+    fn match_format_variant(self: const Self*, variant_name: const uint8*) PlatformMatch {
+        if (variant_name == "Elf") {
+            return bool_to_platform_match(self->format == .Elf);
+        } else if (variant_name == "MachO") {
+            return bool_to_platform_match(self->format == .MachO);
+        } else if (variant_name == "Coff") {
+            return bool_to_platform_match(self->format == .Coff);
+        } else if (variant_name == "Wasm") {
+            return bool_to_platform_match(self->format == .Wasm);
+        }
+
+        return .UnknownVariant;
+    }
+
+    fn match_abi_variant(self: const Self*, variant_name: const uint8*) PlatformMatch {
+        if (variant_name == "None") {
+            return bool_to_platform_match(self->abi == .None);
+        } else if (variant_name == "Gnu") {
+            return bool_to_platform_match(self->abi == .Gnu);
+        } else if (variant_name == "Musl") {
+            return bool_to_platform_match(self->abi == .Musl);
+        } else if (variant_name == "Msvc") {
+            return bool_to_platform_match(self->abi == .Msvc);
+        } else if (variant_name == "Eabi") {
+            return bool_to_platform_match(self->abi == .Eabi);
+        }
+
+        return .UnknownVariant;
+    }
+
+    fn match_family_variant(self: const Self*, variant_name: const uint8*) PlatformMatch {
+        if (variant_name == "Unix") {
+            return bool_to_platform_match(self->is_unix());
+        } else if (variant_name == "Posix") {
+            return bool_to_platform_match(self->is_posix());
+        } else if (variant_name == "Windows") {
+            return bool_to_platform_match(self->os == .Windows);
+        } else if (variant_name == "Wasm") {
+            return bool_to_platform_match(self->is_wasm());
+        } else if (variant_name == "Freestanding") {
+            return bool_to_platform_match(self->os == .Freestanding);
+        }
+
+        return .UnknownVariant;
     }
 
     pub fn host() TargetInfo {
@@ -133,6 +350,12 @@ pub struct TargetInfo {
             } else if (sysname == "Darwin") {
                 os = .MacOS;
                 machine = &buf[1024];
+            } else if (sysname == "FreeBSD") {
+                os = .FreeBSD;
+            } else if (sysname == "NetBSD") {
+                os = .NetBSD;
+            } else if (sysname == "OpenBSD") {
+                os = .OpenBSD;
             } else {
                 os = .Unknown;
             }
@@ -140,20 +363,34 @@ pub struct TargetInfo {
             if (machine != null) {
                 if (machine == "x86_64" || machine == "amd64") {
                     arch = .X86_64;
+                } else if (machine == "i386" || machine == "i686") {
+                    arch = .X86;
                 } else if (machine == "aarch64" || machine == "arm64") {
                     arch = .Aarch64;
+                } else if (machine == "arm" || machine == "armv7" || machine == "armv7l") {
+                    arch = .Arm;
                 } else if (machine == "riscv64") {
                     arch = .RiscV64;
+                } else if (machine == "riscv32") {
+                    arch = .RiscV32;
                 } else if (machine == "wasm32") {
                     arch = .Wasm32;
+                } else if (machine == "wasm64") {
+                    arch = .Wasm64;
                 }
             }
+        }
+
+        var abi: Abi = .None;
+        if (os == .Linux) {
+            abi = .Gnu;
         }
 
         return TargetInfo {
             arch,
             os,
-            format: format_for_os(os),
+            format: format_for_target(arch, os),
+            abi,
         };
     }
 
@@ -162,67 +399,145 @@ pub struct TargetInfo {
             return .Some(TargetInfo.host());
         }
 
-        var pos: usize = 0;
-        var s: usize = 0;
-        var e: usize = 0;
+        var cursor: usize = 0;
+        var seg_start: usize = 0;
+        var seg_end: usize = 0;
 
-        if (!next_triple_part(triple, &pos, &s, &e)) {
+        if (!next_triple_part(triple, &cursor, &seg_start, &seg_end)) {
             return .None;
         }
 
         var arch: Arch = .X86_64;
-        if (cstr_eq_slice(triple, s, e, "x86_64")) {
+
+        if (cstr_eq_slice(triple, seg_start, seg_end, "x86_64") ||
+            cstr_eq_slice(triple, seg_start, seg_end, "amd64"))
+        {
             arch = .X86_64;
-        } else if (cstr_eq_slice(triple, s, e, "aarch64")) {
+        } else if (cstr_eq_slice(triple, seg_start, seg_end, "x86") ||
+            cstr_eq_slice(triple, seg_start, seg_end, "i386") ||
+            cstr_eq_slice(triple, seg_start, seg_end, "i686"))
+        {
+            arch = .X86;
+        } else if (cstr_eq_slice(triple, seg_start, seg_end, "aarch64") ||
+            cstr_eq_slice(triple, seg_start, seg_end, "arm64"))
+        {
             arch = .Aarch64;
-        } else if (cstr_eq_slice(triple, s, e, "riscv64")) {
+        } else if (cstr_eq_slice(triple, seg_start, seg_end, "arm") ||
+            cstr_eq_slice(triple, seg_start, seg_end, "armv7"))
+        {
+            arch = .Arm;
+        } else if (cstr_eq_slice(triple, seg_start, seg_end, "riscv64")) {
             arch = .RiscV64;
-        } else if (cstr_eq_slice(triple, s, e, "wasm32")) {
+        } else if (cstr_eq_slice(triple, seg_start, seg_end, "riscv32")) {
+            arch = .RiscV32;
+        } else if (cstr_eq_slice(triple, seg_start, seg_end, "wasm32") ||
+            cstr_eq_slice(triple, seg_start, seg_end, "wasm"))
+        {
             arch = .Wasm32;
+        } else if (cstr_eq_slice(triple, seg_start, seg_end, "wasm64")) {
+            arch = .Wasm64;
         } else {
             return .None;
         }
 
         const host_info = TargetInfo.host();
         var os: OS = host_info.os;
+        var abi: Abi = .None;
         var matched_os = false;
 
-        while (next_triple_part(triple, &pos, &s, &e)) {
-            if (cstr_eq_slice(triple, s, e, "linux")) {
+        while (next_triple_part(triple, &cursor, &seg_start, &seg_end)) {
+            if (cstr_eq_slice(triple, seg_start, seg_end, "linux")) {
                 os = .Linux;
                 matched_os = true;
-                break;
-            } else if (cstr_eq_slice(triple, s, e, "windows")) {
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "windows")) {
                 os = .Windows;
                 matched_os = true;
-                break;
-            } else if (cstr_eq_slice(triple, s, e, "darwin") || cstr_eq_slice(triple, s, e, "macos")) {
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "darwin") ||
+                cstr_eq_slice(triple, seg_start, seg_end, "macos"))
+            {
                 os = .MacOS;
                 matched_os = true;
-                break;
-            } else if (cstr_eq_slice(triple, s, e, "unknown")
-                || cstr_eq_slice(triple, s, e, "pc")
-                || cstr_eq_slice(triple, s, e, "apple")
-            ) {
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "freebsd")) {
+                os = .FreeBSD;
+                matched_os = true;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "netbsd")) {
+                os = .NetBSD;
+                matched_os = true;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "openbsd")) {
+                os = .OpenBSD;
+                matched_os = true;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "android")) {
+                os = .Android;
+                matched_os = true;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "ios")) {
+                os = .IOS;
+                matched_os = true;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "wasi")) {
+                os = .Wasi;
+                matched_os = true;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "freestanding")) {
+                os = .Freestanding;
+                matched_os = true;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "none")) {
+                if (!matched_os) {
+                    os = .Freestanding;
+                    matched_os = true;
+                } else {
+                    abi = .None;
+                }
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "gnu") ||
+                cstr_eq_slice(triple, seg_start, seg_end, "gnueabi") ||
+                cstr_eq_slice(triple, seg_start, seg_end, "gnueabihf"))
+            {
+                abi = .Gnu;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "musl")) {
+                abi = .Musl;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "msvc")) {
+                abi = .Msvc;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "eabi") ||
+                cstr_eq_slice(triple, seg_start, seg_end, "eabihf"))
+            {
+                abi = .Eabi;
+            } else if (cstr_eq_slice(triple, seg_start, seg_end, "unknown") ||
+                cstr_eq_slice(triple, seg_start, seg_end, "pc") ||
+                cstr_eq_slice(triple, seg_start, seg_end, "apple"))
+            {
                 continue;
             } else if (!matched_os) {
                 return .None;
             }
         }
 
+        if (!matched_os && (arch == .Wasm32 || arch == .Wasm64)) {
+            os = .Freestanding;
+        }
+
         return .Some(TargetInfo {
             arch,
             os,
-            format: format_for_os(os),
+            format: format_for_target(arch, os),
+            abi,
         });
     }
 }
 
-fn format_for_os(os: OS) ObjectFormat {
+fn bool_to_platform_match(matched: bool) PlatformMatch {
+    if (matched) {
+        return .Matched;
+    }
+
+    return .NotMatched;
+}
+
+fn format_for_target(arch: Arch, os: OS) ObjectFormat {
+    if (arch == .Wasm32 || arch == .Wasm64) {
+        return .Wasm;
+    }
+
     switch (os) {
-        case .Linux | .Unknown => return .Elf;
-        case .MacOS => return .MachO;
+        case .MacOS | .IOS => return .MachO;
         case .Windows => return .Coff;
+        else => return .Elf;
     }
 }
 

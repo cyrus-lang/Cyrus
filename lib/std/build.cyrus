@@ -23,6 +23,13 @@ pub enum OS {
     Linux,
     Windows,
     MacOS,
+    FreeBSD,
+    NetBSD,
+    OpenBSD,
+    Android,
+    IOS,
+    Wasi,
+    Freestanding,
 
     pub fn as_int(self: Self) int32 {
         switch (self) {
@@ -30,6 +37,13 @@ pub enum OS {
             case .Linux => return 1;
             case .Windows => return 2;
             case .MacOS => return 3;
+            case .FreeBSD => return 4;
+            case .NetBSD => return 5;
+            case .OpenBSD => return 6;
+            case .Android => return 7;
+            case .IOS => return 8;
+            case .Wasi => return 9;
+            case .Freestanding => return 10;
         }
     }
 
@@ -38,6 +52,13 @@ pub enum OS {
             case 1 => return .Linux;
             case 2 => return .Windows;
             case 3 => return .MacOS;
+            case 4 => return .FreeBSD;
+            case 5 => return .NetBSD;
+            case 6 => return .OpenBSD;
+            case 7 => return .Android;
+            case 8 => return .IOS;
+            case 9 => return .Wasi;
+            case 10 => return .Freestanding;
             else => return .Unknown;
         }
     }
@@ -45,9 +66,13 @@ pub enum OS {
 
 pub enum Arch {
     X86_64,
+    X86,
     Aarch64,
+    Arm,
     RiscV64,
+    RiscV32,
     Wasm32,
+    Wasm64,
 
     pub fn as_int(self: Self) int32 {
         switch (self) {
@@ -55,6 +80,10 @@ pub enum Arch {
             case .Aarch64 => return 1;
             case .RiscV64 => return 2;
             case .Wasm32 => return 3;
+            case .X86 => return 4;
+            case .Arm => return 5;
+            case .RiscV32 => return 6;
+            case .Wasm64 => return 7;
         }
     }
 
@@ -63,6 +92,10 @@ pub enum Arch {
             case 1 => return .Aarch64;
             case 2 => return .RiscV64;
             case 3 => return .Wasm32;
+            case 4 => return .X86;
+            case 5 => return .Arm;
+            case 6 => return .RiscV32;
+            case 7 => return .Wasm64;
             else => return .X86_64;
         }
     }

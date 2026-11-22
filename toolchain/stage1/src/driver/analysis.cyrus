@@ -95,6 +95,7 @@ pub struct AnalysisContext {
         );
         defer analyzer_context.free();
 
+        analyzer_context.set_target(self->resolver->opts->target);
         analyzer_context.set_profile(self->resolver->opts->profile);
         analyzer_context.set_enabled_features(&self->resolver->opts->features);
 
