@@ -226,7 +226,7 @@ pub struct StructType {
             return;
         }
         const allocator: Allocator = dynamic LibcAllocator.new();
-        var raw_fields: core::LLVMTypeRef* = allocator.alloc(count * @sizeof(core::LLVMTypeRef));
+        var raw_fields: core::LLVMTypeRef* = allocator.alloc(count * @size_of(core::LLVMTypeRef));
         defer allocator.free(raw_fields);
         for (var i: usize = 0; i < count; i += 1) {
             const field = fields.get_const(i).unwrap();
@@ -403,7 +403,7 @@ fn make_fn_type(
     const allocator: Allocator = dynamic LibcAllocator.new();
     
     var raw_params: core::LLVMTypeRef* = allocator.alloc(
-        count * @sizeof(core::LLVMTypeRef)
+        count * @size_of(core::LLVMTypeRef)
     );
     defer allocator.free(raw_params);
     

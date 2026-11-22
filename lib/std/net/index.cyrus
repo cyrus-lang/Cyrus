@@ -87,7 +87,7 @@ pub struct TcpStream {
 
         const generic: CSockAddr* = @cast(void*, &addr);
 
-        if (connect(fd, generic, @cast(c_uint, @sizeof(CSockAddrIn))) < 0) {
+        if (connect(fd, generic, @cast(c_uint, @size_of(CSockAddrIn))) < 0) {
             const err = last_error();
             close(fd);
             return .Error(err);
@@ -156,7 +156,7 @@ pub struct TcpListener {
 
         var reuse: c_int = 1;
 
-        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, @cast(void*, &reuse), @cast(c_uint, @sizeof(c_int))) < 0) {
+        if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, @cast(void*, &reuse), @cast(c_uint, @size_of(c_int))) < 0) {
             const err = last_error();
             close(fd);
             return .Error(err);
@@ -164,7 +164,7 @@ pub struct TcpListener {
 
         const generic: CSockAddr* = @cast(void*, &addr);
 
-        if (bind(fd, generic, @cast(c_uint, @sizeof(CSockAddrIn))) < 0) {
+        if (bind(fd, generic, @cast(c_uint, @size_of(CSockAddrIn))) < 0) {
             const err = last_error();
             close(fd);
             return .Error(err);
@@ -191,7 +191,7 @@ pub struct TcpListener {
 
     pub fn accept(self: Self*) ErrorOr<TcpStream, ErrorStr> {
         var peer: CSockAddr;
-        var peer_len: c_uint = @cast(c_uint, @sizeof(CSockAddr));
+        var peer_len: c_uint = @cast(c_uint, @size_of(CSockAddr));
 
         const fd = accept(self->fd, &peer, &peer_len);
 

@@ -2950,10 +2950,10 @@ fn analyze_builtin_func_semantics(
             return analyze_builtin_scalar(context, builtin_func, builtin_kind);
         }
 
-        case .OffsetOf => return analyze_builtin_offsetof(context, builtin_func);
-        case .AlignOf => return analyze_builtin_alignof(context, builtin_func);
-        case .SizeOf => return analyze_builtin_sizeof(context, builtin_func);
-        case .TypeOf => return analyze_builtin_typeof(context, builtin_func);
+        case .OffsetOf => return analyze_builtin_offset_of(context, builtin_func);
+        case .AlignOf => return analyze_builtin_align_of(context, builtin_func);
+        case .SizeOf => return analyze_builtin_size_of(context, builtin_func);
+        case .TypeOf => return analyze_builtin_type_of(context, builtin_func);
         case .Assert => return analyze_builtin_assert(context, builtin_func);
         case .Slice => return analyze_builtin_slice(context, builtin_func);
         case .Cast => return analyze_builtin_cast(context, builtin_func);
@@ -4040,7 +4040,7 @@ fn analyze_builtin_slice(
     return .Some(ret_type);
 }
 
-fn analyze_builtin_sizeof(
+fn analyze_builtin_size_of(
     context: AnalyzerContext*,
     builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
@@ -4069,7 +4069,7 @@ fn analyze_builtin_sizeof(
     return .Some(ret_type);
 }
 
-fn analyze_builtin_alignof(
+fn analyze_builtin_align_of(
     context: AnalyzerContext*,
     builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
@@ -4091,7 +4091,7 @@ fn analyze_builtin_alignof(
     return .Some(ret_type);
 }
 
-fn analyze_builtin_typeof(
+fn analyze_builtin_type_of(
     context: AnalyzerContext*,
     builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {
@@ -4111,7 +4111,7 @@ fn analyze_builtin_typeof(
     }
 }
 
-fn analyze_builtin_offsetof(
+fn analyze_builtin_offset_of(
     context: AnalyzerContext*,
     builtin_func: cir::BuiltinFunc*
 ) Option<cir::SemaType> {

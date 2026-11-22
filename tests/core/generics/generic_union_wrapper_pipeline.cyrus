@@ -70,5 +70,5 @@ pub fn main() {
         printf("%s ", tags[i].peek());
     }
 
-    printf("%d %d\n", @sizeof(Wrapper<float64>), @sizeof(Wrapper<const uint8*>));
+    printf("%d %d\n", @size_of(Wrapper<float64>), @size_of(Wrapper<const uint8*>));
 }

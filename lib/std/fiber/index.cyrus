@@ -36,7 +36,7 @@ pub struct Fiber {
             return .Error(());
         }
 
-        var fiber: Fiber* = @cast(Fiber*, libc::malloc(@sizeof(Fiber)));
+        var fiber: Fiber* = @cast(Fiber*, libc::malloc(@size_of(Fiber)));
         
         if (fiber == null) {
             fcontext::fcontext_destroy(stack);

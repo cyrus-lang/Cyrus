@@ -116,7 +116,7 @@ pub fn format_float64_precise(writer: Writer, x: float64) {
 // 
 // pub fn format_float128(writer: Writer, x: float128) {
 //     var buffer: uint8[FLOAT128_BUF_SIZE];
-//     snprintf(&buffer[0], @sizeof(x), "%Lf", x);
+//     snprintf(&buffer[0], @size_of(x), "%Lf", x);
 //     writer.write(&buffer[0]);
 // }
 

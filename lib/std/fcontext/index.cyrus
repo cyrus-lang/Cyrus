@@ -44,7 +44,7 @@ pub fn fcontext_create(entry_fn: FContextFn) FContextState* {
     // Stack grows downwards on x86_64 SysV ABI
     var stack_top = @cast(types::c_void*, (@cast(uintptr, state)) + FCONTEXT_SIZE);
 
-    var stack_usable = FCONTEXT_SIZE - @sizeof(FContextState); 
+    var stack_usable = FCONTEXT_SIZE - @size_of(FContextState); 
     
     state->context = make_fcontext(stack_top, stack_usable, entry_fn);
 

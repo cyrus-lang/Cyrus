@@ -1730,7 +1730,7 @@ pub fn report_invalid_offset_of_operand(
     arg_type: const uint8*,
 ) {
     var mesg = String.new(allocator);
-    mesg.push_str("@offsetOf operand must be a struct type, but found `");
+    mesg.push_str("@offset_of operand must be a struct type, but found `");
     mesg.push_str(arg_type);
     mesg.push_str("`");
 
@@ -1745,7 +1745,7 @@ pub fn report_offset_of_field_must_be_string(
     allocator: Allocator,
     span: Span,
 ) {
-    var mesg = String.from_str(allocator, "@offsetOf field name must be a string literal");
+    var mesg = String.from_str(allocator, "@offset_of field name must be a string literal");
 
     const diag = Diag.new(allocator, .Error, mesg.as_str_const(), span);
     dctx->report(diag);

@@ -123,7 +123,7 @@ pub struct Context {
             return StructType.new(raw, raw_ctx, &self->is_disposed);
         }
         const allocator: Allocator = dynamic LibcAllocator.new();
-        var raw_fields: core::LLVMTypeRef* = allocator.alloc(count * @sizeof(core::LLVMTypeRef));
+        var raw_fields: core::LLVMTypeRef* = allocator.alloc(count * @size_of(core::LLVMTypeRef));
         defer allocator.free(raw_fields);
         for (var i: usize = 0; i < count; i += 1) {
             const field = fields.get_const(i).unwrap();

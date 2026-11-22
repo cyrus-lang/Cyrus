@@ -8,9 +8,9 @@ struct Foo {
 }
 
 pub fn main() {
-    printf("%d ", @offsetof(Foo, "a"));
-    printf("%d ", @offsetof(Foo, "b"));
-    printf("%d ", @offsetof(struct {
+    printf("%d ", @offset_of(Foo, "a"));
+    printf("%d ", @offset_of(Foo, "b"));
+    printf("%d ", @offset_of(struct {
         x: int32,
         y: int32,
         z: int64

@@ -1,3 +1,0 @@
-pub fn main() {
-    const offset = @offsetof(struct {}, 5); //~ ERROR @offsetOf field name must be a string literal
-}

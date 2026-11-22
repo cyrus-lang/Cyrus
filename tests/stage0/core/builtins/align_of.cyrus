@@ -1,0 +1,11 @@
+// @stdout: 4 8 8 8 4
+
+import std::libc{printf};
+
+pub fn main() {
+    printf("%d ", @align_of(int32));
+    printf("%d ", @align_of(float64));
+    printf("%d ", @align_of(struct { a: int32*, b: int32* }));
+    printf("%d ", @align_of(enum(int64) { A, B }));
+    printf("%d ", @align_of(struct { a: int32, b: int8 }));
+}

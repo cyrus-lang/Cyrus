@@ -9,7 +9,7 @@ enum MyResult<T, E> {
 
 struct Container<T> {
     pub fn inner(self: Self) {
-        var s = @sizeof(MyResult<T, uint32>);
+        var s = @size_of(MyResult<T, uint32>);
         printf("%d\n", s);
     }
 

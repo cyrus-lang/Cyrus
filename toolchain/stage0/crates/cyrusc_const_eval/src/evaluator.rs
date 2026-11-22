@@ -299,10 +299,10 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
             TypedBuiltinKind::FileName => self.eval_file_name(builtin_func, analyzer_state),
             TypedBuiltinKind::Line => self.eval_line(builtin_func),
             TypedBuiltinKind::Column => self.eval_column(builtin_func),
-            TypedBuiltinKind::SizeOf => self.eval_sizeof(builtin_func),
-            TypedBuiltinKind::AlignOf => self.eval_alignof(builtin_func),
-            TypedBuiltinKind::OffsetOf => self.eval_offsetof(builtin_func),
-            TypedBuiltinKind::TypeOf => self.eval_typeof(builtin_func),
+            TypedBuiltinKind::SizeOf => self.eval_size_of(builtin_func),
+            TypedBuiltinKind::AlignOf => self.eval_align_of(builtin_func),
+            TypedBuiltinKind::OffsetOf => self.eval_offset_of(builtin_func),
+            TypedBuiltinKind::TypeOf => self.eval_type_of(builtin_func),
 
             _ => return Err(ConstEvalError::UnsupportedExpr),
         }
@@ -376,7 +376,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         Ok(ConstValue::Int(builtin_func.loc.column.try_into().unwrap()))
     }
 
-    fn eval_sizeof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+    fn eval_size_of(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
         let arg = builtin_func.args.first().unwrap();
 
         let Some(arg_type) = arg.ty.as_ref() else {
@@ -389,7 +389,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         Ok(ConstValue::Int(layout.size.try_into().unwrap()))
     }
 
-    fn eval_alignof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+    fn eval_align_of(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
         let arg = builtin_func.args.first().unwrap();
         let arg_type = arg.ty.as_ref().unwrap();
 
@@ -399,7 +399,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         Ok(ConstValue::Int(layout.align.try_into().unwrap()))
     }
 
-    fn eval_offsetof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+    fn eval_offset_of(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
         let type_expr = &builtin_func.args[0];
         let field_expr = &builtin_func.args[1];
 
@@ -426,7 +426,7 @@ impl<'a, R: ConstResolver> ConstEvaluator<'a, R> {
         Err(ConstEvalError::TypeError)
     }
 
-    fn eval_typeof(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
+    fn eval_type_of(&self, builtin_func: &TypedBuiltinFunc) -> Result<ConstValue, ConstEvalError> {
         let operand = &builtin_func.args[0];
 
         let ty = operand.ty.as_ref().ok_or(ConstEvalError::TypeError)?;

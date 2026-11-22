@@ -13,7 +13,7 @@ pub fn main() {
     var dest: Data;
 
     // Copy src to dest
-    @memcpy(&dest, &src, @sizeof(Data));
+    @memcpy(&dest, &src, @size_of(Data));
 
     printf("id: %d, score: %.1f, flag: %d", dest.id, dest.score, dest.flag);
 

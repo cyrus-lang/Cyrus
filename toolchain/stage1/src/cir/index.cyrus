@@ -507,7 +507,7 @@ pub fn lookup_builtin(name: const uint8*) Option<BuiltinKind> {
         case "div_trunc" => return .Some(.DivTrunc);
         case "next_down" => return .Some(.NextDown);
         case "div_floor" => return .Some(.DivFloor);
-        case "offsetof" => return .Some(.OffsetOf);
+        case "offset_of" => return .Some(.OffsetOf);
         case "infinity" => return .Some(.Infinity);
         case "copysign" => return .Some(.Copysign);
         case "bit_cast" => return .Some(.BitCast);
@@ -515,14 +515,14 @@ pub fn lookup_builtin(name: const uint8*) Option<BuiltinKind> {
         case "ptr_diff" => return .Some(.PtrDiff);
         case "signbit" => return .Some(.Signbit);
         case "memmove" => return .Some(.Memmove);
-        case "alignof" => return .Some(.AlignOf);
+        case "align_of" => return .Some(.AlignOf);
         case "release" => return .Some(.Release);
         case "feature" => return .Some(.Feature);
         case "next_up" => return .Some(.NextUp);
         case "mul_add" => return .Some(.MulAdd);
-        case "typeof" => return .Some(.TypeOf);
+        case "type_of" => return .Some(.TypeOf);
         case "column" => return .Some(.Column);
-        case "sizeof" => return .Some(.SizeOf);
+        case "size_of" => return .Some(.SizeOf);
         case "memcpy" => return .Some(.Memcpy);
         case "memset" => return .Some(.Memset);
         case "assert" => return .Some(.Assert);
@@ -882,7 +882,7 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
         
         case .SizeOf => return BuiltinSpec {
             kind,
-            name: "sizeof",
+            name: "size_of",
             family: .ConstEval,
             phase: .ConstEval,
             form: .Expr,
@@ -893,7 +893,7 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
         
         case .AlignOf => return BuiltinSpec {
             kind,
-            name: "alignof",
+            name: "align_of",
             family: .ConstEval,
             phase: .ConstEval,
             form: .Expr,
@@ -904,7 +904,7 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
         
         case .OffsetOf => return BuiltinSpec {
             kind,
-            name: "offsetof",
+            name: "offset_of",
             family: .ConstEval,
             phase: .ConstEval,
             form: .Expr,
@@ -915,7 +915,7 @@ pub fn builtin_spec_of(kind: BuiltinKind) BuiltinSpec {
         
         case .TypeOf => return BuiltinSpec {
             kind,
-            name: "typeof",
+            name: "type_of",
             family: .ConstEval,
             phase: .ConstEval,
             form: .Expr,

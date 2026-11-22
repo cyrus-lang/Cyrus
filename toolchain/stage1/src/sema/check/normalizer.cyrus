@@ -338,7 +338,7 @@ fn normalize_unresolved_type(
                 context->dispatcher.analyze_expr(context, arg, .None);
             }
 
-            if (builtin_func->name.str.as_str_const() == "typeof") {
+            if (builtin_func->name.str.as_str_const() == "type_of") {
                 switch (builtin_func->args.first_const()) {
                     case .Some(arg) => {
                         switch (arg->ty) {
@@ -517,8 +517,8 @@ fn fold_type_builtin_as_integer(
             var is_align = false;
 
             switch (name) {
-                case "alignof" => is_align = true;
-                case "sizeof" => is_size = true;
+                case "align_of" => is_align = true;
+                case "size_of" => is_size = true;
                 else => return false;
             }
 

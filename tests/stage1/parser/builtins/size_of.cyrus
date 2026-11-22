@@ -1,8 +1,8 @@
 // @parse
 
 fn f() {
-    var size = @sizeof(int32);
-    var generic = @sizeof(R<uint32, uint32>);
+    var size = @size_of(int32);
+    var generic = @size_of(R<uint32, uint32>);
 }
 
 /*@parse
@@ -20,7 +20,7 @@ ASTProgram
                             is_undef: false
                             rhs:
                                 ASTExpr::Builtin
-                                    name: sizeof
+                                    name: size_of
                                     arg[0]:
                                         Type: int32
                     stmt[1]:
@@ -30,7 +30,7 @@ ASTProgram
                             is_undef: false
                             rhs:
                                 ASTExpr::Builtin
-                                    name: sizeof
+                                    name: size_of
                                     arg[0]:
                                         Type: ASTType::GenericInst
                                             base: R
