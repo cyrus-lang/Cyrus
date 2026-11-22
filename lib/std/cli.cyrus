@@ -285,9 +285,19 @@ pub struct App {
 
         const ty = opt->arg_type.unwrap_or(.Bool);
 
-        if (ty.is_bool() && (!next_arg || is_arg_an_opt(next_arg))) {
-            value = .Bool(true);
-            goto register_value;
+        if (ty.is_bool() && !is_assign) {
+            if (!next_arg || is_arg_an_opt(next_arg)) {
+                value = .Bool(true);
+                goto register_value;
+            }
+
+            var next_is_bool = false;
+            parse_bool(&next_is_bool, next_arg);
+
+            if (!next_is_bool) {
+                value = .Bool(true);
+                goto register_value;
+            }
         }
 
         if (!next_arg || is_arg_an_opt(next_arg)) {

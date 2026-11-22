@@ -727,12 +727,11 @@ fn evaluate_build_script(
         return .None;
     }
 
-    var mangled_build: String;
     switch (find_mangled_build_fn(
         allocator, 
         &resolver, 
         source_tokens.source_id
-    )) case .Some(name) else {
+    )) case .Some(var mangled_build) else {
         return .None;
     }
     defer mangled_build.free();
@@ -957,7 +956,7 @@ fn select_target_entry(
                 const entry = pkg->entries.get_owned(i).unwrap();
 
                 if (entry->is_default) {
-                    return .Some(ent);
+                    return .Some(entry);
                 }
             }
 

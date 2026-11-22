@@ -1778,7 +1778,8 @@ def run_build_project_test(
         for idx, case in enumerate(cases):
             case_name = str(case.get("name", f"case_{idx}"))
             raw_args = [str(a) for a in (case.get("args") or ["run"])]
-            if "--stdlib" not in " ".join(raw_args):
+            needs_stdlib = not (raw_args and raw_args[0] == "new")
+            if needs_stdlib and "--stdlib" not in " ".join(raw_args):
                 stdlib_flag = f"--stdlib={cfg.stdlib_path}"
                 if "--" in raw_args:
                     sep = raw_args.index("--")
@@ -1854,6 +1855,28 @@ def run_build_project_test(
                 if needle not in combined_out:
                     raise RuntimeError(
                         f"[{case_name}] expected output to contain {needle!r}, got:\n{combined_out}"
+                    )
+
+            for rel_expected in case.get("expect_files") or []:
+                expected_path = case_cwd / str(rel_expected)
+                if not expected_path.is_file():
+                    raise RuntimeError(f"[{case_name}] expected file `{rel_expected}` to exist")
+
+            for rel_absent in case.get("expect_absent") or []:
+                absent_path = case_cwd / str(rel_absent)
+                if absent_path.exists():
+                    raise RuntimeError(f"[{case_name}] expected path `{rel_absent}` to not exist")
+
+            for check in case.get("expect_file_contains") or []:
+                rel_path = str(check["path"])
+                needle = str(check["contains"])
+                target_path = case_cwd / rel_path
+                if not target_path.is_file():
+                    raise RuntimeError(f"[{case_name}] expected file `{rel_path}` to exist")
+                file_text = target_path.read_text()
+                if needle not in file_text:
+                    raise RuntimeError(
+                        f"[{case_name}] expected `{rel_path}` to contain {needle!r}, got:\n{file_text}"
                     )
 
 

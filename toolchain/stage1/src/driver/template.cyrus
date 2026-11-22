@@ -1,0 +1,587 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 The Cyrus Language
+
+import std::path{Path, join_path};
+import std::libc{strlen, printf};
+import std::collections{Vec};
+import std::option{Option};
+import std::string{String};
+import std::mem{Allocator};
+import std::os::dir;
+import std::os;
+
+import escape{push_c_string_literal};
+import diags{compile_error};
+import version;
+
+pub enum ProjectKind {
+    Executable,
+    Library,
+}
+
+pub struct TemplateVar {
+    pub name: const uint8*,
+    pub value: const uint8*,
+}
+
+/* ************* Template Rendering ************* */
+
+pub fn render_template(
+    allocator: Allocator,
+    template_source: const uint8*,
+    vars: const Vec<TemplateVar>*
+) String {
+    var out = String.new(allocator);
+    var cursor: usize = 0;
+
+    while (template_source[cursor] != '\0') {
+        if (template_source[cursor] == '{' && template_source[cursor + 1] == '{') {
+            var close_idx = cursor + 2;
+            var found_close = false;
+
+            while (template_source[close_idx] != '\0') {
+                if (template_source[close_idx] == '}' && template_source[close_idx + 1] == '}') {
+                    found_close = true;
+                    break;
+                }
+
+                close_idx += 1;
+            }
+
+            if (found_close) {
+                var key = String.new(allocator);
+
+                for (var key_idx = cursor + 2; key_idx < close_idx; key_idx += 1) {
+                    key.push(template_source[key_idx]);
+                }
+
+                switch (lookup_template_var(vars, key.as_str_const())) {
+                    case .Some(var_value) => {
+                        out.push_str(var_value);
+                    }
+                    case .None => {
+                        out.push_str("{{");
+                        out.push_str(key.as_str_const());
+                        out.push_str("}}");
+                    }
+                }
+
+                key.free();
+                cursor = close_idx + 2;
+                continue;
+            }
+        }
+
+        out.push(template_source[cursor]);
+        cursor += 1;
+    }
+
+    return out;
+}
+
+fn lookup_template_var(
+    vars: const Vec<TemplateVar>*,
+    key: const uint8*
+) Option<const uint8*> {
+    if (vars == null) {
+        return .None;
+    }
+
+    for (var i: usize = 0; i < vars->len(); i += 1) {
+        const entry = vars->get_const(i).unwrap();
+
+        if (entry->name == key) {
+            return .Some(entry->value);
+        }
+    }
+
+    return .None;
+}
+
+/* ************* Project Scaffolding ************* */
+
+pub fn create_project(
+    allocator: Allocator,
+    raw_project_path: const uint8*,
+    kind: ProjectKind
+) int32 {
+    var project_root = normalize_project_root(allocator, raw_project_path);
+    defer project_root.free();
+
+    var project_name = extract_project_name(allocator, project_root.as_str_const());
+    defer project_name.free();
+
+    if (!validate_project_name(allocator, project_name.as_str_const())) {
+        return 1;
+    }
+
+    const root_str = project_root.as_str_const();
+
+    if (os::is_dir(root_str) || os::is_file(root_str)) {
+        var err = String.from_str(allocator, "project path `");
+        defer err.free();
+        err.push_str(root_str);
+        err.push_str("` already exists");
+        compile_error(err.as_str_const());
+        return 1;
+    }
+
+    if (!create_project_dir(allocator, root_str)) {
+        return 1;
+    }
+
+    if (!create_subdir(allocator, root_str, "build")) {
+        return 1;
+    }
+
+    if (!create_subdir(allocator, root_str, "vendor")) {
+        return 1;
+    }
+
+    if (!create_subdir(allocator, root_str, "src")) {
+        return 1;
+    }
+
+    var template_vars: Vec<TemplateVar> = Vec.new(allocator);
+    defer template_vars.free();
+
+    template_vars.push(TemplateVar {
+        name: "project_name",
+        value: project_name.as_str_const(),
+    });
+
+    template_vars.push(TemplateVar {
+        name: "compiler_version",
+        value: version::COMPILER_VERSION,
+    });
+
+    var gitignore = gitignore_template(allocator);
+    defer gitignore.free();
+
+    if (!write_project_file(
+        allocator, 
+        root_str, 
+        ".gitignore", 
+        gitignore.as_str_const()
+    )) {
+        return 1;
+    }
+
+    if (!write_project_file(
+        allocator, 
+        root_str, 
+        "build/.gitkeep", 
+        ""
+    )) {
+        return 1;
+    }
+
+    if (!write_project_file(
+        allocator, 
+        root_str, 
+        "vendor/.gitkeep", 
+        ""
+    )) {
+        return 1;
+    }
+
+    switch (kind) {
+        case .Executable => {
+            var main_src = main_source_template(allocator);
+            defer main_src.free();
+
+            if (!write_project_file(
+                allocator, 
+                root_str, 
+                "src/main.cyrus", 
+                main_src.as_str_const()
+            )) {
+                return 1;
+            }
+        }
+        case .Library => {
+            var lib_src = lib_source_template(allocator);
+            defer lib_src.free();
+
+            if (!write_project_file(
+                allocator, 
+                root_str, 
+                "src/index.cyrus", 
+                lib_src.as_str_const()
+            )) {
+                return 1;
+            }
+        }
+    }
+
+    var build_tmpl = build_script_template(allocator, kind);
+    defer build_tmpl.free();
+
+    if (!write_rendered_template(
+        allocator,
+        root_str,
+        "build.cyrus",
+        build_tmpl.as_str_const(),
+        &template_vars
+    )) {
+        return 1;
+    }
+
+    var readme_tmpl = readme_template(allocator, kind);
+    defer readme_tmpl.free();
+
+    if (!write_rendered_template(
+        allocator,
+        root_str,
+        "README.md",
+        readme_tmpl.as_str_const(),
+        &template_vars
+    )) {
+        return 1;
+    }
+
+    switch (kind) {
+        case .Executable => printf("Created executable project `%s`\n", project_name.as_str_const());
+        case .Library => printf("Created library project `%s`\n", project_name.as_str_const());
+    }
+
+    return 0;
+}
+
+/* ************* Path & File Helpers ************* */
+
+fn normalize_project_root(
+    allocator: Allocator, 
+    raw_path: const uint8*
+) String {
+    var end_idx = strlen(raw_path);
+
+    while (end_idx > 1 && raw_path[end_idx - 1] == '/') {
+        end_idx -= 1;
+    }
+
+    var normalized = String.with_capacity(allocator, end_idx + 1);
+
+    for (var i: usize = 0; i < end_idx; i += 1) {
+        normalized.push(raw_path[i]);
+    }
+
+    return normalized;
+}
+
+fn extract_project_name(
+    allocator: Allocator, 
+    project_root: const uint8*
+) String {
+    const total_len = strlen(project_root);
+    var start_idx: usize = 0;
+
+    for (var i: usize = 0; i < total_len; i += 1) {
+        if (project_root[i] == '/') {
+            start_idx = i + 1;
+        }
+    }
+
+    var project_name = String.with_capacity(allocator, total_len - start_idx + 1);
+
+    for (var i = start_idx; i < total_len; i += 1) {
+        project_name.push(project_root[i]);
+    }
+
+    return project_name;
+}
+
+fn is_valid_project_name_char(byte: uint8) bool {
+    const is_lower = byte >= 'a' && byte <= 'z';
+    const is_upper = byte >= 'A' && byte <= 'Z';
+    const is_digit = byte >= '0' && byte <= '9';
+    const is_punct = byte == '_' || byte == '-' || byte == '.';
+
+    return is_lower || is_upper || is_digit || is_punct;
+}
+
+fn validate_project_name(
+    allocator: Allocator, 
+    project_name: const uint8*
+) bool {
+    if (project_name[0] == '\0' || 
+        project_name == "." || 
+        project_name == "..")
+    {
+        compile_error("invalid project name");
+        return false;
+    }
+
+    for (var i: usize = 0; project_name[i] != '\0'; i += 1) {
+        if (!is_valid_project_name_char(project_name[i])) {
+            var err = String.from_str(allocator, "invalid character in project name `");
+            err.push_str(project_name);
+            err.push_str("`");
+            compile_error(err.as_str_const());
+            err.free();
+            return false;
+        }
+    }
+
+    return true;
+}
+
+fn create_project_dir(
+    allocator: Allocator, 
+    path: const uint8*
+) bool {
+    if (!dir::create_dir(path)) {
+        var err = String.from_str(allocator, "failed to create directory `");
+        err.push_str(path);
+        err.push_str("`");
+        compile_error(err.as_str_const());
+        err.free();
+        return false;
+    }
+
+    return true;
+}
+
+fn create_subdir(
+    allocator: Allocator, 
+    project_root: const uint8*, 
+    relative_dir: const uint8*
+) bool {
+    var dir_path = join_path(allocator, project_root, relative_dir);
+    defer dir_path.free();
+
+    return create_project_dir(allocator, dir_path.as_str_const());
+}
+
+fn write_project_file(
+    allocator: Allocator,
+    project_root: const uint8*,
+    rel_path: const uint8*,
+    content: const uint8*
+) bool {
+    var full_path = join_path(allocator, project_root, rel_path);
+    defer full_path.free();
+
+    const file_path = Path.new(allocator, full_path.as_str_const());
+    defer file_path.free();
+
+    switch (os::File.open(&file_path, .Write)) case .Value(var file) else {
+        var err = String.from_str(allocator, "failed to write file `");
+        err.push_str(full_path.as_str_const());
+        err.push_str("`");
+        compile_error(err.as_str_const());
+        err.free();
+        return false;
+    }
+
+    const write_result = file.write(content);
+    file.close();
+
+    switch (write_result) {
+        case .Value => {
+            return true;
+        }
+        case .Error => {
+            var err = String.from_str(allocator, "failed to write file `");
+            err.push_str(full_path.as_str_const());
+            err.push_str("`");
+            compile_error(err.as_str_const());
+            err.free();
+            return false;
+        }
+    }
+}
+
+fn write_rendered_template(
+    allocator: Allocator,
+    project_root: const uint8*,
+    rel_path: const uint8*,
+    template_source: const uint8*,
+    vars: const Vec<TemplateVar>*
+) bool {
+    var rendered = render_template(
+        allocator, 
+        template_source, 
+        vars
+    );
+    defer rendered.free();
+
+    return write_project_file(
+        allocator,
+        project_root,
+        rel_path,
+        rendered.as_str_const()
+    );
+}
+
+/* ************* Project Templates ************* */
+
+fn push_line(out: String*, line: const uint8*) {
+    out->push_str(line);
+    out->push('\n');
+}
+
+fn gitignore_template(allocator: Allocator) String {
+    var out = String.new(allocator);
+
+    push_line(&out, "build/*");
+    push_line(&out, "!build/.gitkeep");
+    push_line(&out, "vendor/*");
+    push_line(&out, "!vendor/.gitkeep");
+    push_line(&out, "tmp/");
+    push_line(&out, ".env");
+    push_line(&out, "*.o");
+
+    return out;
+}
+
+fn main_source_template(allocator: Allocator) String {
+    var out = String.new(allocator);
+
+    push_line(&out, "import std::libc{printf};");
+    push_line(&out, "");
+    push_line(&out, "pub fn main() {");
+    out.push_str("    printf(");
+    push_c_string_literal(&out, "Hello, Cyrus!\n");
+    push_line(&out, ");");
+    push_line(&out, "}");
+
+    return out;
+}
+
+fn lib_source_template(allocator: Allocator) String {
+    var out = String.new(allocator);
+
+    push_line(&out, "pub fn add(a: int32, b: int32) int32 {");
+    push_line(&out, "    return a + b;");
+    push_line(&out, "}");
+
+    return out;
+}
+
+fn build_script_template(
+    allocator: Allocator, 
+    kind: ProjectKind
+) String {
+    var out = String.new(allocator);
+
+    push_line(&out, "import std::build{");
+    push_line(&out, "    Dependency,");
+    push_line(&out, "    LibraryKind,");
+    push_line(&out, "    Builder,");
+    push_line(&out, "    Arch,");
+    push_line(&out, "    OS");
+    push_line(&out, "};");
+    push_line(&out, "");
+    push_line(&out, "const VERSION = \"0.1.0\";");
+    push_line(&out, "const EDITION = \"2026\";");
+    push_line(&out, "");
+    push_line(&out, "pub fn build(builder: Builder*) {");
+    push_line(&out, "    // ------------------------------------------------------------------------");
+    push_line(&out, "    // Target / Host");
+    push_line(&out, "    // ------------------------------------------------------------------------");
+    push_line(&out, "    const target = builder->target();");
+    push_line(&out, "    const host = builder->host();");
+    push_line(&out, "");
+    push_line(&out, "    // ------------------------------------------------------------------------");
+    push_line(&out, "    // Package Metadata");
+    push_line(&out, "    // ------------------------------------------------------------------------");
+    push_line(&out, "    var pkg = builder->package(\"{{project_name}}\", VERSION);");
+
+    switch (kind) {
+        case .Executable => {
+            push_line(&out, "    pkg->description(\"A Cyrus project\");");
+            push_line(&out, "    pkg->edition(EDITION);");
+            push_line(&out, "");
+            push_line(&out, "    // ------------------------------------------------------------------------");
+            push_line(&out, "    // Executable Entries");
+            push_line(&out, "    // ------------------------------------------------------------------------");
+            push_line(&out, "    var app = pkg->entry(\"{{project_name}}\", \"src/main.cyrus\");");
+            push_line(&out, "    app->output_name(\"build/{{project_name}}\");");
+            push_line(&out, "    app->default(true);");
+        }
+        case .Library => {
+            push_line(&out, "    pkg->description(\"A Cyrus library\");");
+            push_line(&out, "    pkg->edition(EDITION);");
+            push_line(&out, "");
+            push_line(&out, "    // ------------------------------------------------------------------------");
+            push_line(&out, "    // Library Targets");
+            push_line(&out, "    // ------------------------------------------------------------------------");
+            push_line(&out, "    pkg->library(\"{{project_name}}\", \"src/index.cyrus\", LibraryKind::Static);");
+        }
+    }
+
+    push_line(&out, "");
+    push_line(&out, "    // ------------------------------------------------------------------------");
+    push_line(&out, "    // Build Profiles & Code Generators");
+    push_line(&out, "    // ------------------------------------------------------------------------");
+    push_line(&out, "    var debug = builder->profile(\"debug\");");
+    push_line(&out, "    debug->debug_info(true);");
+    push_line(&out, "    debug->optimization(0);");
+    push_line(&out, "}");
+
+    return out;
+}
+
+fn readme_template(allocator: Allocator, kind: ProjectKind) String {
+    var out = String.new(allocator);
+
+    switch (kind) {
+        case .Executable => {
+            push_line(&out, "# {{project_name}}");
+        }
+        case .Library => {
+            push_line(&out, "# {{project_name}} Library");
+        }
+    }
+
+    push_line(&out, "");
+    push_line(&out, "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.");
+    push_line(&out, "");
+    push_line(&out, "## Getting Started");
+    push_line(&out, "");
+    push_line(&out, "Make sure you have the Cyrus toolchain installed (Compiler version: {{compiler_version}}).");
+    push_line(&out, "");
+
+    switch (kind) {
+        case .Executable => {
+            push_line(&out, "### Build & Run");
+            push_line(&out, "");
+            push_line(&out, "```sh");
+            push_line(&out, "cyrus build");
+            push_line(&out, "cyrus run");
+            push_line(&out, "```");
+            push_line(&out, "");
+            push_line(&out, "## Project Structure");
+            push_line(&out, "");
+            push_line(&out, "- `src/main.cyrus`: Application entry point");
+            push_line(&out, "- `build.cyrus`: Build configuration");
+            push_line(&out, "- `vendor/`: Project dependencies");
+            push_line(&out, "- `build/`: Build artifacts");
+        }
+        case .Library => {
+            push_line(&out, "### Usage");
+            push_line(&out, "");
+            push_line(&out, "Add this library as a dependency in your project's `build.cyrus`:");
+            push_line(&out, "");
+            push_line(&out, "```cyrus");
+            push_line(&out, "pkg->dependency(\"{{project_name}}\", Dependency.path(\"vendor/{{project_name}}\"));");
+            push_line(&out, "```");
+            push_line(&out, "");
+            push_line(&out, "Then import it in your Cyrus source files:");
+            push_line(&out, "");
+            push_line(&out, "```cyrus");
+            push_line(&out, "import {{project_name}};");
+            push_line(&out, "```");
+            push_line(&out, "");
+            push_line(&out, "## Project Structure");
+            push_line(&out, "");
+            push_line(&out, "- `src/index.cyrus`: Library entry point");
+            push_line(&out, "- `build.cyrus`: Build configuration");
+            push_line(&out, "- `vendor/`: Project dependencies");
+            push_line(&out, "- `build/`: Build artifacts");
+        }
+    }
+
+    return out;
+}
