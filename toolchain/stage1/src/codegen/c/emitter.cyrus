@@ -172,7 +172,7 @@ pub struct Emitter {
             case .Builtin(builtin) => {
                 switch (builtin) {
                     case .BuiltinBlock(block) => {
-                        if (block.args.len() > 0) {
+                        if (block.is_named_test_case()) {
                             if (self->types.maps.test_profile && block.is_active &&
                                 block.name.str.as_str_const() == "test")
                             {
@@ -8872,7 +8872,7 @@ pub struct Emitter {
                         return String.from_str(self->allocator, "\"\"");
                     }
 
-                    case .Feature => {
+                    case .Debug | .Release | .Test | .Feature => {
                         return String.from_str(self->allocator, "false");
                     }
 

@@ -1,0 +1,29 @@
+// @stdout: api=false ok
+
+import std::libc{printf};
+
+@feature("API")
+struct ApiData {
+    pub value: int32,
+}
+
+@feature("API")
+fn make_data() ApiData {
+    return ApiData { value: 42 };
+}
+
+pub fn main() {
+    @feature("API") {
+        const data = make_data();
+        printf("value=%d ", data.value);
+    }
+
+    const enabled = @feature("API");
+    var api_str: const uint8* = "false";
+
+    if (enabled) {
+        api_str = "true";
+    }
+
+    printf("api=%s ok", api_str);
+}

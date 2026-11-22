@@ -8,9 +8,9 @@ import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
 import std::mem{Allocator};
-import std::libc{getenv};
 import std::os::process;
 import std::os::dir;
+import std::os::env;
 import std::cli;
 import std::os;
 
@@ -50,12 +50,13 @@ pub fn rt_lib_exists_in(allocator: Allocator, dir: const uint8*) bool {
 }
 
 pub fn find_codegen_c_rt_dir(allocator: Allocator, opts: const cli::Opts*) Option<String> {
-    const env_dir = getenv("CYRUS_CODEGEN_C_LIB_DIR");
-
-    if (env_dir != null && env_dir[0] != '\0') {
-        if (rt_lib_exists_in(allocator, env_dir)) {
-            return .Some(String.from_str(allocator, env_dir));
+    switch (env::get("CYRUS_CODEGEN_C_LIB_DIR")) {
+        case .Some(env_dir) => {
+            if (env_dir[0] != '\0' && rt_lib_exists_in(allocator, env_dir)) {
+                return .Some(String.from_str(allocator, env_dir));
+            }
         }
+        case .None => {}
     }
 
     switch (opts->find("stdlib")) {
@@ -85,20 +86,23 @@ pub fn find_codegen_c_rt_dir(allocator: Allocator, opts: const cli::Opts*) Optio
         else => {}
     }
 
-    const env_stdlib = getenv("CYRUS_STDLIB_PATH");
+    switch (env::get("CYRUS_STDLIB_PATH")) {
+        case .Some(env_stdlib) => {
+            if (env_stdlib[0] != '\0') {
+                var candidate = join_path(
+                    allocator,
+                    env_stdlib,
+                    "../../toolchain/stage1/src/codegen/c/build"
+                );
 
-    if (env_stdlib != null && env_stdlib[0] != '\0') {
-        var candidate = join_path(
-            allocator,
-            env_stdlib,
-            "../../toolchain/stage1/src/codegen/c/build"
-        );
+                if (rt_lib_exists_in(allocator, candidate.as_str_const())) {
+                    return .Some(candidate);
+                }
 
-        if (rt_lib_exists_in(allocator, candidate.as_str_const())) {
-            return .Some(candidate);
+                candidate.free();
+            }
         }
-
-        candidate.free();
+        case .None => {}
     }
 
     var exe_buf: uint8[4096];
@@ -421,6 +425,7 @@ pub fn emit_backend_ir_with_opts(
     );
     defer analyzer_context.free();
 
+    analyzer_context.set_profile(opts->profile);
     analyzer_context.set_enabled_features(&opts->features);
 
     if (timings != null) {

@@ -1,0 +1,49 @@
+// @compilerArgs: --profile=release
+// @stdout: debug=false release=true test=false block=release
+
+import std::libc{printf};
+
+const IS_DEBUG: bool = @debug();
+const IS_RELEASE: bool = @release();
+const IS_TEST: bool = @test();
+
+@debug()
+fn active_block_name() const uint8* {
+    return "debug";
+}
+
+@release()
+fn active_block_name() const uint8* {
+    return "release";
+}
+
+@test()
+fn active_block_name() const uint8* {
+    return "test";
+}
+
+pub fn main() {
+    var runtime_match = false;
+
+    if (!@debug() && @release() && !@test()) {
+        runtime_match = true;
+    }
+
+    @assert(runtime_match);
+
+    printf(
+        "debug=%s release=%s test=%s block=%s",
+        bool_str(IS_DEBUG),
+        bool_str(IS_RELEASE),
+        bool_str(IS_TEST),
+        active_block_name()
+    );
+}
+
+fn bool_str(value: bool) const uint8* {
+    if (value) {
+        return "true";
+    }
+
+    return "false";
+}

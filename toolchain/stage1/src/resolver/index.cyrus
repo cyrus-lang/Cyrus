@@ -403,7 +403,8 @@ pub struct Resolver {
             allocator,
             module_symbol_id,
             node->program,
-            self->opts->profile
+            self->opts->profile,
+            &self->opts->features
         );
 
         var ctx = TraverseContext.new(
@@ -414,7 +415,8 @@ pub struct Resolver {
             &self->decl_tables,
             node->source_id,
             self->opts->profile,
-            module_symbol_id
+            module_symbol_id,
+            &self->opts->features
         );
 
         const body = resolve_decl_full(&ctx, node->program);

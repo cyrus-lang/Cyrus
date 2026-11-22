@@ -4,9 +4,9 @@
 import std::io{Writer, FileWriter};
 import std::mem{Allocator};
 import std::option{Option};
-import std::libc{getenv};
 import std::path{Path};
 import std::os{File};
+import std::os::env;
 
 import sema::context{AnalyzerContext};
 import .::index{CompilerContext};
@@ -104,9 +104,7 @@ pub struct CodegenContext {
     }
 
     fn write_debug_source(self: Self*, source: const uint8*) {
-        const emit_path = getenv("CYRUS_EMIT_C");
-
-        if (emit_path == null) {
+        switch (env::get("CYRUS_EMIT_C")) case .Some(emit_path) else {
             return;
         }
 

@@ -8,17 +8,23 @@ import std::string{String};
 import std::path{Path};
 import std::os;
 
-import parser::ast{ASTProgram, ASTImport, NodeId};
 import driver::lexical{LexicalContext};
 import resolver::modules{visit_key};
 import tokens{SourceTokens, Span};
 import diags{DiagContext};
 import resolver::loader{
     last_sub_module_span,
+    is_feature_enabled,
     ResolvedModuleFile,
     ResolverOptions,
     resolve_import,
     LoaderError,
+};
+import parser::ast{
+    ASTBuiltinBlock, 
+    ASTProgram, 
+    ASTImport, 
+    NodeId
 };
 import source{SourceId};
 import resolver::diags;
@@ -181,43 +187,76 @@ pub struct ModuleGraph {
     ) {
         self->active.push(index);
 
+        const entry_node = self->nodes.get_const(index).unwrap();
+
+        switch (entry_node->program->statements) {
+            case .Some(statements) => {
+                self->discover_stmt_list(
+                    index,
+                    statements.start,
+                    statements.len,
+                    lexical,
+                    opts
+                );
+            }
+            else => {}
+        }
+
+        self->active.remove(self->active.len() - 1);
+        self->order.push(index);
+    }
+
+    fn discover_stmt_list(
+        self: Self*,
+        index: usize,
+        start: usize,
+        count: usize,
+        lexical: const LexicalContext*,
+        opts: const ResolverOptions*
+    ) {
         var position: usize = 0;
 
-        while (true) {
+        while (position < count) {
             const node = self->nodes.get_const(index).unwrap();
+            const program = node->program;
+            const node_id = program->children.get_owned(start + position).unwrap();
 
-            var start: usize = 0;
-            var count: usize = 0;
-            var has_statements = false;
-
-            switch (node->program->statements) {
-                case .Some(statements) => {
-                    start = statements.start;
-                    count = statements.len;
-                    has_statements = true;
-                }
-                else => {}
-            }
-
-            if (!has_statements || position >= count) {
-                break;
-            }
-
-            const node_id = node->program->children.get_owned(start + position).unwrap();
             position += 1;
 
-            const ast_node = node->program->nodes.get_const(node_id).unwrap();
+            const ast_node = program->nodes.get_const(node_id).unwrap();
 
             switch (*ast_node) {
                 case .Import(import_) => {
                     self->discover_import(index, &import_, node_id, lexical, opts);
                 }
+                case .Builtin(.BuiltinBlock(builtin_block)) => {
+                    if (builtin_block.name.str.as_str_const() == "feature") {
+                        switch (ast_feature_block_name(program, &builtin_block)) {
+                            case .Some(feature_name) => {
+                                if (is_feature_enabled(&opts->features, feature_name)) {
+                                    const block_node = program->nodes.get_const(builtin_block.block).unwrap();
+
+                                    switch (*block_node) {
+                                        case .Block(inner_block) => {
+                                            self->discover_stmt_list(
+                                                index,
+                                                inner_block.stmts.start,
+                                                inner_block.stmts.len,
+                                                lexical,
+                                                opts
+                                            );
+                                        }
+                                        else => {}
+                                    }
+                                }
+                            }
+                            case .None => {}
+                        }
+                    }
+                }
                 else => {}
             }
         }
-
-        self->active.remove(self->active.len() - 1);
-        self->order.push(index);
     }
 
     fn discover_import(
@@ -429,4 +468,35 @@ pub struct ModuleGraph {
 
         self->has_errors = true;
     }
+}
+
+fn ast_feature_block_name(
+    program: const ASTProgram*,
+    builtin_block: const ASTBuiltinBlock*
+) Option<const uint8*> {
+    if (builtin_block->args.len() != 1) {
+        return .None;
+    }
+
+    const argument_node_id = builtin_block->args.get_owned(0).unwrap();
+    const argument_node = program->nodes.get_const(argument_node_id).unwrap();
+
+    switch (*argument_node) {
+        case .Expr(.Literal(token)) => {
+            switch (*token.kind) {
+                case .Literal(literal) => {
+                    switch (literal) {
+                        case .String { value, suffix: .None } => {
+                            return .Some(value.as_str_const());
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return .None;
 }

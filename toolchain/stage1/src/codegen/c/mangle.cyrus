@@ -71,45 +71,9 @@ pub fn build_module_maps(
 
         maps->file_modules.insert(tree->file_id, module);
 
-        for (var i: usize = 0; i < tree->body_len(); i += 1) {
-            const stmt = tree->body_get_const(i);
-
-            switch (stmt->kind) {
-                case .Typedef(typedef) => {
-                    maps->typedef_modules.insert(typedef.typedef_decl_id, module);
-                }
-                case .Struct(struct_) => {
-                    maps->struct_modules.insert(struct_.struct_decl_id, module);
-                    record_method_modules(maps, &struct_.methods, module);
-                }
-                case .Enum(enum_) => {
-                    maps->enum_modules.insert(enum_.enum_decl_id, module);
-                    record_method_modules(maps, &enum_.methods, module);
-                }
-                case .Union(union_) => {
-                    maps->union_modules.insert(union_.union_decl_id, module);
-                    record_method_modules(maps, &union_.methods, module);
-                }
-                case .Interface(interface_) => {
-                    maps->interface_modules.insert(interface_.interface_decl_id, module);
-                    record_method_modules(maps, &interface_.methods, module);
-                }
-                case .FuncDef(func_def) => {
-                    switch (func_def.func_decl_id) {
-                        case .Some(func_decl_id) => {
-                            maps->func_modules.insert(func_decl_id, module);
-                        }
-                        else => {}
-                    }
-                }
-                case .FuncDecl(func_def) => {
-                    maps->func_modules.insert(func_def.func_decl_id, module);
-                }
-                case .GlobalVar(global_var) => {
-                    maps->global_modules.insert(global_var.global_var_decl_id, module);
-                }
-                else => {}
-            }
+        for (var j: usize = 0; j < tree->body_len(); j += 1) {
+            const stmt = tree->body_get_const(j);
+            record_stmt_modules(maps, stmt, module);
         }
     }
 
@@ -141,6 +105,57 @@ pub fn build_module_maps(
             }
             else => {}
         }
+    }
+}
+
+fn record_stmt_modules(
+    maps: ModuleMaps*,
+    stmt: const cir::Stmt*,
+    module: ModuleName
+) {
+    switch (stmt->kind) {
+        case .Typedef(typedef) => {
+            maps->typedef_modules.insert(typedef.typedef_decl_id, module);
+        }
+        case .Struct(struct_) => {
+            maps->struct_modules.insert(struct_.struct_decl_id, module);
+            record_method_modules(maps, &struct_.methods, module);
+        }
+        case .Enum(enum_) => {
+            maps->enum_modules.insert(enum_.enum_decl_id, module);
+            record_method_modules(maps, &enum_.methods, module);
+        }
+        case .Union(union_) => {
+            maps->union_modules.insert(union_.union_decl_id, module);
+            record_method_modules(maps, &union_.methods, module);
+        }
+        case .Interface(interface_) => {
+            maps->interface_modules.insert(interface_.interface_decl_id, module);
+            record_method_modules(maps, &interface_.methods, module);
+        }
+        case .FuncDecl(func_decl) => {
+            maps->func_modules.insert(func_decl.func_decl_id, module);
+        }
+        case .GlobalVar(global_var) => {
+            maps->global_modules.insert(global_var.global_var_decl_id, module);
+        }
+        case .FuncDef(func_def) => {
+            switch (func_def.func_decl_id) {
+                case .Some(func_decl_id) => {
+                    maps->func_modules.insert(func_decl_id, module);
+                }
+                else => {}
+            }
+        }
+        case .Builtin(.BuiltinBlock(block)) => {
+            if (!block.is_named_test_case()) {
+                for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
+                    const inner_stmt = block.block->stmts.get_const(i).unwrap();
+                    record_stmt_modules(maps, inner_stmt, module);
+                }
+            }
+        }
+        else => {}
     }
 }
 

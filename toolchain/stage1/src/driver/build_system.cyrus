@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
-import std::string{String, free_strings, cstr_contains, cstr_ends_with};
-import std::libc{getenv, strlen, snprintf, strcmp};
 import std::path{Path, dir_of_file, join_path};
 import std::mem::arena{ArenaAllocator};
 import std::io{Writer, StringWriter};
+import std::libc{strlen, snprintf};
 import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
 import std::os::process;
 import std::os::dir;
+import std::os::env;
+import std::string{
+    cstr_ends_with,
+    cstr_contains, 
+    free_strings, 
+    String, 
+};
 import std::build;
 import std::cli;
 import std::os;
@@ -101,7 +107,7 @@ pub fn build_or_run_project(
 
     const pkg: const build::Package* = builder.packages.get_owned(0).unwrap();
 
-    // 1. Collect & validate requested features (-F / --feature)
+    // 1. Collect & validate requested features
     var requested_features: Vec<String> = Vec.new(allocator);
     defer free_strings(&requested_features);
 
@@ -655,6 +661,9 @@ fn evaluate_build_script(
     );
     defer analyzer_context.free();
 
+    analyzer_context.set_profile(opts.profile);
+    analyzer_context.set_enabled_features(&opts.features);
+
     trigger_analyzer(&analyzer_context);
 
     if (context.dctx.has_errors()) {
@@ -775,7 +784,7 @@ fn find_mangled_build_fn(
             const stmt = tree->body_get_const(j);
             switch (stmt->kind) {
                 case .FuncDef(func_def) => {
-                    if (strcmp(func_def.name.as_str_const(), "build") != 0) {
+                    if (func_def.name.as_str_const() != "build") {
                         continue;
                     }
 
@@ -843,16 +852,19 @@ fn select_target_entry(
     }
 
     switch (requested_pkg_name) {
-        case .Some(ename) => {
+        case .Some(entry_name) => {
             for (var i: usize = 0; i < pkg->entries.len(); i += 1) {
-                const ent = pkg->entries.get_owned(i).unwrap();
-                if (strcmp(ent->name.as_str_const(), ename) == 0) {
-                    return .Some(ent);
+                const entry = pkg->entries.get_owned(i).unwrap();
+
+                if (entry->name.as_str_const() == entry_name) {
+                    return .Some(entry);
                 }
             }
+
             var err = String.from_str(allocator, "entry `");
             defer err.free();
-            err.push_str(ename);
+
+            err.push_str(entry_name);
             err.push_str("` not found in `build.cyrus`");
             compile_error(err.as_str_const());
             return .None;
@@ -1349,15 +1361,21 @@ fn compile_native_source_to_obj(
     c_flags: const Vec<String>*,
     defines: const Vec<build::Define>*
 ) bool {
-    var cc = getenv("CC");
-    if (cc == null || cc[0] == '\0') {
-        cc = "cc";
+    var compiler_path: const uint8* = "cc";
+
+    switch (env::get("CC")) {
+        case .Some(env_compiler) => {
+            if (env_compiler[0] != '\0') {
+                compiler_path = env_compiler;
+            }
+        }
+        case .None => {}
     }
 
     var cmd = String.new(allocator);
     defer cmd.free();
 
-    push_shell_quoted(&cmd, cc);
+    push_shell_quoted(&cmd, compiler_path);
     cmd.push_str(" -c");
 
     for (var i: usize = 0; i < c_inc_dirs->len(); i += 1) {
@@ -1465,22 +1483,29 @@ fn resolve_build_profile(action: cli::ActionContext, builder: const build::Build
 
 /* ************* Small Helpers ************* */
 
-fn resolve_project_path(allocator: Allocator, project_root: const uint8*, rel_or_abs: const uint8*) String {
+fn resolve_project_path(
+    allocator: Allocator,
+    project_root: const uint8*,
+    rel_or_abs: const uint8*
+) String {
     if (rel_or_abs[0] == '/') {
         return String.from_str(allocator, rel_or_abs);
     }
-    if (strcmp(project_root, ".") == 0 || project_root[0] == '\0') {
+
+    if (project_root == "." || project_root[0] == '\0') {
         return String.from_str(allocator, rel_or_abs);
     }
+
     return join_path(allocator, project_root, rel_or_abs);
 }
 
 fn vec_contains_str(list: const Vec<String>*, needle: const uint8*) bool {
     for (var i: usize = 0; i < list->len(); i += 1) {
-        if (strcmp(list->get_const(i).unwrap()->as_str_const(), needle) == 0) {
+        if (list->get_const(i).unwrap()->as_str_const() == needle) {
             return true;
         }
     }
+
     return false;
 }
 
@@ -1512,33 +1537,48 @@ fn push_comma_split_values(allocator: Allocator, list: Vec<String>*, raw: const 
     }
 }
 
-fn find_package_feature(pkg: const build::Package*, name: const uint8*) Option<const build::Feature*> {
+fn find_package_feature(
+    pkg: const build::Package*,
+    name: const uint8*
+) Option<const build::Feature*> {
     for (var i: usize = 0; i < pkg->features.len(); i += 1) {
-        const feat = pkg->features.get_owned(i).unwrap();
-        if (strcmp(feat->name.as_str_const(), name) == 0) {
-            return .Some(feat);
+        const feature = pkg->features.get_owned(i).unwrap();
+
+        if (feature->name.as_str_const() == name) {
+            return .Some(feature);
         }
     }
+
     return .None;
 }
 
-fn find_package_library(pkg: const build::Package*, name: const uint8*) Option<const build::Library*> {
+fn find_package_library(
+    pkg: const build::Package*,
+    name: const uint8*
+) Option<const build::Library*> {
     for (var i: usize = 0; i < pkg->libraries.len(); i += 1) {
-        const lib = pkg->libraries.get_owned(i).unwrap();
-        if (strcmp(lib->name.as_str_const(), name) == 0) {
-            return .Some(lib);
+        const library = pkg->libraries.get_owned(i).unwrap();
+
+        if (library->name.as_str_const() == name) {
+            return .Some(library);
         }
     }
+
     return .None;
 }
 
-fn find_builder_generator(builder: const build::Builder*, name: const uint8*) Option<const build::Generator*> {
+fn find_builder_generator(
+    builder: const build::Builder*,
+    name: const uint8*
+) Option<const build::Generator*> {
     for (var i: usize = 0; i < builder->generators.len(); i += 1) {
-        const gen = builder->generators.get_owned(i).unwrap();
-        if (strcmp(gen->name.as_str_const(), name) == 0) {
-            return .Some(gen);
+        const generator = builder->generators.get_owned(i).unwrap();
+
+        if (generator->name.as_str_const() == name) {
+            return .Some(generator);
         }
     }
+
     return .None;
 }
 

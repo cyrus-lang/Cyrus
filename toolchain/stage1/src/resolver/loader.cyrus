@@ -971,3 +971,22 @@ fn is_ident_char(ch: uint8) bool {
         || (ch >= 'A' && ch <= 'Z')
         || (ch >= '0' && ch <= '9');
 }
+
+pub fn is_feature_enabled(
+    enabled_features: const Vec<String>*,
+    feature_name: const uint8*
+) bool {
+    if (enabled_features == null) {
+        return false;
+    }
+
+    for (var i: usize = 0; i < enabled_features->len(); i += 1) {
+        const enabled_feature = enabled_features->get_const(i).unwrap()->as_str_const();
+
+        if (enabled_feature == feature_name) {
+            return true;
+        }
+    }
+
+    return false;
+}

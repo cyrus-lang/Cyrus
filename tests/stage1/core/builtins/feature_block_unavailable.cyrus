@@ -1,0 +1,8 @@
+@feature("API")
+struct ApiData {
+    pub value: int32,
+}
+
+pub fn main() {
+    var data: ApiData; //~ error: type `ApiData` not found
+}

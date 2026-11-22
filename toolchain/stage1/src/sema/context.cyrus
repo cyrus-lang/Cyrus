@@ -10,6 +10,7 @@ import std::string{String};
 import std::option{Option};
 
 import .::monomorph{MonomorphRegistry, InstanceSite};
+import resolver::loader{Profile, is_feature_enabled};
 import resolver::symbols{GlobalSymbolRegistry};
 import .::vtables{VTableRegistry};
 import diags{DiagContext};
@@ -44,6 +45,7 @@ pub struct AnalyzerContext {
     pub vtable_registry: VTableRegistry,
     pub dispatcher: AnalyzerDispatcher,
     pub enabled_features: const Vec<String>*,
+    pub profile: Profile,
 
     pub fn new(
         allocator: Allocator,
@@ -86,6 +88,7 @@ pub struct AnalyzerContext {
             monomorph_registry,
             dispatcher,
             enabled_features: null,
+            profile: .Debug,
         };
     }
 
@@ -93,18 +96,12 @@ pub struct AnalyzerContext {
         self->enabled_features = features;
     }
 
-    pub fn is_feature_enabled(self: const Self*, name: const uint8*) bool {
-        if (self->enabled_features == null) {
-            return false;
-        }
+    pub fn set_profile(self: Self*, profile: Profile) {
+        self->profile = profile;
+    }
 
-        for (var i: usize = 0; i < self->enabled_features->len(); i += 1) {
-            if (self->enabled_features->get_const(i).unwrap()->as_str_const() == name) {
-                return true;
-            }
-        }
-        
-        return false;
+    pub fn is_feature_enabled(self: const Self*, feature_name: const uint8*) bool {
+        return is_feature_enabled(self->enabled_features, feature_name);
     }
 
     pub fn free(self: Self*) {

@@ -154,6 +154,21 @@ fn analyze_builtin_block(
 
     builtin_block->is_toplevel = .Some(is_toplevel);
 
+    if (builtin_kind == .Feature) {
+        validate_feature_block_arg(context, builtin_block);
+
+        if (!builtin_block->is_active) {
+            return .Reachable;
+        }
+
+        if (is_toplevel) {
+            analyze_toplevel_stmts(context, &builtin_block->block->stmts);
+            return .Reachable;
+        } else {
+            return analyze_block_stmt(context, builtin_block->block);
+        }
+    }
+
     if (is_toplevel) {
         if (builtin_block->args.len() > 0) {
             analyze_test_case_header(context, builtin_block, null);
@@ -184,6 +199,30 @@ fn analyze_builtin_block(
 
         return analyze_block_stmt(context, builtin_block->block);
     }
+}
+
+fn validate_feature_block_arg(
+    context: AnalyzerContext*,
+    builtin_block: cir::BuiltinBlock*
+) bool {
+    if (builtin_block->args.len() != 1) {
+        return false;
+    }
+
+    const feature_arg = builtin_block->args.get(0).unwrap();
+
+    analyze_expr_non_terminal(context, feature_arg, .None);
+
+    if (feature_arg->literal_const_string_value().is_none()) {
+        diags::report_builtin_feature_requires_string_literal(
+            context->dctx,
+            context->allocator,
+            feature_arg->span
+        );
+        return false;
+    }
+
+    return true;
 }
 
 fn analyze_test_case_header(
@@ -333,7 +372,7 @@ fn analyze_toplevel_typedefs_in_stmt(
             stmt->kind = .Typedef(typedef);
         }
         case .Builtin(.BuiltinBlock(var block)) => {
-            if (block.args.len() == 0) {
+            if (!block.is_named_test_case()) {
                 for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
                     analyze_toplevel_typedefs_in_stmt(
                         context, 
@@ -358,7 +397,7 @@ fn analyze_toplevel_global_vars_in_stmt(
             stmt->kind = .GlobalVar(global_var);
         }
         case .Builtin(.BuiltinBlock(var block)) => {
-            if (block.args.len() == 0) {
+            if (!block.is_named_test_case()) {
                 for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {
                     analyze_toplevel_global_vars_in_stmt(
                         context, 
@@ -484,10 +523,22 @@ fn analyze_toplevel_stmt_with_tests(
                     if (form && arg_count) {
                         builtin_block.is_toplevel = .Some(true);
 
-                        if (builtin_block.args.len() > 0) {
+                        if (builtin_kind == .Feature) {
+                            validate_feature_block_arg(context, &builtin_block);
+
+                            if (builtin_block.is_active) {
+                                analyze_toplevel_builtin_block_stmts(
+                                    context,
+                                    &builtin_block.block->stmts,
+                                    index,
+                                    staged,
+                                    seen_test_names
+                                );
+                            }
+                        } else if (builtin_block.args.len() > 0) {
                             const needs_body = analyze_test_case_header(
-                                context, 
-                                &builtin_block, 
+                                context,
+                                &builtin_block,
                                 seen_test_names
                             );
 
@@ -513,43 +564,13 @@ fn analyze_toplevel_stmt_with_tests(
                                 builtin_block.span
                             );
                         } else {
-                            var has_work = false;
-                            
-                            for (var k: usize = 0; k < builtin_block.block->stmts.len(); k += 1) {
-                                var sub = builtin_block.block->stmts.get(k).unwrap();
-
-                                switch (staged) {
-                                    case .Some(staged_bodies) => {
-                                        const before = staged_bodies.work->len();
-                                        
-                                        analyze_toplevel_stmt_with_tests(
-                                            context, 
-                                            sub, 
-                                            index, 
-                                            staged, 
-                                            seen_test_names
-                                        );
-                                        
-                                        if (staged_bodies.work->len() > before) {
-                                            if (has_work) {
-                                                // Keep only one work item 
-                                                // per top-level index
-                                                staged_bodies.work->pop();
-                                            }
-                                            has_work = true;
-                                        }
-                                    }
-                                    case .None => {
-                                        analyze_toplevel_stmt_with_tests(
-                                            context, 
-                                            sub, 
-                                            index, 
-                                            .None, 
-                                            seen_test_names
-                                        );
-                                    }
-                                }
-                            }
+                            analyze_toplevel_builtin_block_stmts(
+                                context,
+                                &builtin_block.block->stmts,
+                                index,
+                                staged,
+                                seen_test_names
+                            );
                         }
                     }
                 }
@@ -592,6 +613,52 @@ pub fn analyze_toplevel_body_item(
     );
 }
 
+fn analyze_toplevel_builtin_block_stmts(
+    context: AnalyzerContext*,
+    stmts: Vec<cir::Stmt>*,
+    index: usize,
+    staged: Option<StagedBodies>,
+    seen_test_names: Vec<String>*
+) {
+    var has_work = false;
+
+    for (var k: usize = 0; k < stmts->len(); k += 1) {
+        var sub_stmt = stmts->get(k).unwrap();
+
+        switch (staged) {
+            case .Some(staged_bodies) => {
+                const before = staged_bodies.work->len();
+
+                analyze_toplevel_stmt_with_tests(
+                    context,
+                    sub_stmt,
+                    index,
+                    staged,
+                    seen_test_names
+                );
+
+                if (staged_bodies.work->len() > before) {
+                    if (has_work) {
+                        // Keep only one work item per top-level index
+                        staged_bodies.work->pop();
+                    }
+
+                    has_work = true;
+                }
+            }
+            case .None => {
+                analyze_toplevel_stmt_with_tests(
+                    context,
+                    sub_stmt,
+                    index,
+                    .None,
+                    seen_test_names
+                );
+            }
+        }
+    }
+}
+
 fn analyze_toplevel_body_in_stmt(
     context: AnalyzerContext*,
     stmt: cir::Stmt*
@@ -604,7 +671,7 @@ fn analyze_toplevel_body_in_stmt(
             }
         }
         case .Builtin(.BuiltinBlock(var block)) => {
-            if (block.args.len() > 0) {
+            if (block.is_named_test_case()) {
                 analyze_test_case_body(context, &block);
             } else {
                 for (var i: usize = 0; i < block.block->stmts.len(); i += 1) {

@@ -3,7 +3,7 @@
 
 import std::mem{Allocator, alloc_init};
 import std::mem::libc{LibcAllocator};
-import std::libc{snprintf, strcmp};
+import std::libc{snprintf};
 import std::string{
     push_escaped_tsv_field,
     unescape_tsv_field,

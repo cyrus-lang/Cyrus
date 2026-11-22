@@ -7,12 +7,17 @@ import std::option{Option};
 import std::string{String};
 
 import resolver::symbols{GlobalSymbolRegistry, SymbolEntry, ScopeBinding};
-import resolver::loader{first_segment_span, Profile, ProfileSet};
 import resolver::scopes{LocalScope, GenericScope, LocalBinding};
 import resolver::context{TraverseContext};
 import tokens{Span, Loc, Token, Literal};
 import diags{DiagContext};
 import resolver::diags;
+import resolver::loader{
+    first_segment_span,
+    is_feature_enabled,
+    ProfileSet,
+    Profile,
+};
 import cir::format;
 import parser::ast;
 import cir;
@@ -23,11 +28,22 @@ pub fn bind_program_decl_names(
     allocator: Allocator,
     scope_id: cir::ScopeId,
     program: const ast::ASTProgram*,
-    profile: Profile
+    profile: Profile,
+    enabled_features: const Vec<String>*
 ) {
     switch (program->statements) {
         case .Some(statements) => {
-            resolve_decl_names(registry, dctx, allocator, scope_id, program, &statements, profile, ProfileSet.all());
+            resolve_decl_names(
+                registry,
+                dctx,
+                allocator,
+                scope_id,
+                program,
+                &statements,
+                profile,
+                ProfileSet.all(),
+                enabled_features
+            );
         }
         else => {}
     }
@@ -43,7 +59,8 @@ fn resolve_decl_names(
     program: const ast::ASTProgram*,
     statements: const ast::ASTNodeList*,
     profile: Profile,
-    active_profiles: ProfileSet
+    active_profiles: ProfileSet,
+    enabled_features: const Vec<String>*
 ) {
     for (var i: usize = 0; i < statements->len; i += 1) {
         const node_id = program->children.get_owned(statements->start + i).unwrap();
@@ -51,10 +68,30 @@ fn resolve_decl_names(
 
         switch (*node) {
             case .ModuleDecl(module_decl) => {
-                resolve_module_decl_names(registry, dctx, allocator, scope_id, program, &module_decl, profile, active_profiles);
+                resolve_module_decl_names(
+                    registry,
+                    dctx,
+                    allocator,
+                    scope_id,
+                    program,
+                    &module_decl,
+                    profile,
+                    active_profiles,
+                    enabled_features
+                );
             }
             case .Builtin(builtin) => {
-                resolve_builtin_decl_names(registry, dctx, allocator, scope_id, program, &builtin, profile, active_profiles);
+                resolve_builtin_decl_names(
+                    registry,
+                    dctx,
+                    allocator,
+                    scope_id,
+                    program,
+                    &builtin,
+                    profile,
+                    active_profiles,
+                    enabled_features
+                );
             }
             else => {
                 // Skip statement if it's not a declaration symbol
@@ -84,6 +121,7 @@ fn resolve_decl_names(
                                         active_profiles,
                                         profile
                                     );
+
                                     switch (registry->lookup_binding_in_scope(scope_id, name)) {
                                         case .Some(updated) => {
                                             switch (updated->debug_symbol_id) {
@@ -113,6 +151,7 @@ fn resolve_decl_names(
                                                 }
                                                 case .None => {}
                                             }
+
                                             switch (updated->release_symbol_id) {
                                                 case .Some(rid) => {
                                                     switch (updated->test_symbol_id) {
@@ -160,7 +199,8 @@ fn resolve_module_decl_names(
     program: const ast::ASTProgram*,
     module_decl: const ast::ASTModuleDecl*,
     profile: Profile,
-    active_profiles: ProfileSet
+    active_profiles: ProfileSet,
+    enabled_features: const Vec<String>*
 ) {
     const name = module_decl->ident.str.as_str_const();
 
@@ -181,7 +221,17 @@ fn resolve_module_decl_names(
         }
     }
 
-    resolve_decl_names(registry, dctx, allocator, module_scope_id, program, &module_decl->stmts, profile, active_profiles);
+    resolve_decl_names(
+        registry,
+        dctx,
+        allocator,
+        module_scope_id,
+        program,
+        &module_decl->stmts,
+        profile,
+        active_profiles,
+        enabled_features
+    );
 }
 
 /// (Second Pass) Resolves the full meaning of each top-level declaration
@@ -223,18 +273,12 @@ fn resolve_toplevel_stmt(
     var out: Vec<cir::Stmt> = Vec.new(ctx->allocator);
 
     switch (*node) {
-        case .ModuleDecl(module_decl) => {
-            out.free();
-            return resolve_module_decl(ctx, program, &module_decl);
-        }
         case .Import | .Expr => {
             return out;
         }
-        case .Builtin(builtin) => {
-            switch (resolve_builtin(ctx, program, &builtin)) {
-                case .Some(kind) => out.push(cir::Stmt.new(.Builtin(kind)));
-                else => {}
-            }
+        case .ModuleDecl(module_decl) => {
+            out.free();
+            return resolve_module_decl(ctx, program, &module_decl);
         }
         case .GlobalVar(global_var) => {
             push_kind(&out, resolve_global_var_stmt(ctx, program, &global_var));
@@ -259,6 +303,12 @@ fn resolve_toplevel_stmt(
         }
         case .Interface(interface_stmt) => {
             push_kind(&out, resolve_interface_stmt(ctx, program, &interface_stmt));
+        }
+        case .Builtin(builtin) => {
+            switch (resolve_builtin(ctx, program, &builtin)) {
+                case .Some(kind) => out.push(cir::Stmt.new(.Builtin(kind)));
+                else => {}
+            }
         }
         else => {
             diags::report_invalid_top_level_statement(
@@ -3059,9 +3109,49 @@ fn resolve_builtin(
                 }
             }
 
+            var is_feature_block = false;
+            var feature_active = true;
+
+            switch (cir::lookup_builtin(builtin_block.name.str.as_str_const())) {
+                case .Some(.Feature) => {
+                    is_feature_block = true;
+
+                    switch (ast_builtin_feature_name(program, &builtin_block)) {
+                        case .Some(feature_name) => {
+                            feature_active = ctx->is_feature_enabled(feature_name);
+                        }
+                        case .None => {
+                            feature_active = false;
+                        }
+                    }
+                }
+                else => {}
+            }
+
+            if (is_feature_block && !feature_active) {
+                ctx->active_profiles = prev_profiles;
+
+                const empty_block = alloc_init(ctx->allocator, cir::BlockStmt {
+                    stmts: Vec.new(ctx->allocator),
+                    defers: Vec.new(ctx->allocator),
+                    span: builtin_block.span,
+                });
+
+                return .Some(.BuiltinBlock(cir::BuiltinBlock {
+                    name: builtin_block.name,
+                    args,
+                    block: empty_block,
+                    is_toplevel: .Some(builtin_block.is_toplevel),
+                    is_active: false,
+                    span: builtin_block.span,
+                }));
+            }
+
             var stmts: Vec<cir::Stmt> = Vec.new(ctx->allocator);
 
-            const is_test_case = builtin_block.is_toplevel && builtin_block.args.len() > 0;
+            const is_test_case = builtin_block.is_toplevel &&
+                builtin_block.args.len() > 0 &&
+                !is_feature_block;
 
             if (is_test_case || !builtin_block.is_toplevel) {
                 ctx->enter_local_scope(LocalScope.new(ctx->allocator));
@@ -4986,6 +5076,37 @@ fn resolve_enum_variants(
     return .Some(typed_variants);
 }
 
+fn ast_builtin_feature_name(
+    program: const ast::ASTProgram*,
+    builtin_block: const ast::ASTBuiltinBlock*
+) Option<const uint8*> {
+    if (builtin_block->args.len() != 1) {
+        return .None;
+    }
+
+    const argument_node_id = builtin_block->args.get_owned(0).unwrap();
+    const argument_node = program->nodes.get_const(argument_node_id).unwrap();
+
+    switch (*argument_node) {
+        case .Expr(.Literal(token)) => {
+            switch (*token.kind) {
+                case .Literal(literal) => {
+                    switch (literal) {
+                        case .String { value, suffix: .None } => {
+                            return .Some(value.as_str_const());
+                        }
+                        else => {}
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return .None;
+}
+
 fn resolve_builtin_decl_names(
     registry: GlobalSymbolRegistry*,
     dctx: DiagContext*,
@@ -4994,49 +5115,68 @@ fn resolve_builtin_decl_names(
     program: const ast::ASTProgram*,
     builtin: const ast::ASTBuiltin*,
     profile: Profile,
-    active_profiles: ProfileSet
+    active_profiles: ProfileSet,
+    enabled_features: const Vec<String>*
 ) {
     switch (*builtin) {
         case .BuiltinBlock(builtin_block) => {
-            if (builtin_block.args.len() > 0) {
-                return;
-            }
-
-            var inner_profiles = active_profiles;
-
-            switch (builtin_profile_set(builtin_block.name.str.as_str_const())) {
-                case .Some(block_profiles) => {
-                    inner_profiles = active_profiles.intersect(block_profiles);
-
-                    if (inner_profiles.is_empty()) {
-                        return;
-                    }
-                }
-                case .None => {}
-            }
-
             switch (cir::lookup_builtin(builtin_block.name.str.as_str_const())) {
                 case .Some(builtin_kind) => {
                     const builtin_spec = cir::builtin_spec_of(builtin_kind);
 
-                    if (builtin_spec.phase == .Resolver) {
-                        const block = program->nodes.get_const(builtin_block.block).unwrap();
+                    if (builtin_spec.phase != .Resolver) {
+                        return;
+                    }
 
-                        switch (*block) {
-                            case .Block(block_stmt) => {
-                                resolve_decl_names(
-                                    registry,
-                                    dctx,
-                                    allocator,
-                                    scope_id,
-                                    program,
-                                    &block_stmt.stmts,
-                                    profile,
-                                    inner_profiles
-                                );
+                    if (builtin_kind == .Feature) {
+                        switch (ast_builtin_feature_name(
+                            program, 
+                            &builtin_block
+                        )) {
+                            case .Some(feature_name) => {
+                                if (!is_feature_enabled(
+                                    enabled_features, 
+                                    feature_name
+                                )) {
+                                    return;
+                                }
                             }
-                            else => {}
+                            case .None => return;
                         }
+                    } else if (builtin_block.args.len() > 0) {
+                        return;
+                    }
+
+                    var inner_profiles = active_profiles;
+
+                    switch (builtin_profile_set(builtin_block.name.str.as_str_const())) {
+                        case .Some(block_profiles) => {
+                            inner_profiles = active_profiles.intersect(block_profiles);
+
+                            if (inner_profiles.is_empty()) {
+                                return;
+                            }
+                        }
+                        case .None => {}
+                    }
+
+                    const block = program->nodes.get_const(builtin_block.block).unwrap();
+
+                    switch (*block) {
+                        case .Block(block_stmt) => {
+                            resolve_decl_names(
+                                registry,
+                                dctx,
+                                allocator,
+                                scope_id,
+                                program,
+                                &block_stmt.stmts,
+                                profile,
+                                inner_profiles,
+                                enabled_features
+                            );
+                        }
+                        else => {}
                     }
                 }
                 else => {}
