@@ -1,0 +1,30 @@
+enum SubOne {
+    A = 1,
+}
+
+enum SupTwo {
+    A = 2,
+    B = 3,
+}
+
+enum SubText {
+    A = "one",
+}
+
+enum SupOtherText {
+    A = "two",
+    B = "three",
+}
+
+fn wrong_int_value(err: SubOne) SupTwo {
+    return err; //~ ERROR return statement argument must be a value of type `SupTwo` but got `SubOne`
+}
+
+fn wrong_text_value(err: SubText) SupOtherText {
+    return err; //~ ERROR return statement argument must be a value of type `SupOtherText` but got `SubText`
+}
+
+pub fn main() {
+    wrong_int_value(SubOne.A);
+    wrong_text_value(SubText.A);
+}

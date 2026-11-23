@@ -1,0 +1,85 @@
+// @stdout: scalar=20,10 agg=10,20,99 str=hello
+
+import std::libc{printf};
+
+enum ScalarSub {
+    B = 20,
+    A = 10,
+}
+
+enum ScalarSup {
+    C = 30,
+    A = 10,
+    B = 20,
+}
+
+enum AggSup {
+    Extra(uint64),
+    A = 10,
+    B = 20,
+}
+
+enum TextSub {
+    Greeting = "hello",
+    Empty,
+}
+
+enum TextSup {
+    Count(int32),
+    Empty,
+    Greeting = "hello",
+}
+
+fn to_scalar_sup(value: ScalarSub) ScalarSup {
+    return value;
+}
+
+fn to_agg_sup(value: ScalarSub) AggSup {
+    return value;
+}
+
+fn to_text_sup(value: TextSub) TextSup {
+    return value;
+}
+
+fn read_scalar_sup(value: ScalarSup) int32 {
+    switch (value) {
+        case .A(v) => return v;
+        case .B(v) => return v;
+        case .C(v) => return v;
+    }
+}
+
+fn read_agg_sup(value: AggSup) int32 {
+    switch (value) {
+        case .A(v) => return v;
+        case .B(v) => return v;
+        case .Extra(x) => return @cast(int32, x);
+    }
+}
+
+pub fn main() {
+    const s1 = to_scalar_sup(ScalarSub.B);
+    const s2 = to_scalar_sup(ScalarSub.A);
+    const a1 = to_agg_sup(ScalarSub.A);
+    const a2 = to_agg_sup(ScalarSub.B);
+    const a3: AggSup = AggSup.Extra(99);
+    const text = to_text_sup(TextSub.Greeting);
+
+    var str = "bad";
+
+    switch (text) {
+        case .Greeting(s) => str = s;
+        else => {}
+    }
+
+    printf(
+        "scalar=%d,%d agg=%d,%d,%d str=%s",
+        read_scalar_sup(s1),
+        read_scalar_sup(s2),
+        read_agg_sup(a1),
+        read_agg_sup(a2),
+        read_agg_sup(a3),
+        str
+    );
+}

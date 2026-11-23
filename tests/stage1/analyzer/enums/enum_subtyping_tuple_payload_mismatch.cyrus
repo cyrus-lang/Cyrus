@@ -1,0 +1,52 @@
+enum SubTag {
+    Alpha,
+}
+
+enum SupTag {
+    Alpha,
+    Beta,
+}
+
+enum WriteError {
+    PermissionDenied,
+    DiskFull(uint64),
+}
+
+enum NarrowPayloadIoError {
+    PermissionDenied,
+    DiskFull(uint32),
+}
+
+enum SmallDiskError {
+    DiskFull(uint32),
+}
+
+enum BigDiskError {
+    DiskFull(uint64),
+}
+
+enum WrapSub {
+    Item(SubTag),
+}
+
+enum WrapSup {
+    Item(SupTag),
+}
+
+fn mismatch_smaller(err: WriteError) NarrowPayloadIoError {
+    return err; //~ ERROR return statement argument must be a value of type `NarrowPayloadIoError` but got `WriteError`
+}
+
+fn mismatch_larger(err: SmallDiskError) BigDiskError {
+    return err; //~ ERROR return statement argument must be a value of type `BigDiskError` but got `SmallDiskError`
+}
+
+fn mismatch_nested_enum(err: WrapSub) WrapSup {
+    return err; //~ ERROR return statement argument must be a value of type `WrapSup` but got `WrapSub`
+}
+
+pub fn main() {
+    mismatch_smaller(WriteError.PermissionDenied);
+    mismatch_larger(SmallDiskError.DiskFull(1));
+    mismatch_nested_enum(WrapSub.Item(SubTag.Alpha));
+}

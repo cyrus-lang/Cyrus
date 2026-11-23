@@ -1,0 +1,25 @@
+enum ReadError {
+    NotFound,
+    UnexpectedEof,
+}
+
+enum IOError {
+    NotFound,
+    UnexpectedEof,
+    DiskFull(uint64),
+}
+
+fn narrow_return(err: IOError) ReadError {
+    return err; //~ ERROR return statement argument must be a value of type `ReadError` but got `IOError`
+}
+
+fn narrow_assign(err: IOError) {
+    var out: ReadError = ReadError.NotFound;
+    out = err; //~ ERROR cannot assign rvalue of type `IOError` to lvalue of type `ReadError`
+}
+
+pub fn main() {
+    const err = IOError.NotFound;
+    narrow_return(err);
+    narrow_assign(err);
+}

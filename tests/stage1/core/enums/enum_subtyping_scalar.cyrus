@@ -1,0 +1,92 @@
+// @stdout: mid=B top=A wid=A cast_eq=1 cast_neq=1 aligned=B
+
+import std::libc{printf};
+
+enum Sub {
+    A,
+    B,
+}
+
+enum Mid {
+    C,
+    B,
+    A,
+}
+
+enum Top(uint32) {
+    D,
+    A,
+    C,
+    B,
+}
+
+enum SmallTag(uint8) {
+    A,
+    B,
+}
+
+enum AlignedTop(uint16) align(16) {
+    Extra,
+    B,
+    A,
+}
+
+fn to_mid(err: Sub) Mid {
+    return err;
+}
+
+fn to_top(err: Mid) Top {
+    return err;
+}
+
+fn to_small_tag(err: Top) Top {
+    return err;
+}
+
+fn describe_top(err: Top) const uint8* {
+    switch (err) {
+        case .A => return "A";
+        case .B => return "B";
+        case .C => return "C";
+        case .D => return "D";
+    }
+}
+
+fn describe_aligned(err: AlignedTop) const uint8* {
+    switch (err) {
+        case .A => return "A";
+        case .B => return "B";
+        case .Extra => return "Extra";
+    }
+}
+
+pub fn main() {
+    const sub_b = Sub.B;
+    const mid_b: Mid = to_mid(sub_b);
+    const top_a: Top = to_top(to_mid(Sub.A));
+
+    var wide: Top = SmallTag.A;
+    wide = @cast(Top, Sub.B);
+
+    const cast_eq = @cast(Top, Sub.B) == wide;
+    const cast_neq = @cast(Top, Sub.A) != wide;
+    wide = to_small_tag(top_a);
+
+    const aligned: AlignedTop = SmallTag.B;
+
+    var mid_name = "other";
+    switch (mid_b) {
+        case .B => mid_name = "B";
+        else => {}
+    }
+
+    printf(
+        "mid=%s top=%s wid=%s cast_eq=%d cast_neq=%d aligned=%s",
+        mid_name,
+        describe_top(top_a),
+        describe_top(wide),
+        cast_eq,
+        cast_neq,
+        describe_aligned(aligned)
+    );
+}
