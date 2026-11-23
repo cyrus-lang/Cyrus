@@ -40,11 +40,15 @@ pub struct Lexer {
     allocator: Allocator,
     arena: ArenaAllocator,
     input: const String*,
+    buf: const uint8*,
+    input_len: usize,
     source_id: SourceId,
     dctx: DiagContext*,
     pos: usize,
     line: usize,
     col: usize,
+
+    cached_kinds: TokenKind*[32],
     
     pub fn new(
         allocator: Allocator, 
@@ -55,29 +59,40 @@ pub struct Lexer {
     ) Self {
         @assert(input, "input cannot be null");
 
-        return Self {
-            allocator,
-            arena,
-            input,
-            source_id,
-            dctx,
-            pos: 0,
-            line: 1,
-            col: 1
-        };
+        var lexer: Self;
+        lexer.allocator = allocator;
+        lexer.arena = arena;
+        lexer.input = input;
+        lexer.buf = input->as_str_const();
+        lexer.input_len = input->len();
+        lexer.source_id = source_id;
+        lexer.dctx = dctx;
+        lexer.pos = 0;
+        lexer.line = 1;
+        lexer.col = 1;
+
+        for (var i: usize = 0; i < 32; i += 1) {
+            lexer.cached_kinds[i] = null;
+        }
+
+        return lexer;
     }
 
     pub fn tokenize(self: Self*) Vec<Token> {
-        var tokens: Vec<Token> = Vec.new(self->allocator);
+        var tokens: Vec<Token> = Vec.with_capacity(
+            self->allocator, 
+            (self->input_len / 4) + 16
+        );
 
         var token: Token = undefined;
 
         while (true) {
             token = self->next();
             tokens.push(token);
-            
-            if (*token.kind == .EOF || *token.kind == .INVALID) {
-                break;
+
+            switch (*token.kind) {
+                case .EOF | .INVALID => break;
+                else => {}
             }
         }
 
@@ -89,9 +104,9 @@ pub struct Lexer {
         self->skip_ws();
         self->skip_comments();
 
-        if (self->pos == self->input->len()) {
+        if (self->pos >= self->input_len) {
             return Token.new(
-                self->init_kind(.EOF),
+                self->init_cached_kind(31, .EOF),
                 Loc.new(self->pos, self->pos)
             );
         }
@@ -105,9 +120,11 @@ pub struct Lexer {
 
     [[inline]]
     fn read_kind(self: Self*) TokenKind* {
-        switch (self->input->get(self->pos)) case .Some(char) else {
-            return self->init_kind(.EOF);
+        if (self->pos >= self->input_len) {
+            return self->init_cached_kind(31, .EOF);
         }
+
+        const char = self->buf[self->pos];
 
         switch (char) {
             case 'a'..='z' | 'A'..='Z' | '_' => return self->read_ident_or_prefix_or_keyword();
@@ -115,20 +132,20 @@ pub struct Lexer {
             case '"' => return self->read_string_literal(.None);
             case '\'' => return self->read_char_literal();
 
-            case ']' => return self->read_single(.RightBracket);
-            case '[' => return self->read_single(.LeftBracket);
-            case '}' => return self->read_single(.RightBrace);
-            case ')' => return self->read_single(.RightParen);
-            case ';' => return self->read_single(.Semicolon);
-            case '(' => return self->read_single(.LeftParen);
-            case '{' => return self->read_single(.LeftBrace);
-            case '*' => return self->read_single(.Asterisk);
-            case '%' => return self->read_single(.Percent);
-            case '/' => return self->read_single(.Slash);
-            case '~' => return self->read_single(.Tilde);
-            case '^' => return self->read_single(.Caret);
-            case ',' => return self->read_single(.Comma);
-            case '@' => return self->read_single(.At);
+            case '(' => return self->read_single_cached(0, .LeftParen);
+            case ')' => return self->read_single_cached(1, .RightParen);
+            case '{' => return self->read_single_cached(2, .LeftBrace);
+            case '}' => return self->read_single_cached(3, .RightBrace);
+            case '[' => return self->read_single_cached(4, .LeftBracket);
+            case ']' => return self->read_single_cached(5, .RightBracket);
+            case ';' => return self->read_single_cached(6, .Semicolon);
+            case ',' => return self->read_single_cached(7, .Comma);
+            case '*' => return self->read_single_cached(8, .Asterisk);
+            case '%' => return self->read_single_cached(9, .Percent);
+            case '/' => return self->read_single_cached(10, .Slash);
+            case '~' => return self->read_single_cached(11, .Tilde);
+            case '^' => return self->read_single_cached(12, .Caret);
+            case '@' => return self->read_single_cached(13, .At);
 
             case '>' => return self->read_greater();
             case '-' => return self->read_minus();
@@ -141,7 +158,7 @@ pub struct Lexer {
             case '&' => return self->read_amp();
             case '.' => return self->read_dot();
 
-            case '\0' => return self->init_kind(.EOF);
+            case '\0' => return self->init_cached_kind(31, .EOF);
 
             else => {
                 self->dctx->report(Diag.new(
@@ -157,12 +174,13 @@ pub struct Lexer {
 
     /// Advances lexer by consuming a character
     /// and updates line and column.
+    [[inline]]
     fn read(self: Self*) {
-        if (self->pos >= self->input->len()) {
+        if (self->pos >= self->input_len) {
             return;
         }
 
-        if (self->cur() == '\n') {
+        if (self->buf[self->pos] == '\n') {
             self->line += 1;
             self->col = 1;
         } else {
@@ -185,7 +203,7 @@ pub struct Lexer {
     [[inline]]
     fn read_ident_or_keyword(self: Self*) TokenKind* {
         const (start_pos, len, hash) = self->scan_ident();
-        const ptr = self->input->as_str_const() + start_pos;
+        const ptr = self->buf + start_pos;
 
         if (len == 1 && ptr[0] == '_') {
             return self->init_kind(.Underscore);
@@ -198,19 +216,14 @@ pub struct Lexer {
             else => {}
         }
 
-        var str = String.with_capacity(self->allocator, len + 1);
-
-        for (var i: usize = 0; i < len; i += 1) {
-            str.push(ptr[i]);
-        }
-        
+        var str = String.from_bytes(self->allocator, ptr, len);
         return self->init_ident(str);
     }
 
     [[inline]]
     fn scan_ident(self: Self*) (usize, usize, uint64) {
-        const buf = self->input->as_str_const();
-        const input_len = self->input->len();
+        const buf = self->buf;
+        const input_len = self->input_len;
         const start_pos = self->pos;
 
         var hash: uint64 = 5381;
@@ -722,7 +735,7 @@ pub struct Lexer {
     fn read_integer_suffix(self: Self*) (Option<IntegerSuffix>, bool) {
         if (self->cur() == 'i' || self->cur() == 'u') {
             const (start_pos, len, hash) = self->scan_ident();
-            const ptr = self->input->as_str_const() + start_pos;
+            const ptr = self->buf + start_pos;
 
             switch (TokenKind.lookup_keyword_hashed(ptr, len, hash)) {
                 case .Some(token_kind) => {
@@ -741,7 +754,7 @@ pub struct Lexer {
     fn read_float_suffix(self: Self*) Option<FloatSuffix> {
         if (self->cur() == 'f') {
             const (start_pos, len, hash) = self->scan_ident();
-            const ptr = self->input->as_str_const() + start_pos;
+            const ptr = self->buf + start_pos;
 
             switch (TokenKind.lookup_keyword_hashed(ptr, len, hash)) {
                 case .Some(token_kind) => {
@@ -756,8 +769,21 @@ pub struct Lexer {
 
     [[inline]]
     fn skip_ws(self: Self*) {
-        while (!self->is_eof() && is_ws(self->cur())) {
-            self->read();
+        while (self->pos < self->input_len) {
+            const char = self->buf[self->pos];
+
+            if (!is_ws(char)) {
+                break;
+            }
+
+            if (char == '\n') {
+                self->line += 1;
+                self->col = 1;
+            } else {
+                self->col += 1;
+            }
+            
+            self->pos += 1;
         }
     }
 
@@ -839,7 +865,7 @@ pub struct Lexer {
             return self->init_kind(.Increment);
         } else {
             self->read();
-            return self->init_kind(.Plus);
+            return self->init_cached_kind(30, .Plus);
         }
     }
     
@@ -852,10 +878,10 @@ pub struct Lexer {
         } else if (self->peek() == '>') {
             self->read();
             self->read();
-            return self->init_kind(.ThinArrow);
+            return self->init_cached_kind(20, .ThinArrow);
         } else {
             self->read();
-            return self->init_kind(.Minus);
+            return self->init_cached_kind(19, .Minus);
         }
     }
 
@@ -865,9 +891,9 @@ pub struct Lexer {
 
         if (self->cur() == ':') {
             self->read();
-            return self->init_kind(.DoubleColon);
+            return self->init_cached_kind(18, .DoubleColon);
         } else {
-            return self->init_kind(.Colon);
+            return self->init_cached_kind(17, .Colon);
         }
     }
     
@@ -877,12 +903,12 @@ pub struct Lexer {
 
         if (self->cur() == '=') {
             self->read();
-            return self->init_kind(.Equal);
+            return self->init_cached_kind(22, .Equal);
         } else if (self->cur() == '>') {
             self->read();
-            return self->init_kind(.FatArrow);
+            return self->init_cached_kind(23, .FatArrow);
         } else {
-            return self->init_kind(.Assign);
+            return self->init_cached_kind(21, .Assign);
         }
     }
 
@@ -892,9 +918,9 @@ pub struct Lexer {
 
         if (self->cur() == '=') {
             self->read();
-            return self->init_kind(.NotEqual);
+            return self->init_cached_kind(25, .NotEqual);
         } else {
-            return self->init_kind(.Bang);
+            return self->init_cached_kind(24, .Bang);
         }
     }
 
@@ -909,7 +935,7 @@ pub struct Lexer {
             self->read();
             return self->init_kind(.ShiftLeft);
         } else {
-            return self->init_kind(.LessThan);
+            return self->init_cached_kind(26, .LessThan);
         }
     }
 
@@ -922,7 +948,7 @@ pub struct Lexer {
             return self->init_kind(.GreaterEqual);
         } else {
             // Notice that '>>' ambiguity is entrusted to the parser.
-            return self->init_kind(.GreaterThan);
+            return self->init_cached_kind(27, .GreaterThan);
         }
     }
     
@@ -932,12 +958,12 @@ pub struct Lexer {
 
         if (self->cur() == '&') {
             self->read();
-            return self->init_kind(.And);
+            return self->init_cached_kind(29, .And);
         } else if (self->cur() == '~') {
             self->read();
             return self->init_kind(.AmpTilde);
         } else {
-            return self->init_kind(.Ampersand);
+            return self->init_cached_kind(28, .Ampersand);
         }
     }
 
@@ -960,16 +986,36 @@ pub struct Lexer {
         if (self->cur() == '.' && self->peek() == '.') {
             self->read();
             self->read();
-            return self->init_kind(.TripleDot);
+            return self->init_cached_kind(16, .TripleDot);
         } else if (self->cur() == '.') {
             self->read();
-            return self->init_kind(.DoubleDot);
+            return self->init_cached_kind(15, .DoubleDot);
         } else {
-            return self->init_kind(.Dot);
+            return self->init_cached_kind(14, .Dot);
         }
     }
 
-    // Helper Methods
+    /* ************* Helpers ************* */
+
+    [[inline]]
+    fn init_cached_kind(self: Self*, slot: usize, kind: TokenKind) TokenKind* {
+        const cache = self->cached_kinds[slot];
+
+        if (cache != null) {
+            return cache;
+        }
+
+        const allocated = alloc_init(dynamic self->arena, kind);
+        @assert(allocated, "token kind allocation failed");
+        self->cached_kinds[slot] = allocated;
+        return allocated;
+    }
+
+    [[inline]]
+    fn read_single_cached(self: Self*, slot: usize, kind: TokenKind) TokenKind* {
+        self->read();
+        return self->init_cached_kind(slot, kind);
+    }
 
     [[inline]]
     fn init_kind(self: Self*, kind: TokenKind) TokenKind* {
@@ -1004,25 +1050,27 @@ pub struct Lexer {
 
     [[inline]]
     fn is_eof(self: const Self*) bool {
-        return self->pos >= self->input->len();
+        return self->pos >= self->input_len;
     }
 
     [[inline]]
     fn peek(self: const Self*) uint8 {
         const next_pos = self->pos + 1;
 
-        switch (self->input->get(next_pos)) {
-            case .Some(char) => return char;
-            case .None => return '\0';
+        if (next_pos >= self->input_len) {
+            return '\0';
         }
+
+        return self->buf[next_pos];
     }
 
     [[inline]]
     fn cur(self: const Self*) uint8 {
-        switch (self->input->get(self->pos)) {
-            case .Some(char) => return char;
-            case .None => return '\0';
+        if (self->pos >= self->input_len) {
+            return '\0';
         }
+
+        return self->buf[self->pos];
     }
 
     [[inline]]

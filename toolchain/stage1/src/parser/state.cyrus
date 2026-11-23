@@ -27,6 +27,8 @@ pub struct ParserState {
     pub dctx: DiagContext*,
     pub pending: Vec<NodeId>*,
     pub source_tokens: SourceTokens*,
+    tokens_data: const Token*,
+    tokens_len: usize,
     pos: usize,
 
     [[inline]]
@@ -39,7 +41,9 @@ pub struct ParserState {
         return Self { 
             allocator,
             dctx, 
-            source_tokens, 
+            source_tokens,
+            tokens_data: source_tokens->tokens.data_const(),
+            tokens_len: source_tokens->tokens.len(),
             pending,
             pos: 0
         };
@@ -55,30 +59,37 @@ pub struct ParserState {
         return self->pos;
     }
 
-    pub fn get(self: const Self*, idx: usize) Option<const Token*> {
-        return self->source_tokens
-            ->tokens
-            .get_const(idx);
+    [[inline]]
+    pub fn get(self: const Self*, index: usize) Option<const Token*> {
+        if (index >= self->tokens_len) {
+            return .None;
+        }
+
+        return .Some(&self->tokens_data[index]);
     }
 
+    [[inline]]
     pub fn current(self: const Self*) const Token* {
-        return self->source_tokens
-            ->tokens
-            .get_const(self->pos)
-            .unwrap();
+        @assert(self->pos < self->tokens_len, "token index out of bounds");
+        return &self->tokens_data[self->pos];
     }
 
+    [[inline]]
     pub fn peek(self: const Self*) const Token* {
-        return self->source_tokens
-            ->tokens
-            .get_const(self->pos + 1)
-            .unwrap();
+        const index = self->pos + 1;
+        @assert(index < self->tokens_len, "peek token index out of bounds");
+        return &self->tokens_data[index];
     }
 
+    [[inline]]
     pub fn peek_n(self: const Self*, n: usize) Option<const Token*> {
-        return self->source_tokens
-            ->tokens
-            .get_const(self->pos + n);
+        const index = self->pos + n;
+
+        if (index >= self->tokens_len) {
+            return .None;
+        }
+
+        return .Some(&self->tokens_data[index]);
     }
 
     /// Span of the last consumed token.
@@ -101,7 +112,7 @@ pub struct ParserState {
         // At EOF there is no real token to point at. Use the last
         // parsed token instead so the renderer
         // get a source line to show
-        if (*token->kind == .EOF) {
+        if (token->kind->is_eof()) {
             return self->last_parsed_span();
         }
 
@@ -112,23 +123,22 @@ pub struct ParserState {
     pub fn peek_span(self: const Self*) Span {
         const token = self->peek();
 
-        if (*token->kind == .EOF) {
+        if (token->kind->is_eof()) {
             return Span.new(self->source_id(), self->current()->loc);
         }
 
         return Span.new(self->source_id(), token->loc);
     }
 
+    [[inline]]
     pub fn next(self: Self*) Option<const Token*> {
-        switch (self->get(self->pos)) {
-            case .Some(token) => {
-                self->pos += 1;
-                return .Some(token);
-            }
-            case .None => {
-                return .None;
-            }
+        if (self->pos >= self->tokens_len) {
+            return .None;
         }
+
+        const token = &self->tokens_data[self->pos];
+        self->pos += 1;
+        return .Some(token);
     }
 
     pub fn expect(self: Self*, kind: TokenKind) bool {
@@ -234,113 +244,108 @@ pub struct ParserState {
         }
     }
 
+    [[inline]]
     pub fn is(self: const Self*, kind: TokenKind) bool {
-        switch (self->get(self->pos)) {
-            case .Some(token) => {
-                if (*token->kind == kind) {
-                    return true;
-                }
+        if (self->pos < self->tokens_len) {
+            if (*self->tokens_data[self->pos].kind == kind) {
+                return true;
             }
-            else => {}
         }
 
         return false;
     }
 
     pub fn is_literal(self: const Self*) bool {
-        switch (self->get(self->pos)) {
-            case .Some(token) => switch (*token->kind) {
+        if (self->pos < self->tokens_len) {
+            switch (*self->tokens_data[self->pos].kind) {
                 case .Literal(_) => return true;
                 else => {}
             }
-            else => {}
         }
 
         return false;
     }
 
     pub fn is_ident(self: const Self*) bool {
-        switch (self->get(self->pos)) {
-            case .Some(token) => switch (*token->kind) {
+        if (self->pos < self->tokens_len) {
+            switch (*self->tokens_data[self->pos].kind) {
                 case .Ident(_) => return true;
                 else => {}
             }
-            else => {}
         }
 
         return false;
     }
 
     pub fn is_ident_str(self: const Self*, value: const uint8*) bool {
-        switch (self->get(self->pos)) {
-            case .Some(token) => switch (*token->kind) {
+        if (self->pos < self->tokens_len) {
+            switch (*self->tokens_data[self->pos].kind) {
                 case .Ident(str) => return str.as_str_const() == value;
                 else => {}
             }
-            else => {}
         }
 
         return false;
     }
 
     pub fn is_peek_ident_str(self: const Self*, value: const uint8*) bool {
-        switch (self->get(self->pos + 1)) {
-            case .Some(token) => switch (*token->kind) {
+        const index = self->pos + 1;
+        if (index < self->tokens_len) {
+            switch (*self->tokens_data[index].kind) {
                 case .Ident(str) => return str.as_str_const() == value;
                 else => {}
             }
-            else => {}
         }
 
         return false;
     }
 
+    [[inline]]
     pub fn is_peek(self: const Self*, kind: TokenKind) bool {
-        switch (self->get(self->pos + 1)) {
-            case .Some(token) => {
-                if (*token->kind == kind) {
-                    return true;
-                }
+        const index = self->pos + 1;
+        if (index < self->tokens_len) {
+            if (*self->tokens_data[index].kind == kind) {
+                return true;
             }
-            else => {}
         }
 
         return false;
     }
 
     /// Returns true if the token `n` positions ahead of the cursor has `kind`.
+    [[inline]]
     pub fn is_peek_n(self: const Self*, n: usize, kind: TokenKind) bool {
-        switch (self->get(self->pos + n)) {
-            case .Some(token) => {
-                if (*token->kind == kind) {
-                    return true;
-                }
+        const index = self->pos + n;
+
+        if (index < self->tokens_len) {
+            if (*self->tokens_data[index].kind == kind) {
+                return true;
             }
-            else => {}
         }
 
         return false;
     }
 
     pub fn is_peek_literal(self: const Self*, kind: TokenKind) bool {
-        switch (self->get(self->pos + 1)) {
-            case .Some(token) => switch (*token->kind) {
+        const index = self->pos + 1;
+        
+        if (index < self->tokens_len) {
+            switch (*self->tokens_data[index].kind) {
                 case .Literal(_) => return true;
                 else => {}
             }
-            else => {}
         }
 
         return false;
     }
 
     pub fn is_peek_ident(self: const Self*, kind: TokenKind) bool {
-        switch (self->get(self->pos + 1)) {
-            case .Some(token) => switch (*token->kind) {
+        const index = self->pos + 1;
+        if (index < self->tokens_len) {
+            switch (*self->tokens_data[index].kind) {
                 case .Ident(_) => return true;
                 else => {}
             }
-            else => {}
         }
 
         return false;

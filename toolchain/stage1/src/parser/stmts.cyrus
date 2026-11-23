@@ -1844,12 +1844,12 @@ pub struct ParserStmts {
     }
 
     fn is_foreach_header(self: const Self*) bool {
-        var idx = self->state->pos();
+        var index = self->state->pos();
         var depth: usize = 0;
         var has_top_colon = false;
 
         while (true) {
-            switch (self->state->get(idx)) {
+            switch (self->state->get(index)) {
                 case .Some(token) => {
                     switch (*token->kind) {
                         case .LeftParen 
@@ -1889,7 +1889,7 @@ pub struct ParserStmts {
                 case .None => return false;
             }
 
-            idx += 1;
+            index += 1;
         }
 
         return false;
