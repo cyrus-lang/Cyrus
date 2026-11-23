@@ -802,7 +802,7 @@ pub struct ASTDump {
         self->indent += 1;
         
         switch (node->index) {
-            case .Some(var idx) => self->dump_destruct_pattern("index", &idx);
+            case .Some(var index) => self->dump_destruct_pattern("index", &index);
             else => {}
         }
 
