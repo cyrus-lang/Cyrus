@@ -1,0 +1,13 @@
+enum ReadError {
+    NotFound,
+}
+
+enum IOError {
+    NotFound,
+    DiskFull(uint64),
+}
+
+pub fn main() {
+    const sup_err = IOError.NotFound;
+    const sub_err = @cast(ReadError, sup_err); //~ ERROR cannot cast value of type `IOError` to `ReadError`
+}

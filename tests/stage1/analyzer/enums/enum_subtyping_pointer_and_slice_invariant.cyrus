@@ -1,0 +1,30 @@
+enum Sub {
+    A,
+}
+
+enum Sup {
+    A,
+    B,
+}
+
+fn accept_ptr(ptr: Sub*) Sup* {
+    return ptr; //~ ERROR return statement argument must be a value of type `(Sup)*` but got `(Sub)*`
+}
+
+fn accept_slice(slice: Sub[]) Sup[] {
+    return slice; //~ ERROR return statement argument must be a value of type `Sup[]` but got `Sub[]`
+}
+
+fn accept_fixed(array: Sub[2]) Sup[2] {
+    return array; //~ ERROR return statement argument must be a value of type `Sup[2]` but got `Sub[2]`
+}
+
+pub fn main() {
+    var sub = Sub.A;
+    var array: Sub[2] = Sub[2] { Sub.A, Sub.A };
+    var slice: Sub[] = array;
+
+    accept_ptr(&sub);
+    accept_slice(slice);
+    accept_fixed(array);
+}

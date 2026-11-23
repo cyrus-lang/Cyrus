@@ -1,0 +1,16 @@
+enum ReadError {
+    NotFound,
+}
+
+enum IOError {
+    NotFound,
+    DiskFull(uint64),
+}
+
+pub fn main() {
+    const sub_err = ReadError.NotFound;
+    const sup_err = IOError.NotFound;
+
+    const eq = sub_err == sup_err; //~ ERROR cannot apply infix operator between values of type `ReadError` and `IOError`
+    const neq = sup_err != sub_err; //~ ERROR cannot apply infix operator between values of type `IOError` and `ReadError`
+}

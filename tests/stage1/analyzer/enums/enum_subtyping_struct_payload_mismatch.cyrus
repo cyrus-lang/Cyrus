@@ -1,0 +1,37 @@
+enum StructSubFull {
+    Event { a: uint32, b: uint64 },
+}
+
+enum StructSupMissingField {
+    Event { a: uint32 },
+}
+
+enum StructSubFew {
+    Event { a: uint32 },
+}
+
+enum StructSupExtraField {
+    Event { a: uint32, b: uint64 },
+}
+
+enum StructSupTypeMismatch {
+    Event { a: uint32, b: uint32 },
+}
+
+fn missing_field(err: StructSubFull) StructSupMissingField {
+    return err; //~ ERROR return statement argument must be a value of type `StructSupMissingField` but got `StructSubFull`
+}
+
+fn extra_field(err: StructSubFew) StructSupExtraField {
+    return err; //~ ERROR return statement argument must be a value of type `StructSupExtraField` but got `StructSubFew`
+}
+
+fn field_type_mismatch(err: StructSubFull) StructSupTypeMismatch {
+    return err; //~ ERROR return statement argument must be a value of type `StructSupTypeMismatch` but got `StructSubFull`
+}
+
+pub fn main() {
+    missing_field(StructSubFull.Event { a: 1, b: 2 });
+    extra_field(StructSubFew.Event { a: 1 });
+    field_type_mismatch(StructSubFull.Event { a: 1, b: 2 });
+}

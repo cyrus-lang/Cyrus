@@ -1,0 +1,77 @@
+// @stdout: ok=50 defer=eof err=eof defer=full(4096) err2=full(4096)
+
+import std::errors{ErrorOr};
+import std::libc{printf};
+
+enum ReadError {
+    NotFound,
+    UnexpectedEof,
+}
+
+enum WriteError {
+    PermissionDenied,
+    DiskFull(uint64),
+}
+
+enum IOError {
+    PermissionDenied,
+    DiskFull(uint64),
+    UnexpectedEof,
+    Interrupted,
+    NotFound,
+}
+
+fn read_byte(fail: bool) ErrorOr<int32, ReadError> {
+    if (fail) {
+        return .Error(.UnexpectedEof);
+    }
+    return .Value(50);
+}
+
+fn write_byte(fail: bool) ErrorOr<int32, WriteError> {
+    if (fail) {
+        return .Error(.DiskFull(4096));
+    }
+    return .Value(1);
+}
+
+fn print_io_error(tag: const uint8*, err: IOError) {
+    switch (err) {
+        case .DiskFull(bytes) => printf("%sfull(%llu)", tag, bytes);
+        case .PermissionDenied => printf("%sperm", tag);
+        case .NotFound => printf("%snot_found", tag);
+        case .UnexpectedEof => printf("%seof", tag);
+        case .Interrupted => printf("%sint", tag);
+    }
+}
+
+fn pipeline(mode: int32) ErrorOr<int32, IOError> {
+    defer catch (err) {
+        print_io_error("defer=", err);
+        printf(" ");
+    }
+
+    const v = try read_byte(mode == 1);
+    const w = try write_byte(mode == 2);
+    return .Value(v + w - 1);
+}
+
+pub fn main() {
+    switch (pipeline(0)) {
+        case .Value(v) => printf("ok=%d ", v);
+        case .Error(_) => printf("ok=bad ");
+    }
+
+    switch (pipeline(1)) {
+        case .Value(_) => printf("err=bad ");
+        case .Error(e) => {
+            print_io_error("err=", e);
+            printf(" ");
+        }
+    }
+
+    switch (pipeline(2)) {
+        case .Value(_) => printf("err2=bad");
+        case .Error(e) => print_io_error("err2=", e);
+    }
+}

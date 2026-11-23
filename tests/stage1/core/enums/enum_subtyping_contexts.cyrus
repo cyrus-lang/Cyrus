@@ -1,0 +1,102 @@
+// @stdout: global=10,20,77,9 local=88 fn=53 meth=43 arr=10,7,1,11 union=10 wrap=3
+
+import std::libc{printf};
+
+enum SubScalar {
+    First,
+    Second,
+}
+
+enum SubPayload {
+    Code(int32),
+    Detail { x: int32, y: int32 },
+}
+
+enum Super {
+    Extra(int32),
+    Detail { y: int32, x: int32 },
+    Second,
+    Code(int32),
+    First,
+}
+
+enum GenericBox<T> {
+    Wrapped(T),
+    Plain(Super),
+}
+
+struct Holder {
+    pub err: Super,
+
+    pub fn take_value(self: const Self*, err: Super) int32 {
+        return super_code(err);
+    }
+
+    pub fn static_take(err: Super) int32 {
+        return super_code(err);
+    }
+}
+
+union TaggedUnion {
+    empty: int32,
+    err: Super,
+}
+
+static const G_STRUCT_HOLDER: Holder = Holder { err: SubPayload.Detail { x: 70, y: 7 } };
+static var G_ARR: Super[2] = Super[2] { SubScalar.First, SubPayload.Code(9) };
+static var G_PAYLOAD: Super = SubPayload.Code(20);
+static const G_SCALAR: Super = SubScalar.Second;
+
+fn super_code(err: Super) int32 {
+    switch (err) {
+        case .First => return 1;
+        case .Second => return 10;
+        case .Code(v) => return v;
+        case .Detail { x, y } => return x + y;
+        case .Extra(v) => return v;
+    }
+}
+
+fn accept_pair(a: Super, b: Super) int32 {
+    return super_code(a) + super_code(b);
+}
+
+pub fn main() {
+    var local_err: Super = SubScalar.First;
+    local_err = SubPayload.Code(88);
+
+    const fn_sum = accept_pair(SubPayload.Code(9), @cast(Super, SubPayload.Detail { x: 40, y: 4 }));
+
+    const holder = Holder { err: SubScalar.Second };
+    const meth_sum = holder.take_value(SubScalar.Second) + Holder.static_take(SubPayload.Code(33));
+
+    const arr: Super[2] = Super[2] { SubScalar.Second, SubPayload.Code(7) };
+    const slc: Super[] = Super[2] { SubScalar.First, SubPayload.Code(11) };
+
+    const u = TaggedUnion { err: SubScalar.Second };
+    const wrap: GenericBox<Super> = .Plain(SubPayload.Code(3));
+
+    printf(
+        "global=%d,%d,%d,%d local=%d fn=%d meth=%d arr=%d,%d,%d,%d union=%d wrap=%d",
+        super_code(G_SCALAR),
+        super_code(G_PAYLOAD),
+        super_code(G_STRUCT_HOLDER.err),
+        super_code(G_ARR[1]),
+        super_code(local_err),
+        fn_sum,
+        meth_sum,
+        super_code(arr[0]),
+        super_code(arr[1]),
+        super_code(slc[0]),
+        super_code(slc[1]),
+        super_code(u.err),
+        match_wrap(wrap)
+    );
+}
+
+fn match_wrap(wrap: GenericBox<Super>) int32 {
+    switch (wrap) {
+        case .Plain(e) => return super_code(e);
+        case .Wrapped(e) => return super_code(e);
+    }
+}

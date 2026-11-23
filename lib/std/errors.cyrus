@@ -38,7 +38,6 @@ pub enum ErrorOr<V, E = ErrorStr> : Try<V, E> {
         }
     }
 
-    // Returns the contained value or a caller-provided default fallback value
     [[inline]]
     pub fn unwrap_or(self: const Self*, other: V) V {
         switch (*self) {
