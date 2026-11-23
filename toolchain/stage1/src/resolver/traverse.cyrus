@@ -4234,6 +4234,7 @@ fn resolve_try_expr(
                 control_flow_type: .None,
                 value_type: .None,
                 error_type: .None,
+                ret_error_type: .None,
                 return_type: .None,
                 span: try_expr->span,
             }), try_expr->span));

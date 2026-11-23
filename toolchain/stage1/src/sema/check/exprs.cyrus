@@ -1108,7 +1108,25 @@ fn analyze_compare_expr(
     const rhs = *rhs_type.const_inner();
 
     if (lhs.is_enum() && rhs.is_enum()) {
-        return .Some(.Plain(.Bool));
+        if (cmp_eq) {
+            const lhs_named = lhs.as_named_type().unwrap();
+            const rhs_named = rhs.as_named_type().unwrap();
+
+            if (cir::named_type_eq(&lhs_named, &rhs_named)) {
+                return .Some(.Plain(.Bool));
+            }
+        }
+
+        diags::report_infix_invalid(
+            context->dctx,
+            context->allocator,
+            context->decl_tables,
+            lhs,
+            rhs,
+            span,
+            false
+        );
+        return .None;
     }
 
     if (!is_type_comparable(context, rhs, lhs, span)) {
@@ -1495,8 +1513,26 @@ fn analyze_array(
                         first_elem->span
                     );
 
+                    var inferred_element_type = ty;
+
+                    switch (expected_element_type) {
+                        case .Some(expected_element) => {
+                            if (!expected_element.contains_error()
+                                && is_assignable_to(
+                                    context,
+                                    ty,
+                                    expected_element,
+                                    first_elem->span
+                                ))
+                            {
+                                inferred_element_type = expected_element;
+                            }
+                        }
+                        case .None => {}
+                    }
+
                     array->ty = .Some(.Array(cir::ArrayType {
-                        element_type: alloc_init(context->allocator, ty),
+                        element_type: alloc_init(context->allocator, inferred_element_type),
                         capacity: .Fixed(alloc_init(context->allocator, elements_count_expr)),
                         span: array->span,
                     }));
@@ -8766,6 +8802,7 @@ fn analyze_try_expr(
     try_expr->control_flow_type = .Some(operand_try.control_flow_type);
     try_expr->value_type = .Some(operand_try.value_type);
     try_expr->error_type = .Some(operand_try.error_type);
+    try_expr->ret_error_type = .Some(ret_try.error_type);
     try_expr->return_type = .Some(ret_type);
 
     return .Some(operand_try.value_type);

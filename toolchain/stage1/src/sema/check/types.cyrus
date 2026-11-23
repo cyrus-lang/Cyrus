@@ -5,6 +5,7 @@ import std::collections{Vec};
 import std::mem{alloc_init};
 import std::option{Option};
 
+import resolver::symbols{symbol_decl_id};
 import sema::context{AnalyzerContext};
 import .::normalizer{
     normalize_sema_type,
@@ -887,6 +888,10 @@ pub fn is_assignable_to(
                         return true;
                     }
 
+                    if (is_distinct_enum_types(context, *inner1, *inner2, span)) {
+                        return false;
+                    }
+
                     return is_assignable_to(context, *inner1, *inner2, span);
                 }
                 else => {}
@@ -979,6 +984,15 @@ pub fn is_assignable_to(
                         case .Fixed => {}
                     }
 
+                    if (is_distinct_enum_types(
+                        context,
+                        *array_type1.element_type,
+                        *array_type2.element_type,
+                        span
+                    )) {
+                        return false;
+                    }
+
                     return is_assignable_to(context, 
                         *array_type1.element_type,
                         *array_type2.element_type,
@@ -991,6 +1005,15 @@ pub fn is_assignable_to(
                 case .Pointer(inner) => {
                     switch (array_type1.capacity) {
                         case .Fixed | .TerminatedSlice => {
+                            if (is_distinct_enum_types(
+                                context,
+                                *array_type1.element_type,
+                                *inner,
+                                span
+                            )) {
+                                return false;
+                            }
+
                             return is_assignable_to(
                                 context, 
                                 *array_type1.element_type, 
@@ -1240,6 +1263,612 @@ fn is_union_decl_assignable_to(
     return ok;
 }
 
+fn is_distinct_enum_types(
+    context: AnalyzerContext*,
+    source_type: cir::SemaType,
+    target_type: cir::SemaType,
+    span: Span
+) bool {
+    const expanded_source = expand_sema_type(context, source_type, span);
+    const expanded_target = expand_sema_type(context, target_type, span);
+
+    switch (*expanded_source.const_inner()) {
+        case .Named(source_named) => {
+            switch (*expanded_target.const_inner()) {
+                case .Named(target_named) => {
+                    if (source_named.type_decl_id.as_enum().is_some()
+                        && target_named.type_decl_id.as_enum().is_some())
+                    {
+                        return !cir::named_type_eq(&source_named, &target_named);
+                    }
+                }
+                else => {}
+            }
+        }
+        else => {}
+    }
+
+    return false;
+}
+
+fn integer_values_equal(
+    first: cir::IntegerLiteral,
+    second: cir::IntegerLiteral
+) bool {
+    switch (first) {
+        case .Signed(first_val) => {
+            switch (second) {
+                case .Signed(second_val) => return first_val == second_val;
+                case .Unsigned(second_val) => {
+                    return first_val >= 0 && @cast(uint128, first_val) == second_val;
+                }
+            }
+        }
+        case .Unsigned(first_val) => {
+            switch (second) {
+                case .Unsigned(second_val) => return first_val == second_val;
+                case .Signed(second_val) => {
+                    return second_val >= 0 && first_val == @cast(uint128, second_val);
+                }
+            }
+        }
+    }
+}
+
+fn array_capacities_strictly_equal(
+    context: AnalyzerContext*,
+    first_capacity: const cir::ArrayCapacity*,
+    second_capacity: const cir::ArrayCapacity*
+) bool {
+    switch (*first_capacity) {
+        case .Slice => {
+            switch (*second_capacity) {
+                case .Slice => return true;
+                else => return false;
+            }
+        }
+        case .TerminatedSlice => {
+            switch (*second_capacity) {
+                case .TerminatedSlice => return true;
+                else => return false;
+            }
+        }
+        case .Fixed(first_expr) => {
+            switch (*second_capacity) {
+                case .Fixed(second_expr) => {
+                    const int1 = ciri::fold_const_expr_int(
+                        context->decl_tables,
+                        context->registry,
+                        first_expr
+                    );
+                    const int2 = ciri::fold_const_expr_int(
+                        context->decl_tables,
+                        context->registry,
+                        second_expr
+                    );
+
+                    switch (int1) {
+                        case .Some(first_val) => {
+                            switch (int2) {
+                                case .Some(second_val) => {
+                                    return integer_values_equal(first_val, second_val);
+                                }
+                                case .None => return false;
+                            }
+                        }
+                        case .None => {
+                            if (int2.is_some()) {
+                                return false;
+                            }
+                            return cir::array_capacity_eq(first_capacity, second_capacity);
+                        }
+                    }
+                }
+                else => return false;
+            }
+        }
+    }
+}
+
+fn strict_types_equal(
+    context: AnalyzerContext*,
+    first_type: cir::SemaType,
+    second_type: cir::SemaType,
+    span: Span
+) bool {
+    const expand1 = expand_sema_type(context, first_type, span);
+    const expand2 = expand_sema_type(context, second_type, span);
+
+    if (expand1.contains_error() || expand2.contains_error()) {
+        return true;
+    }
+
+    switch (expand1) {
+        case .Plain(plain1) => {
+            switch (expand2) {
+                case .Plain(plain2) => return plain1 == plain2;
+                else => return false;
+            }
+        }
+
+        case .Const(inner1) => {
+            switch (expand2) {
+                case .Const(inner2) => {
+                    return strict_types_equal(context, *inner1, *inner2, span);
+                }
+                else => return false;
+            }
+        }
+
+        case .Pointer(inner1) => {
+            switch (expand2) {
+                case .Pointer(inner2) => {
+                    return strict_types_equal(context, *inner1, *inner2, span);
+                }
+                else => return false;
+            }
+        }
+
+        case .Named(named1) => {
+            switch (expand2) {
+                case .Named(named2) => {
+                    if (!cir::type_decl_id_eq(named1.type_decl_id, named2.type_decl_id)) {
+                        return false;
+                    }
+
+                    if (named1.type_args.len() != named2.type_args.len()) {
+                        return false;
+                    }
+
+                    for (var arg_index: usize = 0; arg_index < named1.type_args.len(); arg_index += 1) {
+                        const arg1 = named1.type_args.get(arg_index).unwrap();
+                        const arg2 = named2.type_args.get(arg_index).unwrap();
+
+                        switch (*arg1) {
+                            case .Type(first_arg_ty, _) => {
+                                switch (*arg2) {
+                                    case .Type(second_arg_ty, _) => {
+                                        if (!strict_types_equal(context, first_arg_ty, second_arg_ty, span)) {
+                                            return false;
+                                        }
+                                    }
+                                    case .Infer => return false;
+                                }
+                            }
+                            case .Infer => {
+                                switch (*arg2) {
+                                    case .Type => return false;
+                                    case .Infer => {}
+                                }
+                            }
+                        }
+                    }
+
+                    return true;
+                }
+                else => return false;
+            }
+        }
+
+        case .Array(array1) => {
+            switch (expand2) {
+                case .Array(array2) => {
+                    if (!array_capacities_strictly_equal(
+                        context,
+                        &array1.capacity,
+                        &array2.capacity
+                    )) {
+                        return false;
+                    }
+
+                    return strict_types_equal(
+                        context,
+                        *array1.element_type,
+                        *array2.element_type,
+                        span
+                    );
+                }
+                else => return false;
+            }
+        }
+
+        case .Tuple(tuple1) => {
+            switch (expand2) {
+                case .Tuple(tuple2) => {
+                    if (tuple1.elements.len() != tuple2.elements.len()) {
+                        return false;
+                    }
+
+                    for (var elem_index: usize = 0; elem_index < tuple1.elements.len(); elem_index += 1) {
+                        const element1 = tuple1.elements.get_const(elem_index).unwrap();
+                        const element2 = tuple2.elements.get_const(elem_index).unwrap();
+
+                        if (!strict_types_equal(context, element1->ty, element2->ty, span)) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+                else => return false;
+            }
+        }
+
+        case .FuncType(func1) => {
+            switch (expand2) {
+                case .FuncType(func2) => {
+                    if (func1.params.list.len() != func2.params.list.len()) {
+                        return false;
+                    }
+
+                    for (var param_index: usize = 0; param_index < func1.params.list.len(); param_index += 1) {
+                        const param1 = func1.params.list.get_const(param_index).unwrap();
+                        const param2 = func2.params.list.get_const(param_index).unwrap();
+
+                        if (!strict_types_equal(context, *param1, *param2, span)) {
+                            return false;
+                        }
+                    }
+
+                    switch (func1.params.variadic) {
+                        case .Some(var1) => {
+                            switch (func2.params.variadic) {
+                                case .Some(var2) => {
+                                    switch (*var1) {
+                                        case .Typed(var_type1) => {
+                                            switch (*var2) {
+                                                case .Typed(var_type2) => {
+                                                    if (!strict_types_equal(
+                                                        context,
+                                                        var_type1,
+                                                        var_type2,
+                                                        span
+                                                    )) {
+                                                        return false;
+                                                    }
+                                                }
+                                                else => return false;
+                                            }
+                                        }
+                                        case .UntypedCStyle => {
+                                            switch (*var2) {
+                                                case .UntypedCStyle => {}
+                                                else => return false;
+                                            }
+                                        }
+                                    }
+                                }
+                                case .None => return false;
+                            }
+                        }
+                        case .None => {
+                            switch (func2.params.variadic) {
+                                case .Some => return false;
+                                case .None => {}
+                            }
+                        }
+                    }
+
+                    return strict_types_equal(
+                        context,
+                        *func1.ret_type,
+                        *func2.ret_type,
+                        span
+                    );
+                }
+                else => return false;
+            }
+        }
+
+        case .InterfaceObject(object1) => {
+            switch (expand2) {
+                case .InterfaceObject(object2) => {
+                    const first_iface: cir::SemaType = .Named(object1.interface_type);
+                    const second_iface: cir::SemaType = .Named(object2.interface_type);
+
+                    if (!strict_types_equal(context, first_iface, second_iface, span)) {
+                        return false;
+                    }
+
+                    return strict_types_equal(
+                        context,
+                        *object1.concrete_type,
+                        *object2.concrete_type,
+                        span
+                    );
+                }
+                else => return false;
+            }
+        }
+
+        else => return cir::cir_types_eq(&expand1, &expand2);
+    }
+}
+
+fn enum_payload_types_equal(
+    context: AnalyzerContext*,
+    first_type: cir::SemaType,
+    second_type: cir::SemaType,
+    span: Span
+) bool {
+    const expand1 = expand_sema_type(context, first_type, span);
+    const expand2 = expand_sema_type(context, second_type, span);
+
+    return strict_types_equal(
+        context,
+        *expand1.const_inner(),
+        *expand2.const_inner(),
+        span
+    );
+}
+
+fn enum_valued_exprs_equal(
+    context: AnalyzerContext*,
+    first_expr: const cir::Expr*,
+    second_expr: const cir::Expr*,
+    depth: usize
+) bool {
+    if (depth > 32) {
+        return false;
+    }
+
+    const fold1 = ciri::fold_const_expr_int(
+        context->decl_tables,
+        context->registry,
+        first_expr
+    );
+    const fold2 = ciri::fold_const_expr_int(
+        context->decl_tables,
+        context->registry,
+        second_expr
+    );
+
+    switch (fold1) {
+        case .Some(int1) => {
+            switch (fold2) {
+                case .Some(int2) => return integer_values_equal(int1, int2);
+                case .None => return false;
+            }
+        }
+        case .None => {
+            if (fold2.is_some()) {
+                return false;
+            }
+        }
+    }
+
+    switch (first_expr->kind) {
+        case .Literal(first_lit) => {
+            switch (second_expr->kind) {
+                case .Literal(second_lit) => {
+                    switch (first_lit.kind) {
+                        case .Float { value: first_float, .. } => {
+                            switch (second_lit.kind) {
+                                case .Float { value: second_float, .. } => {
+                                    return first_float == second_float;
+                                }
+                                else => return false;
+                            }
+                        }
+                        case .String { value: first_str, .. } => {
+                            switch (second_lit.kind) {
+                                case .String { value: second_str, .. } => {
+                                    return first_str.as_str_const() == second_str.as_str_const();
+                                }
+                                else => return false;
+                            }
+                        }
+                        case .Char(first_char) => {
+                            switch (second_lit.kind) {
+                                case .Char(second_char) => return first_char == second_char;
+                                else => return false;
+                            }
+                        }
+                        case .Bool(first_bool) => {
+                            switch (second_lit.kind) {
+                                case .Bool(second_bool) => return first_bool == second_bool;
+                                else => return false;
+                            }
+                        }
+                        case .Null => {
+                            switch (second_lit.kind) {
+                                case .Null => return true;
+                                else => return false;
+                            }
+                        }
+                        else => return false;
+                    }
+                }
+                else => return false;
+            }
+        }
+
+        case .Prefix(prefix1) => {
+            switch (second_expr->kind) {
+                case .Prefix(prefix2) => {
+                    if (prefix1.op != prefix2.op) {
+                        return false;
+                    }
+                    return enum_valued_exprs_equal(
+                        context,
+                        prefix1.operand,
+                        prefix2.operand,
+                        depth + 1
+                    );
+                }
+                else => return false;
+            }
+        }
+
+        case .Infix(infix1) => {
+            switch (second_expr->kind) {
+                case .Infix(infix2) => {
+                    if (infix1.op != infix2.op) {
+                        return false;
+                    }
+
+                    return enum_valued_exprs_equal(
+                        context,
+                        infix1.lhs,
+                        infix2.lhs,
+                        depth + 1
+                    ) && enum_valued_exprs_equal(
+                        context,
+                        infix1.rhs,
+                        infix2.rhs,
+                        depth + 1
+                    );
+                }
+                else => return false;
+            }
+        }
+
+        case .Symbol(symbol1) => {
+            switch (second_expr->kind) {
+                case .Symbol(symbol2) => {
+                    const decl_opt1 = symbol_decl_id(context->registry, &symbol1);
+                    const decl_opt2 = symbol_decl_id(context->registry, &symbol2);
+
+                    switch (decl_opt1) {
+                        case .Some(decl1) => {
+                            switch (decl_opt2) {
+                                case .Some(decl2) => {
+                                    if (cir::decl_id_key(decl1) == cir::decl_id_key(decl2)) {
+                                        return true;
+                                    }
+
+                                    switch (decl1) {
+                                        case .GlobalVar(global_var1) => {
+                                            switch (decl2) {
+                                                case .GlobalVar(global_var2) => {
+                                                    const global_var_decl1 = context->decl_tables->global_vars.get_const(global_var1).unwrap();
+                                                    const global_var_decl2 = context->decl_tables->global_vars.get_const(global_var2).unwrap();
+
+                                                    if (!global_var_decl1->is_const || !global_var_decl2->is_const) {
+                                                        return false;
+                                                    }
+
+                                                    switch (global_var_decl1->rhs) {
+                                                        case .Some(rhs1) => {
+                                                            switch (global_var_decl2->rhs) {
+                                                                case .Some(rhs2) => {
+                                                                    return enum_valued_exprs_equal(
+                                                                        context,
+                                                                        &rhs1,
+                                                                        &rhs2,
+                                                                        depth + 1
+                                                                    );
+                                                                }
+                                                                case .None => return false;
+                                                            }
+                                                        }
+                                                        case .None => return false;
+                                                    }
+                                                }
+                                                else => return false;
+                                            }
+                                        }
+                                        else => return false;
+                                    }
+                                }
+                                case .None => return false;
+                            }
+                        }
+                        case .None => return false;
+                    }
+                }
+                else => return false;
+            }
+        }
+
+        case .Array(array1) => {
+            switch (second_expr->kind) {
+                case .Array(array2) => {
+                    if (array1.elements.len() != array2.elements.len()) {
+                        return false;
+                    }
+
+                    for (var i: usize = 0; i < array1.elements.len(); i += 1) {
+                        const element1 = array1.elements.get_const(i).unwrap();
+                        const element2 = array2.elements.get_const(i).unwrap();
+
+                        if (!enum_valued_exprs_equal(context, element1, element2, depth + 1)) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+                else => return false;
+            }
+        }
+
+        case .Tuple(tuple1) => {
+            switch (second_expr->kind) {
+                case .Tuple(tuple2) => {
+                    if (tuple1.elements.len() != tuple2.elements.len()) {
+                        return false;
+                    }
+
+                    for (var i: usize = 0; i < tuple1.elements.len(); i += 1) {
+                        const element1 = tuple1.elements.get_const(i).unwrap();
+                        const element2 = tuple2.elements.get_const(i).unwrap();
+
+                        if (!enum_valued_exprs_equal(context, element1, element2, depth + 1)) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+                else => return false;
+            }
+        }
+
+        case .StructInit(struct_init1) => {
+            switch (second_expr->kind) {
+                case .StructInit(struct_init2) => {
+                    if (struct_init1.fields.len() != struct_init2.fields.len()) {
+                        return false;
+                    }
+
+                    for (var i: usize = 0; i < struct_init1.fields.len(); i += 1) {
+                        const first_field = struct_init1.fields.get_const(i).unwrap();
+
+                        var matched = false;
+
+                        for (var j: usize = 0; j < struct_init2.fields.len(); j += 1) {
+                            const second_field = struct_init2.fields.get_const(j).unwrap();
+
+                            if (first_field->name.as_str_const() == second_field->name.as_str_const()) {
+                                if (!enum_valued_exprs_equal(
+                                    context,
+                                    &first_field->value,
+                                    &second_field->value,
+                                    depth + 1
+                                )) {
+                                    return false;
+                                }
+                                matched = true;
+                                break;
+                            }
+                        }
+
+                        if (!matched) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
+                else => return false;
+            }
+        }
+
+        else => return false;
+    }
+}
+
 fn is_enum_decl_assignable_to(
     context: AnalyzerContext*,
     enum_decl1: const cir::EnumDecl*,
@@ -1248,37 +1877,6 @@ fn is_enum_decl_assignable_to(
     env2: const env::GenericEnv*,
     span: Span
 ) bool {
-    switch (enum_decl1->tag_type) {
-        case .Some(tag1) => {
-            switch (enum_decl2->tag_type) {
-                case .Some(tag2) => {
-                    const ty1 = env1->substitute_sema_type(&tag1);
-                    const ty2 = env2->substitute_sema_type(&tag2);
-
-                    if (!is_assignable_to(context, ty1, ty2, span)) {
-                        return false;
-                    }
-                }
-                else => {}
-            }
-        }
-        else => {}
-    }
-
-    switch (enum_decl1->align) {
-        case .Some(align1) => {
-            switch (enum_decl2->align) {
-                case .Some(align2) => {
-                    if (align1 != align2) {
-                        return false;
-                    }
-                }
-                else => {}
-            }
-        }
-        else => {}
-    }
-
     var ok = true;
 
     for (var i: usize = 0; i < enum_decl1->variants.len() && ok; i += 1) {
@@ -1326,7 +1924,9 @@ fn is_enum_decl_assignable_to(
                         ty1 = env1->substitute_sema_type(&ty1);
                         ty2 = env2->substitute_sema_type(&ty2);
 
-                        if (!is_assignable_to(context, ty1, ty2, span)) {
+                        if (!enum_payload_types_equal(context, ty1, ty2, span)
+                            || !enum_valued_exprs_equal(context, v1, v2, 0))
+                        {
                             ok = false;
                         }
                     }
@@ -1352,7 +1952,7 @@ fn is_enum_decl_assignable_to(
                                         const ty1 = env1->substitute_sema_type(&ty1_n);
                                         const ty2 = env2->substitute_sema_type(&ty2_n);
 
-                                        if (!is_assignable_to(context, ty1, ty2, span)) {
+                                        if (!enum_payload_types_equal(context, ty1, ty2, span)) {
                                             ok = false;
                                         }
                                     }
@@ -1367,6 +1967,10 @@ fn is_enum_decl_assignable_to(
                     case .Struct { fields: fields1, .. } => {
                         switch (*variant2) {
                             case .Struct { fields: fields2, .. } => {
+                                if (fields1.len() != fields2.len()) {
+                                    ok = false;
+                                }
+
                                 for (var j: usize = 0; j < fields2.len() && ok; j += 1) {
                                     const field2 = fields2.get_const(j).unwrap();
 
@@ -1396,7 +2000,7 @@ fn is_enum_decl_assignable_to(
                                                         const ty1 = env1->substitute_sema_type(&ty1);
                                                         const ty2 = env2->substitute_sema_type(&ty2);
 
-                                                        if (!is_assignable_to(context, ty1, ty2, span)) {
+                                                        if (!enum_payload_types_equal(context, ty1, ty2, span)) {
                                                             ok = false;
                                                         }
                                                     }
