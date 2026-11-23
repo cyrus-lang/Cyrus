@@ -17,84 +17,92 @@ pub struct String {
     vec: Vec<uint8>,
 
     pub fn new(allocator: Allocator) Self {
-        var vec: Vec<uint8> = Vec.new(allocator);
-        vec.push('\0'); // null-terminated
+        var vec: Vec<uint8> = Vec.with_capacity(allocator, 8);
+        var data = vec.data();
+        data[0] = '\0';
+        vec.set_len(1);
         return Self { vec };
     }
 
     pub fn with_capacity(allocator: Allocator, cap: usize) Self {
-        var vec: Vec<uint8> = Vec.with_capacity(allocator, cap);
-        vec.push('\0'); // null-terminated
+        var vec: Vec<uint8> = Vec.with_capacity(allocator, cap + 1);
+        var data = vec.data();
+        data[0] = '\0';
+        vec.set_len(1);
         return Self { vec };
     }
 
-    pub fn from_str(allocator: Allocator, str: const uint8*) Self {
-        @assert(str, "input string cannot be null");
-
-        const len = strlen(str);
-    
+    pub fn from_bytes(allocator: Allocator, ptr: const uint8*, len: usize) Self {
         var vec: Vec<uint8> = Vec.with_capacity(allocator, len + 1);
-        for (var i: usize = 0; i < len; i += 1) {
-            vec.push(str[i]);
+        var data = vec.data();
+
+        if (len > 0) {
+            @assert(ptr, "input bytes cannot be null");
+            memmove(@cast(void*, data), @cast(const void*, ptr), len);
         }
-        vec.push('\0');
-    
+
+        data[len] = '\0';
+        vec.set_len(len + 1);
+
         return Self { vec };
     }
 
+    [[inline]]
+    pub fn from_str(allocator: Allocator, str: const uint8*) Self {
+        return Self.from_bytes(allocator, str, strlen(str));
+    }
+
+    [[inline]]
     pub fn from_slice(allocator: Allocator, slice: const Slice<uint8>) Self {
-        const len = slice.len();
-
-        var vec: Vec<uint8> = Vec.with_capacity(allocator, len +1);
-
-        for (var i: usize = 0; i < len; i += 1) {
-            const item = slice.get_const(i).unwrap();
-
-            vec.push(*item);
-        }
-        vec.push('\0');
-
-        return Self { vec };
+        return Self.from_bytes(
+            allocator, 
+            slice.ptr_const(), 
+            slice.len()
+        );
     }
 
+    [[inline]]
     pub fn clone(self: const Self*, allocator: Allocator) Self {
-        const len = self->vec.len();
-        const src = self->vec.data_const();
-
-        var vec: Vec<uint8> = Vec.with_capacity(allocator, len);
-
-        for (var i: usize = 0; i < len; i += 1) {
-            vec.push(src[i]);
-        }
-
-        return Self { vec };
+        return Self.from_bytes(
+            allocator, 
+            self->as_str_const(), 
+            self->len()
+        );
     }
 
     pub fn reserve(self: Self*, extra: usize) {
-        const required = self->len() + extra;
-        
-        if (required > self->cap()) {
-            self->vec.reserve(required);
+        self->vec.reserve(extra);
+    }
+
+    pub fn push(self: Self*, char: uint8) {
+        self->vec.reserve(1);
+
+        const old_len = self->len();
+        var data = self->vec.data();
+        data[old_len] = char;
+        data[old_len + 1] = '\0';
+        self->vec.set_len(old_len + 2);
+    }
+
+    pub fn push_bytes(self: Self*, ptr: const uint8*, len: usize) {
+        if (len == 0) {
+            return;
         }
+
+        @assert(ptr, "input bytes cannot be null");
+
+        self->vec.reserve(len);
+
+        const old_len = self->len();
+        var dst = self->vec.data();
+        memmove(@cast(void*, dst + old_len), @cast(const void*, ptr), len);
+        dst[old_len + len] = '\0';
+        self->vec.set_len(old_len + len + 1);
     }
 
-    pub fn push(self: Self*, char: uint8) {        
-        self->vec.pop();
-        self->vec.push(char);
-        self->vec.push('\0');
-    }
-
+    [[inline]]
     pub fn push_str(self: Self*, str: const uint8*) {
-        @assert(str, "input string cannot be null");
-
-        const len = strlen(str);
-
-        self->reserve(len);
-        self->vec.pop();
-        for (var i: usize = 0; i < len; i += 1) {
-            self->vec.push(str[i]);
-        }        
-        self->vec.push('\0');
+        self->push_bytes(str, strlen(str));
     }
     
     // TODO: Add method: replace
@@ -107,10 +115,14 @@ pub struct String {
 
     pub fn trim_start(self: Self*) {
         var str: uint8* = self->as_str();
+
         const len = self->vec.len();
 
         var start: usize = 0;
-        while (start < len - 1 && isspace(@cast(c_int, str[start])) != 0) {
+
+        while (start < len - 1 && 
+            isspace(@cast(c_int, str[start])) != 0) 
+        {
             start += 1;
         }
 

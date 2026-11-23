@@ -27,12 +27,12 @@ pub struct Args {
         return self->argc;
     }
 
-    pub fn get(self: const Self*, idx: usize) Option<const uint8*> {
-        if (idx >= self->argc || self->argv == null) {
+    pub fn get(self: const Self*, index: usize) Option<const uint8*> {
+        if (index >= self->argc || self->argv == null) {
             return .None;
         }
 
-        return .Some(self->argv[idx]);
+        return .Some(self->argv[index]);
     }
 
     pub fn next(self: Self*) Option<const uint8*> {

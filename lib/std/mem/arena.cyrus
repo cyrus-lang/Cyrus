@@ -16,10 +16,13 @@ pub struct ArenaMark {
     pub used: usize,
 }
 
+const MAX_SLAB_CAPACITY: usize = 4 * 1024 * 1024;
+
 pub struct ArenaAllocator : Allocator {
     child_allocator: Allocator,
     nodes: SinglyLinkedList<ArenaNode>*,
     default_capacity: usize,
+    next_capacity: usize,
     last_alloc_ptr: void*,
     last_alloc_size: usize,
 
@@ -32,6 +35,7 @@ pub struct ArenaAllocator : Allocator {
             child_allocator, 
             nodes,
             default_capacity: capacity,
+            next_capacity: capacity,
             last_alloc_ptr: null,
             last_alloc_size: 0,
         };
@@ -41,20 +45,18 @@ pub struct ArenaAllocator : Allocator {
     }
 
     pub fn mark(self: Self*) ArenaMark {
-        switch (self->nodes->peek_first()) {
-            case .Some(node) => {
-                return ArenaMark {
-                    node,
-                    used: node->value.used,
-                };
-            }
-            case .None => {
-                return ArenaMark {
-                    node: null,
-                    used: 0,
-                };
-            }
+        const head = self->nodes->head;
+        if (head != null) {
+            return ArenaMark {
+                node: head,
+                used: head->value.used,
+            };
         }
+
+        return ArenaMark {
+            node: null,
+            used: 0,
+        };
     }
     
     // FIXME: Rename to rollback.
@@ -80,11 +82,36 @@ pub struct ArenaAllocator : Allocator {
             self->nodes->head->value.used = mark.used;
         }
 
+        self->next_capacity = self->default_capacity;
         self->last_alloc_ptr = null;
         self->last_alloc_size = 0;
     }
 
     pub fn alloc(self: Self*, size: usize) void* {
+        if (size == 0) {
+            return null;
+        }
+
+        const head = self->nodes->head;
+
+        if (head != null) {
+            var arena = &head->value;
+
+            const align_mask: uintptr = ~(@cast(uintptr, 7));
+            const base_addr = @cast(uintptr, arena->ptr) + arena->used;
+            const aligned_addr = (base_addr + @size_of(usize) + 7) & align_mask;
+            const total_needed = (aligned_addr - base_addr) + size;
+
+            if (arena->used + total_needed <= arena->capacity) {
+                arena->used += total_needed;
+                const ptr = @cast(void*, aligned_addr);
+                *(@cast(usize*, aligned_addr) - 1) = size;
+                self->last_alloc_ptr = ptr;
+                self->last_alloc_size = size;
+                return ptr;
+            }
+        }
+
         return self->alloc_aligned(size, 8);
     }
 
@@ -101,11 +128,13 @@ pub struct ArenaAllocator : Allocator {
             effective_align = @size_of(usize);
         }
 
-        switch (self->nodes->peek_first()) case .Some(node) else {
+        const head = self->nodes->head;
+
+        if (head == null) {
             return null;
         }
 
-        var arena = &node->value;
+        var arena = &head->value;
 
         const base_addr = @cast(uintptr, arena->ptr) + arena->used;
         const aligned_addr = align_up(base_addr + @size_of(usize), effective_align);
@@ -122,13 +151,25 @@ pub struct ArenaAllocator : Allocator {
 
         const needed = total_needed + effective_align;
 
-        var next_cap = self->default_capacity;
+        var slab_cap = self->next_capacity;
 
-        if (needed > next_cap) {
-            next_cap = needed;
+        if (slab_cap < self->default_capacity) {
+            slab_cap = self->default_capacity;
         }
 
-        self->create_node(next_cap);
+        if (needed > slab_cap) {
+            slab_cap = needed;
+        }
+
+        self->create_node(slab_cap);
+
+        if (self->next_capacity < MAX_SLAB_CAPACITY) {
+            if (self->next_capacity <= MAX_SLAB_CAPACITY / 2) {
+                self->next_capacity *= 2;
+            } else {
+                self->next_capacity = MAX_SLAB_CAPACITY;
+            }
+        }
 
         switch (self->nodes->peek_first()) case .Some(new_node) else {
             return null;
@@ -229,6 +270,7 @@ pub struct ArenaAllocator : Allocator {
             self->nodes->head->value.used = 0;
         }
 
+        self->next_capacity = self->default_capacity;
         self->last_alloc_ptr = null;
         self->last_alloc_size = 0;
     }
@@ -244,6 +286,7 @@ pub struct ArenaAllocator : Allocator {
         }
 
         self->child_allocator.free(self->nodes);
+        self->next_capacity = self->default_capacity;
         self->last_alloc_ptr = null;
         self->last_alloc_size = 0;
     }
