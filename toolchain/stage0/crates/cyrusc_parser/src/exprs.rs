@@ -1545,7 +1545,6 @@ fn can_start_expr(kind: &TokenKind) -> bool {
         | TokenKind::Return
         | TokenKind::For
         | TokenKind::While
-        | TokenKind::Foreach
         | TokenKind::Break
         | TokenKind::Continue
         | TokenKind::Import

@@ -411,6 +411,7 @@ pub struct Resolver {
         var ctx = TraverseContext.new(
             dynamic self->arena,
             self->allocator,
+            self->allocator,
             &self->lexical->context->dctx,
             &self->global_symbols,
             &self->decl_tables,
