@@ -417,6 +417,7 @@ pub fn emit_backend_ir_with_opts(
 
     var analyzer_context = AnalyzerContext.new(
         dynamic arena,
+        allocator,
         &context.dctx,
         &resolver.global_symbols,
         &resolver.decl_tables,

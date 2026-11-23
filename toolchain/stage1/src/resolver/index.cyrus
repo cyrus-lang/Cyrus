@@ -453,20 +453,13 @@ pub struct Resolver {
 
         const module_name = module_name_from_file_path(allocator, self->opts, file_path);
 
-        var arena = StmtArena.new(allocator);
-        const start = arena.len();
-
-        for (var i: usize = 0; i < body.len(); i += 1) {
-            arena.alloc(body.get_owned(i).unwrap());
-        }
-
-        body.free();
+        var arena = StmtArena.from_vec(allocator, body);
 
         self->program_trees.push(ProgramTree {
             file_id: source_id,
             body: StmtList {
-                start: @cast(uint32, start),
-                len: @cast(uint32, arena.len() - start),
+                start: 0,
+                len: @cast(uint32, arena.len()),
             },
             arena,
             file_name: String.from_str(allocator, file_path),

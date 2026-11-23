@@ -98,11 +98,18 @@ pub fn substitute_self_type(
     ty: const cir::SemaType*,
     self_type: const cir::SemaType*
 ) cir::SemaType {
+    if (!ty->contains_self_type()) {
+        return *ty;
+    }
+
     switch (*ty) {
         case .SelfType => return *self_type;
 
         case .Named(named_type) => {
-            var type_args = cir::TypeArgs.new(context->allocator);
+            var type_args = cir::TypeArgs.with_capacity(
+                context->allocator,
+                named_type.type_args.len()
+            );
             
             for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
                 const arg = named_type.type_args.get(i).unwrap();

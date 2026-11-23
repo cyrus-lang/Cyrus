@@ -658,8 +658,8 @@ pub struct Builder {
         );
 
         for (var i: usize = 0; i < count; i += 1) {
-            const idx = indices.get_const(i).unwrap();
-            raw_indices[i] = idx->as_raw();
+            const index = indices.get_const(i).unwrap();
+            raw_indices[i] = index->as_raw();
         }
 
         const raw = core::LLVMBuildGEP2(

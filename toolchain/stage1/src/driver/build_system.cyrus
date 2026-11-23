@@ -708,6 +708,7 @@ fn evaluate_build_script(
 
     var analyzer_context = AnalyzerContext.new(
         dynamic arena,
+        allocator,
         &context.dctx,
         &resolver.global_symbols,
         &resolver.decl_tables,

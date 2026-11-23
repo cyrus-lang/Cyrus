@@ -2,8 +2,6 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::collections::hash_map{HashMap};
-import std::io{Writer, StringWriter};
-import std::format{format_usize};
 import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
@@ -27,6 +25,7 @@ pub type ModuleName = const uint8*;
 /// (borrowed from trees).
 pub struct ModuleMaps {
     pub allocator: Allocator,
+    pub sanitized_modules: Vec<String>,
     pub file_modules: HashMap<SourceId, ModuleName>,
     pub struct_modules: HashMap<cir::StructDeclId, ModuleName>,
     pub enum_modules: HashMap<cir::EnumDeclId, ModuleName>,
@@ -43,6 +42,7 @@ pub fn new_module_maps(allocator: Allocator, trees: const Vec<cir::ProgramTree>*
     return ModuleMaps {
         allocator,
         test_profile: false,
+        sanitized_modules: Vec.with_capacity(allocator, trees->len()),
         interface_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
         typedef_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
         method_modules: HashMap.with_hasher(allocator, 64, hash_usize, eq_usize),
@@ -60,6 +60,31 @@ pub fn new_module_maps(allocator: Allocator, trees: const Vec<cir::ProgramTree>*
     };
 }
 
+fn build_sanitized_module_prefix(
+    allocator: Allocator, 
+    module_name: const uint8*
+) String {
+    var out = String.new(allocator);
+    
+    if (module_name[0] == 0) {
+        return out;
+    }
+
+    var i: usize = 0;
+    
+    while (module_name[i] != 0) {
+        if (is_ident_char(module_name[i])) {
+            out.push(module_name[i]);
+        } else {
+            out.push('_');
+        }
+        i += 1;
+    }
+
+    out.push_str("__");
+    return out;
+}
+
 pub fn build_module_maps(
     maps: ModuleMaps*,
     tables: const DeclTables*,
@@ -67,7 +92,16 @@ pub fn build_module_maps(
 ) {
     for (var i: usize = 0; i < trees->len(); i += 1) {
         const tree = trees->get_const(i).unwrap();
-        const module = tree->module_name.as_str_const();
+        var module: ModuleName = "";
+
+        if (tree->module_name.as_str_const()[0] != 0) {
+            const prefix = build_sanitized_module_prefix(
+                maps->allocator,
+                tree->module_name.as_str_const()
+            );
+            module = prefix.as_str_const();
+            maps->sanitized_modules.push(prefix);
+        }
 
         maps->file_modules.insert(tree->file_id, module);
 
@@ -180,8 +214,14 @@ pub fn free_module_maps(maps: ModuleMaps*) {
     maps->func_modules.free();
     maps->method_modules.free();
     maps->global_modules.free();
+
+    for (var i: usize = 0; i < maps->sanitized_modules.len(); i += 1) {
+        maps->sanitized_modules.get(i).unwrap()->free();
+    }
+    maps->sanitized_modules.free();
 }
 
+[[inline]]
 fn is_ident_char(char: uint8) bool {
     if (char >= 'a' && char <= 'z') {
         return true;
@@ -199,21 +239,32 @@ fn is_ident_char(char: uint8) bool {
 }
 
 pub fn sanitize_into(out: String*, name: const uint8*) {
-    var i: usize = 0;
-    
-    while (name[i] != 0) {
-        if (is_ident_char(name[i])) {
-            out->push(name[i]);
-        } else {
-            out->push('_');
+    var len: usize = 0;
+    var all_ident = true;
+
+    while (name[len] != 0) {
+        if (!is_ident_char(name[len])) {
+            all_ident = false;
         }
-        
-        i += 1;
+        len += 1;
     }
 
-    if (i == 0) {
+    if (len == 0) {
         out->push_str("_anon");
         return;
+    }
+
+    if (all_ident) {
+        out->push_bytes(name, len);
+    } else {
+        out->reserve(len);
+        for (var i: usize = 0; i < len; i += 1) {
+            if (is_ident_char(name[i])) {
+                out->push(name[i]);
+            } else {
+                out->push('_');
+            }
+        }
     }
 
     if (is_c_keyword(name)) {
@@ -222,68 +273,127 @@ pub fn sanitize_into(out: String*, name: const uint8*) {
 }
 
 pub fn is_c_keyword(name: const uint8*) bool {
-    switch (name) {
-        case "auto"
-           | "asm"
-           | "__asm"
-           | "__asm__"
-           | "break"
-           | "case"
-           | "char"
-           | "const"
-           | "continue"
-           | "default"
-           | "do"
-           | "double"
-           | "else"
-           | "enum"
-           | "extern"
-           | "float"
-           | "for"
-           | "goto"
-           | "if"
-           | "inline"
-           | "int"
-           | "long"
-           | "register"
-           | "restrict"
-           | "return"
-           | "short"
-           | "signed"
-           | "sizeof"
-           | "static"
-           | "struct"
-           | "switch"
-           | "typedef"
-           | "typeof"
-           | "__typeof"
-           | "__typeof__"
-           | "union"
-           | "unsigned"
-           | "void"
-           | "volatile"
-           | "while"
-           | "_Bool"
-           | "_Atomic"
-           | "_Generic"
-           | "_Noreturn"
-           | "_Static_assert"
-           | "_Thread_local"
-           | "_Alignas"
-           | "_Alignof"
-           | "bool"
-           | "true"
-           | "false"
-           | "nullptr"
-           | "thread_local"
-           | "alignas"
-           | "alignof"
-           | "static_assert"
-           | "typeof_unqual"
-           | "constexpr"
-           | "NULL"
-           | "main" => return true;
+    switch (name[0]) {
+        case 'a' => {
+            switch (name) {
+                case "auto" 
+                
+                | "asm" 
+                | "alignas" 
+                | "alignof" => return true;
 
+                else => return false;
+            }
+        }
+        case 'b' => {
+            switch (name) {
+                case "break" | "bool" => return true;
+                else => return false;
+            }
+        }
+        case 'c' => {
+            switch (name) {
+                case "case" 
+                | "char" 
+                | "const" 
+                | "continue" 
+                | "constexpr" => return true;
+
+                else => return false;
+            }
+        }
+        case 'd' => {
+            switch (name) {
+                case "default" | "do" | "double" => return true;
+                else => return false;
+            }
+        }
+        case 'e' => {
+            switch (name) {
+                case "else" | "enum" | "extern" => return true;
+                else => return false;
+            }
+        }
+        case 'f' => {
+            switch (name) {
+                case "float" | "for" | "false" => return true;
+                else => return false;
+            }
+        }
+        case 'g' => return name == "goto";
+        case 'i' => {
+            switch (name) {
+                case "if" | "inline" | "int" => return true;
+                else => return false;
+            }
+        }
+        case 'r' => {
+            switch (name) {
+                case "register" 
+                | "restrict" 
+                | "return" => return true;
+
+                else => return false;
+            }
+        }
+        case 's' => {
+            switch (name) {
+                case "short"
+                   | "signed"
+                   | "sizeof"
+                   | "static"
+                   | "struct"
+                   | "switch"
+                   | "static_assert" => return true;
+
+                else => return false;
+            }
+        }
+        case 't' => {
+            switch (name) {
+                case "typedef"
+                   | "typeof"
+                   | "true"
+                   | "thread_local"
+                   | "typeof_unqual" => return true;
+
+                else => return false;
+            }
+        }
+        case 'u' => {
+            switch (name) {
+                case "union" | "unsigned" => return true;
+                else => return false;
+            }
+        }
+        case 'v' => {
+            switch (name) {
+                case "void" | "volatile" => return true;
+                else => return false;
+            }
+        }
+        case '_' => {
+            switch (name) {
+                case "__asm"
+                   | "__asm__"
+                   | "__typeof"
+                   | "__typeof__"
+                   | "_Bool"
+                   | "_Atomic"
+                   | "_Generic"
+                   | "_Noreturn"
+                   | "_Static_assert"
+                   | "_Thread_local"
+                   | "_Alignas"
+                   | "_Alignof" => return true;
+                else => return false;
+            }
+        }
+        case 'n' => return name == "nullptr";
+        case 'l' => return name == "long";
+        case 'm' => return name == "main";
+        case 'w' => return name == "while";
+        case 'N' => return name == "NULL";
         else => return false;
     }
 }
@@ -295,23 +405,11 @@ pub fn sanitized(allocator: Allocator, name: const uint8*) String {
     return out;
 }
 
+[[inline]]
 fn module_prefix(out: String*, module_name: const uint8*) {
-    if (module_name[0] == 0) {
-        return;
+    if (module_name[0] != 0) {
+        out->push_str(module_name);
     }
-
-    var i: usize = 0;
-
-    while (module_name[i] != 0) {
-        if (is_ident_char(module_name[i])) {
-            out->push(module_name[i]);
-        } else {
-            out->push('_');
-        }
-        i += 1;
-    }
-
-    out->push_str("__");
 }
 
 pub fn module_for_func(maps: const ModuleMaps*, id: cir::FuncDeclId) const uint8* {
@@ -595,9 +693,71 @@ pub fn mangle_monomorphized_method(
     return base;
 }
 
+pub fn push_uint128(out: String*, var value: uint128) {
+    var buf: uint8[48];
+    var index: usize = 48;
+
+    while (true) {
+        index -= 1;
+        buf[index] = @cast(uint8, '0' + @cast(uint8, value % 10));
+        value /= 10;
+
+        if (value == 0) {
+            break;
+        }
+    }
+
+    out->push_bytes(&buf[index], 48 - index);
+}
+
+pub fn push_int128(out: String*, value: int128) {
+    if (value < 0) {
+        out->push('-');
+        push_uint128(out, 0 - @cast(uint128, value));
+        return;
+    }
+
+    push_uint128(out, @cast(uint128, value));
+}
+
 [[inline]]
-fn push_usize(out: String*, value: usize) {
-    format_usize(dynamic StringWriter.new(out), value);
+pub fn push_uint64(out: String*, var value: uint64) {
+    var buf: uint8[32];
+    var index: usize = 32;
+
+    while (true) {
+        index -= 1;
+        buf[index] = @cast(uint8, '0' + @cast(uint8, value % 10));
+        value /= 10;
+
+        if (value == 0) {
+            break;
+        }
+    }
+
+    out->push_bytes(&buf[index], 32 - index);
+}
+
+[[inline]]
+pub fn push_usize(out: String*, var value: usize) {
+    var buf: uint8[32];
+    var index: usize = 32;
+
+    while (true) {
+        index -= 1;
+        buf[index] = @cast(uint8, '0' + @cast(uint8, value % 10));
+        value /= 10;
+        if (value == 0) {
+            break;
+        }
+    }
+
+    out->push_bytes(&buf[index], 32 - index);
+}
+
+[[inline]]
+pub fn push_uint32(out: String*, value: uint32) {
+    push_usize(out, @cast(usize, value));
 }
 
 fn type_ident(

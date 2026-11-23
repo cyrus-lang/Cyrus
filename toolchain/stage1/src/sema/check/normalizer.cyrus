@@ -75,14 +75,21 @@ fn normalize_named_type(
     named_type: const cir::NamedType*,
     indirection: uint8
 ) Option<cir::SemaType> {
-    var type_args = cir::TypeArgs.new(context->allocator);
-    
-    for (var i: usize = 0; i < named_type->type_args.len(); i += 1) {
-        const arg = named_type->type_args.get(i).unwrap();
-        type_args.push(*arg);
-    }
+    var type_args = named_type->type_args;
 
-    normalize_type_args(context, &type_args, indirection);
+    if (!named_type->type_args.is_empty()) {
+        type_args = cir::TypeArgs.with_capacity(
+            context->allocator,
+            named_type->type_args.len()
+        );
+
+        for (var i: usize = 0; i < named_type->type_args.len(); i += 1) {
+            const arg = named_type->type_args.get(i).unwrap();
+            type_args.push(*arg);
+        }
+
+        normalize_type_args(context, &type_args, indirection);
+    }
 
     switch (named_type->type_decl_id) {
         case .Struct(struct_decl_id) => return normalize_struct_decl(
@@ -1017,6 +1024,10 @@ pub fn expand_sema_type(
     ty: cir::SemaType,
     span: Span
 ) cir::SemaType {
+    if (!ty.needs_typedef_expansion()) {
+        return ty;
+    }
+
     switch (ty) {
         case .Placeholder => return ty;
         case .InferVar => return ty;

@@ -346,14 +346,12 @@ pub fn analyze_expr_non_terminal(
             expr->kind = .InlineAsm(inline_asm);
         }
 
-        case .Try(var try_expr) => {
-            expr_type = analyze_try_expr(context, &try_expr);
-            expr->kind = .Try(try_expr);
+        case .Try(try_expr) => {
+            expr_type = analyze_try_expr(context, try_expr);
         }
 
-        case .TryCatch(var try_catch_expr) => {
-            expr_type = analyze_try_catch_expr(context, &try_catch_expr);
-            expr->kind = .TryCatch(try_catch_expr);
+        case .TryCatch(try_catch_expr) => {
+            expr_type = analyze_try_catch_expr(context, try_catch_expr);
         }
         
         case .SemaType { ty, .. } => {

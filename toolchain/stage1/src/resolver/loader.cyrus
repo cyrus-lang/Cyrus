@@ -282,133 +282,165 @@ pub struct ResolvedModuleFile {
     }
 }
 
+fn has_stdlib_prefix_sanitized(path: const uint8*, first: usize, end: usize) bool {
+    if (end - first < 7) {
+        return false;
+    }
+
+    return path[first] == 's'
+        && path[first + 1] == 't'
+        && path[first + 2] == 'd'
+        && path[first + 3] == 'l'
+        && path[first + 4] == 'i'
+        && path[first + 5] == 'b'
+        && !is_ident_char(path[first + 6]);
+}
+
 pub fn module_name_from_file_path(
     allocator: Allocator,
     opts: const ResolverOptions*,
     file_path: const uint8*,
 ) String {
-    const base_len = strlen(opts->base_path.as_str_const());
-    
+    var path_owned: Option<String> = .None;
+    var path_str: const uint8* = file_path;
     var start: usize = 0;
+    var is_stdlib = false;
 
-    if (file_path[0] == '/' 
-        && base_len > 0 
-        && has_path_prefix(file_path, opts->base_path.as_str_const())
-    ) {
-        start = base_len;
+    switch (opts->stdlib_path) {
+        case .Some(std_path) => {
+            const std_str = std_path.as_str_const();
 
-        while (file_path[start] == '/') {
-            start += 1;
+            if (has_path_prefix(file_path, std_str)) {
+                is_stdlib = true;
+                start = strlen(std_str);
+                while (file_path[start] == '/') {
+                    start += 1;
+                }
+            } else {
+                var cwd = dir::cwd(allocator);
+
+                switch (canonicalize_absolute_path(
+                    allocator, 
+                    cwd.as_str_const(), 
+                    file_path
+                )) {
+                    case .Some(var file_canon) => {
+                        switch (canonicalize_absolute_path(
+                            allocator, 
+                            cwd.as_str_const(), 
+                            std_str
+                        )) {
+                            case .Some(var std_canon) => {
+                                if (has_path_prefix(
+                                    file_canon.as_str_const(), 
+                                    std_canon.as_str_const()
+                                )) {
+                                    is_stdlib = true;
+                                    start = strlen(std_canon.as_str_const());
+                                    path_str = file_canon.as_str_const();
+                                    
+                                    while (path_str[start] == '/') {
+                                        start += 1;
+                                    }
+                                    
+                                    path_owned = .Some(file_canon);
+                                } else {
+                                    file_canon.free();
+                                }
+
+                                std_canon.free();
+                            }
+                            else => file_canon.free();
+                        }
+                    }
+                    else => {}
+                }
+                cwd.free();
+            }
+        }
+        else => {}
+    }
+
+    if (!is_stdlib) {
+        const base_len = strlen(opts->base_path.as_str_const());
+
+        if (file_path[0] == '/' 
+            && base_len > 0 
+            && has_path_prefix(file_path, opts->base_path.as_str_const())
+        ) {
+            start = base_len;
+
+            while (file_path[start] == '/') {
+                start += 1;
+            }
         }
     }
 
-    var end = strlen(file_path);
+    var end = strlen(path_str);
     var seg = start;
 
     for (var i: usize = start; i < end; i += 1) {
-        if (file_path[i] == '/') {
+        if (path_str[i] == '/') {
             seg = i + 1;
         }
     }
 
     // Strip the extension `.cyrus`
-    if (ends_with_exten(file_path, seg, end)) {
+    if (ends_with_exten(path_str, seg, end)) {
         end -= 6;
     } else {
         for (var i: usize = end; i > seg; i -= 1) {
-            if (file_path[i - 1] == '.') {
+            if (path_str[i - 1] == '.') {
                 end = i - 1;
                 break;
             }
         }
     }
 
-    // Sanitize to a valid identifier 
-    // and trim leading underscores
-    var name = String.new(allocator);
-    var pending = String.new(allocator);
-
-    for (var i: usize = start; i < end; i += 1) {
-        const ch = file_path[i];
-
-        if (is_ident_char(ch)) {
-            pending.push(ch);
-        } else {
-            pending.push('_');
-        }
-    }
-
-    // Trim leading underscores 
-    // produced by sanitization
-    const pending_str = pending.as_str_const();
-    const pending_len = pending.len();
-
-    var first: usize = 0;
-
-    while (first < pending_len && pending_str[first] == '_') {
+    var first = start;
+    while (first < end && !is_ident_char(path_str[first])) {
         first += 1;
     }
 
-    for (var i: usize = first; i < pending_len; i += 1) {
-        name.push(pending_str[i]);
+    const need_stdlib_prefix = is_stdlib && 
+        !has_stdlib_prefix_sanitized(path_str, first, end);
+
+    var cap = end - first;
+    
+    if (need_stdlib_prefix) {
+        cap += 7;
+    }
+    
+    if (cap < 6) {
+        cap = 6;
     }
 
-    pending.free();
+    var name = String.with_capacity(allocator, cap);
+    
+    if (need_stdlib_prefix) {
+        name.push_str("stdlib_");
+    }
 
-    switch (opts->stdlib_path) {
-        case .Some(std_path) => {
-            if (name.starts_with("stdlib_") ||
-                !is_under_stdlib(allocator, file_path, std_path.as_str_const())) 
-            {
-                return name;
+    if (first >= end) {
+        name.push_str("module");
+    } else {
+        for (var i: usize = first; i < end; i += 1) {
+            const char = path_str[i];
+            
+            if (is_ident_char(char)) {
+                name.push(char);
+            } else {
+                name.push('_');
             }
-
-            var prefixed = String.from_str(allocator, "stdlib_");
-            prefixed.push_str(name.as_str_const());
-            name.free();
-            name = prefixed;
         }
+    }
+
+    switch (path_owned) {
+        case .Some(var owned) => owned.free();
         else => {}
     }
 
     return name;
-}
-
-fn is_under_stdlib(
-    allocator: Allocator, 
-    file_path: const uint8*, 
-    std_path: const uint8*
-) bool {
-    var cwd = dir::cwd(allocator);
-    var found = false;
-
-    switch (canonicalize_absolute_path(
-        allocator, 
-        cwd.as_str_const(), 
-        file_path
-    )) {
-        case .Some(file) => {
-            switch (canonicalize_absolute_path(
-                allocator, 
-                cwd.as_str_const(), 
-                std_path
-            )) {
-                case .Some(std) => {
-                    found = has_path_prefix(
-                        file.as_str_const(), 
-                        std.as_str_const()
-                    );
-                    std.free();
-                }
-                else => {}
-            }
-            file.free();
-        }
-        else => {}
-    }
-
-    cwd.free();
-    return found;
 }
 
 pub fn last_sub_module_name(
@@ -840,18 +872,18 @@ fn relative_search_dir(
     );
 
     switch (abs) case .Some(var search_dir) else {
+        cwd.free();
+        current.free();
         return .None;
     }
     
-    cwd.free();
     current.free();
 
-    var root_cwd = dir::cwd(allocator);
     var root: String = undefined;
 
     switch (canonicalize_absolute_path(
         allocator, 
-        root_cwd.as_str_const(), 
+        cwd.as_str_const(), 
         opts->base_path.as_str_const()
     )) {
         case .Some(path) => root = path;
@@ -862,7 +894,7 @@ fn relative_search_dir(
         );
     }
     
-    root_cwd.free();
+    cwd.free();
 
     if (!has_path_prefix(
         search_dir.as_str_const(), 
@@ -969,10 +1001,10 @@ fn ends_with_exten(path: const uint8*, seg: usize, end: usize) bool {
 }
 
 [[inline]]
-fn is_ident_char(ch: uint8) bool {
-    return (ch >= 'a' && ch <= 'z')
-        || (ch >= 'A' && ch <= 'Z')
-        || (ch >= '0' && ch <= '9');
+fn is_ident_char(char: uint8) bool {
+    return (char >= 'a' && char <= 'z')
+        || (char >= 'A' && char <= 'Z')
+        || (char >= '0' && char <= '9');
 }
 
 pub fn is_feature_enabled(

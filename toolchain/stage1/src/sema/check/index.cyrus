@@ -751,9 +751,8 @@ fn analyze_stmt(
             return .Reachable;
         }
 
-        case .Variable(var var_) => {
-            analyze_var(context, &var_);
-            stmt->kind = .Variable(var_);
+        case .Variable(var_) => {
+            analyze_var(context, var_);
             return .Reachable;
         }
 
@@ -775,16 +774,12 @@ fn analyze_stmt(
             return flow;
         }
 
-        case .For(var for_) => {
-            const flow = analyze_for_loop(context, &for_);
-            stmt->kind = .For(for_);
-            return flow;
+        case .For(for_) => {
+            return analyze_for_loop(context, for_);
         }
 
-        case .Foreach(var foreach_) => {
-            const flow = analyze_foreach_loop(context, &foreach_);
-            stmt->kind = .Foreach(foreach_);
-            return flow;
+        case .Foreach(foreach_) => {
+            return analyze_foreach_loop(context, foreach_);
         }
 
         case .While(var while_) => {
@@ -908,9 +903,9 @@ pub fn analyze_block_stmt(
 
     var flow_state: flow::FlowState = .Reachable;
     var terminated = false;
+    var kept_count: usize = 0;
 
-    var final_stmts: Vec<cir::Stmt> = Vec.new(context->allocator);
-    var block_defers: Vec<cir::DeferStmt> = Vec.new(context->allocator);
+    block->defers.clear();
 
     for (var i: usize = 0; i < total; i += 1) {
         var stmt = block->stmts.get(i).unwrap();
@@ -929,7 +924,7 @@ pub fn analyze_block_stmt(
         switch (stmt->kind) {
             case .Defer(var defer_copy) => {
                 defer_copy.operand->is_dead = terminated;
-                block_defers.push(defer_copy);
+                block->defers.push(defer_copy);
             }
             else => {}
         }
@@ -953,31 +948,28 @@ pub fn analyze_block_stmt(
         }
 
         if (is_inactive_builtin_block) {
-            final_stmts.push(*stmt);
+            kept_count += 1;
             continue;
         }
 
         switch (stmt_state) {
             case .Reachable => {
-                final_stmts.push(*stmt);
+                kept_count += 1;
             }
             case .Unreachable => {
-                final_stmts.push(*stmt);
+                kept_count += 1;
                 flow_state = .Unreachable;
                 terminated = true;
             }
             case .Returns => {
-                final_stmts.push(*stmt);
+                kept_count += 1;
                 flow_state = .Returns;
                 terminated = true;
             }
         }
     }
 
-    block->stmts.free();
-    block->stmts = final_stmts;
-    block->defers.free();
-    block->defers = block_defers;
+    block->stmts.set_len(kept_count);
 
     return flow_state;
 }
@@ -3019,7 +3011,7 @@ fn analyze_switch_on_value(
     switch_: cir::SwitchStmt*,
     operand_type: const cir::SemaType*
 ) flow::FlowState {
-    var flow_states: Vec<flow::FlowState> = Vec.new(context->allocator);
+    var flow_states: Vec<flow::FlowState> = Vec.new(context->heap_allocator);
     defer flow_states.free();
 
     for (var i: usize = 0; i < switch_->cases.len(); i += 1) {
@@ -3066,7 +3058,7 @@ fn analyze_switch_on_value_case_patterns(
     operand_type: const cir::SemaType*,
     case_span: Span
 ) {
-    var table: Vec<usize> = Vec.new(context->allocator);
+    var table: Vec<usize> = Vec.new(context->heap_allocator);
     defer table.free();
 
     for (var i: usize = 0; i < patterns->len(); i += 1) {
@@ -3125,18 +3117,17 @@ fn analyze_switch_value_pattern(
             );
             
             operand_str.free();
-            return .Some(Vec.new(context->allocator));
+            return .Some(Vec.new(context->heap_allocator));
         }
 
-        case .Range(var range) => {
-            analyze_expr(context, &range.lower, .Some(*operand_type));
-            analyze_expr(context, &range.upper, .Some(*operand_type));
-            pattern->kind = .Range(range);
+        case .Range(range) => {
+            analyze_expr(context, &range->lower, .Some(*operand_type));
+            analyze_expr(context, &range->upper, .Some(*operand_type));
 
             switch (ciri::fold_const_expr_int(
                 context->decl_tables, 
                 context->registry, 
-                &range.lower
+                &range->lower
             )) case .Some(lower_lit) else {
                 return .None;
             }
@@ -3144,7 +3135,7 @@ fn analyze_switch_value_pattern(
             switch (ciri::fold_const_expr_int(
                 context->decl_tables, 
                 context->registry, 
-                &range.upper
+                &range->upper
             )) case .Some(upper_lit) else {
                 return .None;
             }
@@ -3156,12 +3147,12 @@ fn analyze_switch_value_pattern(
                 diags::report_invalid_range(
                     context->dctx, 
                     context->allocator, 
-                    range.span
+                    range->span
                 );
                 return .None;
             }
 
-            var ranges: Vec<usize> = Vec.new(context->allocator);
+            var ranges: Vec<usize> = Vec.new(context->heap_allocator);
             ranges.push(lower);
             ranges.push(upper);
             return .Some(ranges);
@@ -3228,10 +3219,10 @@ fn analyze_switch_on_enum(
 
     const all_variants_count = inst_enum_decl.variants.len();
 
-    var all_covered_variants: Vec<String> = Vec.new(context->allocator);
+    var all_covered_variants: Vec<String> = Vec.new(context->heap_allocator);
     defer all_covered_variants.free();
 
-    var flow_states: Vec<flow::FlowState> = Vec.new(context->allocator);
+    var flow_states: Vec<flow::FlowState> = Vec.new(context->heap_allocator);
     defer flow_states.free();
 
     for (var i: usize = 0; i < switch_->cases.len(); i += 1) {
@@ -3311,22 +3302,37 @@ fn analyze_switch_on_enum(
     return result;
 }
 
+fn report_no_such_enum_variant_for_decl(
+    context: AnalyzerContext*,
+    enum_decl: const cir::EnumDecl*,
+    span: Span,
+    variant_name: const uint8*
+) {
+    var enum_name = format::format_enum_decl(
+        context->heap_allocator,
+        context->registry,
+        context->decl_tables,
+        enum_decl
+    );
+    defer enum_name.free();
+
+    diags::report_no_such_enum_variant(
+        context->dctx,
+        context->allocator,
+        span,
+        enum_name.as_str_const(),
+        variant_name
+    );
+}
+
 fn analyze_switch_on_enum_case_patterns(
     context: AnalyzerContext*,
     patterns: const cir::Vec<cir::SwitchCasePattern>*,
     inst_enum_decl: cir::EnumDecl*,
     span: Span
 ) Vec<String> {
-    var enum_name = format::format_enum_decl(
-        context->allocator, 
-        context->registry, 
-        context->decl_tables, 
-        inst_enum_decl
-    );
-    defer enum_name.free();
-
     var exporting_pattern_count: usize = 0;
-    var covered_variants: Vec<String> = Vec.new(context->allocator);
+    var covered_variants: Vec<String> = Vec.new(context->heap_allocator);
 
     for (var i: usize = 0; i < patterns->len(); i += 1) {
         const pattern = patterns->get_const(i).unwrap();
@@ -3334,7 +3340,6 @@ fn analyze_switch_on_enum_case_patterns(
         analyze_enum_switch_pattern(context,
             pattern,
             inst_enum_decl,
-            enum_name.as_str_const(),
             &exporting_pattern_count,
             &covered_variants
         );
@@ -3355,7 +3360,6 @@ fn analyze_enum_switch_pattern(
     context: AnalyzerContext*,
     pattern: const cir::SwitchCasePattern*,
     inst_enum_decl: cir::EnumDecl*,
-    enum_name: const uint8*,
     exporting_pattern_count: usize*,
     covered_variants: Vec<String>*
 ) {
@@ -3382,11 +3386,10 @@ fn analyze_enum_switch_pattern(
             const name = ident.str.as_str_const();
 
             if (inst_enum_decl->lookup_variant(name).is_none()) {
-                diags::report_no_such_enum_variant(
-                    context->dctx,
-                    context->allocator,
+                report_no_such_enum_variant_for_decl(
+                    context,
+                    inst_enum_decl,
                     pattern->span,
-                    enum_name,
                     name
                 );
             }
@@ -3405,11 +3408,10 @@ fn analyze_enum_switch_pattern(
             const name = ident.str.as_str_const();
 
             switch (inst_enum_decl->lookup_variant(name)) case .Some(var variant) else {
-                diags::report_no_such_enum_variant(
-                    context->dctx,
-                    context->allocator,
+                report_no_such_enum_variant_for_decl(
+                    context,
+                    inst_enum_decl,
                     pattern->span,
-                    enum_name,
                     name
                 );
                 return;
@@ -3484,11 +3486,10 @@ fn analyze_enum_switch_pattern(
             const name = ident.str.as_str_const();
             
             switch (inst_enum_decl->lookup_variant(name)) case .Some(var variant) else {
-                diags::report_no_such_enum_variant(
-                    context->dctx,
-                    context->allocator,
+                report_no_such_enum_variant_for_decl(
+                    context,
+                    inst_enum_decl,
                     pattern->span,
-                    enum_name,
                     name
                 );
                 return;
@@ -3679,22 +3680,13 @@ fn analyze_nested_enum_pattern(
         &named.type_args
     );
 
-    var enum_name = format::format_enum_decl(
-        context->allocator, 
-        context->registry, 
-        context->decl_tables, 
-        &inst_enum_decl
-    );
-    defer enum_name.free();
-
     const name = ident.str.as_str_const();
 
     switch (inst_enum_decl.lookup_variant(name)) case .Some(var variant) else {
-        diags::report_no_such_enum_variant(
-            context->dctx,
-            context->allocator,
+        report_no_such_enum_variant_for_decl(
+            context,
+            &inst_enum_decl,
             pattern->span,
-            enum_name.as_str_const(),
             name
         );
         return;
@@ -4589,7 +4581,7 @@ pub struct BodyScheduler {
 }
 
 pub fn trigger_analyzer(context: AnalyzerContext*) {
-    var work: Vec<BodyWorkItem> = Vec.new(context->allocator);
+    var work: Vec<BodyWorkItem> = Vec.new(context->heap_allocator);
 
     run_header_phase(context, &work);
     check_profile_symbol_pairs(context);

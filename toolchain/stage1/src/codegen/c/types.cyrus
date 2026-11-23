@@ -1,20 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::hash{hash_usize, eq_usize, hash_str, eq_str};
 import std::collections::hash_map{HashMap};
 import std::mem::arena{ArenaAllocator};
-import std::hash{hash_usize, eq_usize};
-import std::io{Writer, StringWriter};
 import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
 import std::string{String};
-import std::format{
-    format_uint32, 
-    format_usize, 
-    format_uint128, 
-    format_int128
-};
 
 import resolver::symbols{GlobalSymbolRegistry};
 import cir::tables{DeclTables};
@@ -83,13 +76,20 @@ pub struct TypeEmitter {
     pub decl_state: DeclEmitState,
     pub tuple_sigs: Vec<String>,
     pub tuple_names: Vec<String>,
+    tuple_map: HashMap<const uint8*, usize>,
     pub tuple_counter: usize,
     pub array_return_sigs: Vec<String>,
     pub array_return_names: Vec<String>,
+    array_return_map: HashMap<const uint8*, usize>,
     pub array_return_counter: usize,
     pub used_float16: bool,
     pub generic_inst_sigs: Vec<String>,
     pub generic_inst_names: Vec<String>,
+    generic_inst_map: HashMap<const uint8*, usize>,
+    struct_name_cache: Vec<Option<String>>,
+    enum_name_cache: Vec<Option<String>>,
+    union_name_cache: Vec<Option<String>>,
+    typedef_name_cache: Vec<Option<String>>,
     pub deferred: Vec<cir::TypeDeclId>,
     pub fat_ptr_emitted: bool,
     pub slice_emitted: bool,
@@ -105,6 +105,30 @@ pub struct TypeEmitter {
         target: TargetInfo
     ) Self {
         const arena = ArenaAllocator.new(allocator, 65536);
+
+        var struct_name_cache: Vec<Option<String>> = Vec.with_capacity(
+            allocator, 
+            tables->structs.len()
+        );
+        struct_name_cache.resize(tables->structs.len(), .None);
+
+        var enum_name_cache: Vec<Option<String>> = Vec.with_capacity(
+            allocator, 
+            tables->enums.len()
+        );
+        enum_name_cache.resize(tables->enums.len(), .None);
+
+        var union_name_cache: Vec<Option<String>> = Vec.with_capacity(
+            allocator, 
+            tables->unions.len()
+        );
+        union_name_cache.resize(tables->unions.len(), .None);
+
+        var typedef_name_cache: Vec<Option<String>> = Vec.with_capacity(
+            allocator, 
+            tables->typedefs.len()
+        );
+        typedef_name_cache.resize(tables->typedefs.len(), .None);
 
         return Self {
             allocator,
@@ -130,6 +154,13 @@ pub struct TypeEmitter {
             array_return_names: Vec.new(allocator),
             array_return_counter: 0,
             used_float16: false,
+            tuple_map: HashMap.with_hasher(allocator, 32, hash_str, eq_str),
+            generic_inst_map: HashMap.with_hasher(allocator, 64, hash_str, eq_str),
+            array_return_map: HashMap.with_hasher(allocator, 16, hash_str, eq_str),
+            struct_name_cache,
+            enum_name_cache,
+            union_name_cache,
+            typedef_name_cache,
         };
     }
 
@@ -142,6 +173,12 @@ pub struct TypeEmitter {
         self->decl_state.free();
         self->deferred.free();
 
+        free_cached_names(&self->struct_name_cache);
+        free_cached_names(&self->enum_name_cache);
+        free_cached_names(&self->union_name_cache);
+        free_cached_names(&self->typedef_name_cache);
+
+        self->tuple_map.free();
         for (var i: usize = 0; i < self->tuple_sigs.len(); i += 1) {
             self->tuple_sigs.get(i).unwrap()->free();
             self->tuple_names.get(i).unwrap()->free();
@@ -150,6 +187,7 @@ pub struct TypeEmitter {
         self->tuple_sigs.free();
         self->tuple_names.free();
 
+        self->array_return_map.free();
         for (var i: usize = 0; i < self->array_return_sigs.len(); i += 1) {
             self->array_return_sigs.get(i).unwrap()->free();
             self->array_return_names.get(i).unwrap()->free();
@@ -158,6 +196,7 @@ pub struct TypeEmitter {
         self->array_return_sigs.free();
         self->array_return_names.free();
 
+        self->generic_inst_map.free();
         for (var i: usize = 0; i < self->generic_inst_sigs.len(); i += 1) {
             self->generic_inst_sigs.get(i).unwrap()->free();
             self->generic_inst_names.get(i).unwrap()->free();
@@ -793,21 +832,7 @@ pub struct TypeEmitter {
 
         const struct_decl = self->tables->structs.get_const(struct_decl_id).unwrap();
 
-        var name_opt: Option<const uint8*> = .None;
-
-        switch (struct_decl->name) {
-            case .Some(struct_name) => {
-                name_opt = .Some(struct_name.as_str_const());
-            }
-            else => {}
-        }
-
-        var c_name = mangle::mangle_type(
-            self->allocator,
-            mangle::module_for_struct(&self->maps, struct_decl_id),
-            name_opt,
-            struct_decl_id
-        );
+        var c_name = self->struct_c_name(struct_decl_id);
 
         if (shell_needed) {
             self->type_out.push_str("typedef struct ");
@@ -896,19 +921,7 @@ pub struct TypeEmitter {
 
         const union_decl = self->tables->unions.get_const(union_decl_id).unwrap();
 
-        var name_opt: Option<const uint8*> = .None;
-
-        switch (union_decl->name) {
-            case .Some(union_name) => name_opt = .Some(union_name.as_str_const());
-            else => {}
-        }
-
-        var c_name = mangle::mangle_type(
-            self->allocator,
-            mangle::module_for_union(&self->maps, union_decl_id),
-            name_opt,
-            union_decl_id
-        );
+        var c_name = self->union_c_name(union_decl_id);
 
         if (shell_needed) {
             self->type_out.push_str("typedef union ");
@@ -994,21 +1007,7 @@ pub struct TypeEmitter {
 
         const enum_decl = self->tables->enums.get_const(enum_decl_id).unwrap();
 
-        var name_opt: Option<const uint8*> = .None;
-
-        switch (enum_decl->name) {
-            case .Some(enum_name) => {
-                name_opt = .Some(enum_name.as_str_const());
-            }
-            else => {}
-        }
-
-        var c_name = mangle::mangle_type(
-            self->allocator,
-            mangle::module_for_enum(&self->maps, enum_decl_id),
-            name_opt,
-            enum_decl_id
-        );
+        var c_name = self->enum_c_name(enum_decl_id);
 
         const scalar = is_enum_scalar_optimizable(self->tables, enum_decl);
         const tags = self->tctx.enum_variant_tags(enum_decl_id, enum_decl);
@@ -1038,11 +1037,7 @@ pub struct TypeEmitter {
                 self->type_out.push_str(" ((");
                 self->type_out.push_str(c_name.as_str_const());
                 self->type_out.push_str(")");
-                push_uint32_into(
-                    &self->type_out,
-                    self->allocator,
-                    tags->get_owned(variant_index).unwrap()
-                );
+                mangle::push_uint32(&self->type_out, tags->get_owned(variant_index).unwrap());
                 self->type_out.push_str(")\n");
             }
 
@@ -1201,7 +1196,7 @@ pub struct TypeEmitter {
                         
                         self->type_out.push_str(variant.as_str_const());
                         self->type_out.push_str(" v");
-                        push_uint32_into(&self->type_out, self->allocator, tag);
+                        mangle::push_uint32(&self->type_out, tag);
                         self->type_out.push(';');
                         
                         variant.free();
@@ -1209,15 +1204,9 @@ pub struct TypeEmitter {
                 }
             }
 
-            {
-                var buffer_decl = String.new(self->allocator);
-                var writer: Writer = dynamic StringWriter.new(&buffer_decl);
-                writer.write("uint8_t raw[");
-                format_uint32(writer, enum_payload_size(enum_layout));
-                writer.write("];");
-                self->type_out.push_str(buffer_decl.as_str_const());
-                buffer_decl.free();
-            }
+            self->type_out.push_str("uint8_t raw[");
+            mangle::push_uint32(&self->type_out, enum_payload_size(enum_layout));
+            self->type_out.push_str("];");
 
             self->type_out.push_str("}u;};");
 
@@ -1237,7 +1226,7 @@ pub struct TypeEmitter {
                 self->type_out.push_str(" ((");
                 self->type_out.push_str(c_name.as_str_const());
                 self->type_out.push_str(")");
-                push_uint32_into(&self->type_out, self->allocator, tag);
+                mangle::push_uint32(&self->type_out, tag);
                 self->type_out.push_str(")\n");
             }
 
@@ -1249,6 +1238,13 @@ pub struct TypeEmitter {
     }
 
     pub fn enum_c_name(self: Self*, enum_decl_id: cir::EnumDeclId) String {
+        if (enum_decl_id < self->enum_name_cache.len()) {
+            switch (*self->enum_name_cache.get_const(enum_decl_id).unwrap()) {
+                case .Some(cached) => return cached.clone(self->allocator);
+                else => {}
+            }
+        }
+
         switch (self->tables->enums.get_const(enum_decl_id)) {
             case .None => {
                 return String.from_str(self->allocator, "void");
@@ -1265,12 +1261,18 @@ pub struct TypeEmitter {
             else => {}
         }
 
-        return mangle::mangle_type(
+        const c_name = mangle::mangle_type(
             self->allocator,
             mangle::module_for_enum(&self->maps, enum_decl_id),
             name_opt,
             enum_decl_id
         );
+
+        if (enum_decl_id < self->enum_name_cache.len()) {
+            self->enum_name_cache.set(enum_decl_id, .Some(c_name.clone(self->allocator)));
+        }
+
+        return c_name;
     }
 
     pub fn enum_c_name_for_ty(self: Self*, ty: const cir::SemaType*) String {
@@ -1300,6 +1302,13 @@ pub struct TypeEmitter {
     }
 
     pub fn struct_c_name(self: Self*, struct_decl_id: cir::StructDeclId) String {
+        if (struct_decl_id < self->struct_name_cache.len()) {
+            switch (*self->struct_name_cache.get_const(struct_decl_id).unwrap()) {
+                case .Some(cached) => return cached.clone(self->allocator);
+                else => {}
+            }
+        }
+
         switch (self->tables->structs.get_const(struct_decl_id)) {
             case .None => return String.from_str(self->allocator, "void");
             else => {}
@@ -1316,15 +1325,31 @@ pub struct TypeEmitter {
             else => {}
         }
 
-        return mangle::mangle_type(
+        const c_name = mangle::mangle_type(
             self->allocator,
             mangle::module_for_struct(&self->maps, struct_decl_id),
             name_opt,
             struct_decl_id
         );
+
+        if (struct_decl_id < self->struct_name_cache.len()) {
+            self->struct_name_cache.set(
+                struct_decl_id, 
+                .Some(c_name.clone(self->allocator)
+            ));
+        }
+
+        return c_name;
     }
 
     pub fn union_c_name(self: Self*, union_decl_id: cir::UnionDeclId) String {
+        if (union_decl_id < self->union_name_cache.len()) {
+            switch (*self->union_name_cache.get_const(union_decl_id).unwrap()) {
+                case .Some(cached) => return cached.clone(self->allocator);
+                else => {}
+            }
+        }
+
         switch (self->tables->unions.get_const(union_decl_id)) {
             case .None => {
                 return String.from_str(self->allocator, "void");
@@ -1343,33 +1368,58 @@ pub struct TypeEmitter {
             else => {}
         }
 
-        return mangle::mangle_type(
+        const c_name = mangle::mangle_type(
             self->allocator,
             mangle::module_for_union(&self->maps, union_decl_id),
             name_opt,
             union_decl_id
         );
+
+        if (union_decl_id < self->union_name_cache.len()) {
+            self->union_name_cache.set(
+                union_decl_id, 
+                .Some(c_name.clone(self->allocator)
+            ));
+        }
+
+        return c_name;
     }
 
     pub fn typedef_c_name(self: Self*, typedef_decl_id: cir::TypedefDeclId) String {
+        if (typedef_decl_id < self->typedef_name_cache.len()) {
+            switch (*self->typedef_name_cache.get_const(typedef_decl_id).unwrap()) {
+                case .Some(cached) => return cached.clone(self->allocator);
+                else => {}
+            }
+        }
+
         if (self->tables->typedefs.get_const(typedef_decl_id).is_none()) {
             return String.from_str(self->allocator, "void");
         }
 
         const typedef_decl = self->tables->typedefs.get_const(typedef_decl_id).unwrap();
         
-        return mangle::mangle_type(
+        const c_name = mangle::mangle_type(
             self->allocator,
             mangle::module_for_typedef(&self->maps, typedef_decl_id),
             .Some(typedef_decl->name.as_str_const()),
             typedef_decl_id
         );
+
+        if (typedef_decl_id < self->typedef_name_cache.len()) {
+            self->typedef_name_cache.set(
+                typedef_decl_id, 
+                .Some(c_name.clone(self->allocator)
+            ));
+        }
+
+        return c_name;
     }
 
     pub fn enum_variant_type_name(self: Self*, enum_name: const String*, tag: uint32) String {
         var out = String.from_str(self->allocator, enum_name->as_str_const());
         out.push_str("_v");
-        push_uint32_into(&out, self->allocator, tag);
+        mangle::push_uint32(&out, tag);
         return out;
     }
 
@@ -1503,24 +1553,13 @@ pub struct TypeEmitter {
         type_decl_id: const cir::TypeDeclId*,
         type_args: const cir::TypeArgs*
     ) String {
-        self->ensure_generic_inst(type_decl_id, type_args);
-
-        var sig = self->generic_inst_sig(type_decl_id, type_args);
-
-        for (var i: usize = 0; i < self->generic_inst_sigs.len(); i += 1) {
-            const existing = self->generic_inst_sigs.get_const(i).unwrap();
-
-            if (existing->as_str_const() == sig.as_str_const()) {
-                sig.free();
-                
-                const name = self->generic_inst_names.get_const(i).unwrap();
-                
-                return String.from_str(self->allocator, name->as_str_const());
+        switch (self->ensure_generic_inst(type_decl_id, type_args)) {
+            case .Some(inst_index) => {
+                const name = self->generic_inst_names.get_const(inst_index).unwrap();
+                return name->clone(self->allocator);
             }
+            else => return String.from_str(self->allocator, "void");
         }
-
-        sig.free();
-        return String.from_str(self->allocator, "void");
     }
 
     fn generic_inst_sig(
@@ -1533,23 +1572,23 @@ pub struct TypeEmitter {
         switch (*type_decl_id) {
             case .Struct(struct_decl_id) => {
                 sig.push('S');
-                push_usize_into(&sig, self->allocator, struct_decl_id);
+                mangle::push_usize(&sig, struct_decl_id);
             }
             case .Enum(enum_decl_id) => {
                 sig.push('E');
-                push_usize_into(&sig, self->allocator, enum_decl_id);
+                mangle::push_usize(&sig, enum_decl_id);
             }
             case .Union(union_decl_id) => {
                 sig.push('U');
-                push_usize_into(&sig, self->allocator, union_decl_id);
+                mangle::push_usize(&sig, union_decl_id);
             }
             case .Typedef(typedef_decl_id) => {
                 sig.push('T');
-                push_usize_into(&sig, self->allocator, typedef_decl_id);
+                mangle::push_usize(&sig, typedef_decl_id);
             }
             case .Interface(interface_decl_id) => {
                 sig.push('I');
-                push_usize_into(&sig, self->allocator, interface_decl_id);
+                mangle::push_usize(&sig, interface_decl_id);
             }
         }
 
@@ -1562,52 +1601,49 @@ pub struct TypeEmitter {
         return sig;
     }
 
+    fn record_generic_inst_name(
+        self: Self*,
+        sig: String,
+        owned_name: String
+    ) usize {
+        const inst_index = self->generic_inst_sigs.len();
+        const sig_key = sig.as_str_const();
+
+        self->generic_inst_names.push(owned_name);
+        self->generic_inst_sigs.push(sig);
+        self->generic_inst_map.insert(sig_key, inst_index);
+
+        return inst_index;
+    }
+
     fn ensure_generic_inst(
         self: Self*,
         type_decl_id: const cir::TypeDeclId*,
         type_args: const cir::TypeArgs*
-    ) {
+    ) Option<usize> {
         var sig = self->generic_inst_sig(type_decl_id, type_args);
 
-        for (var i: usize = 0; i < self->generic_inst_sigs.len(); i += 1) {
-            const existing = self->generic_inst_sigs.get_const(i).unwrap();
-
-            if (existing->as_str_const() == sig.as_str_const()) {
+        switch (self->generic_inst_map.get_owned(sig.as_str_const())) {
+            case .Some(existing_index) => {
                 sig.free();
-                return;
+                return .Some(existing_index);
             }
+            else => {}
         }
 
         var targs = mangle::mangle_type_args(self->allocator, self->tables, type_args);
-        var emitted = false;
+        var inst_index: Option<usize> = .None;
 
         switch (*type_decl_id) {
             case .Struct(struct_decl_id) => {
                 switch (self->tables->structs.get_const(struct_decl_id)) {
                     case .Some(struct_decl) => {
-                        emitted = true;
-                        
-                        var name_opt: Option<const uint8*> = .None;
-                        
-                        switch (struct_decl->name) {
-                            case .Some(struct_name) => name_opt = .Some(struct_name.as_str_const());
-                            else => {}
-                        }
-
-                        var base = mangle::mangle_type(
-                            self->allocator,
-                            mangle::module_for_struct(&self->maps, struct_decl_id),
-                            name_opt,
-                            struct_decl_id
-                        );
-
+                        var base = self->struct_c_name(struct_decl_id);
                         base.push_str("__");
                         base.push_str(targs.as_str_const());
 
-
-                        var owned_name = String.from_str(self->allocator, base.as_str_const());
-                        self->generic_inst_names.push(owned_name);
-                        self->generic_inst_sigs.push(sig);
+                        var owned_name = base.clone(self->allocator);
+                        inst_index = .Some(self->record_generic_inst_name(sig, owned_name));
 
                         self->type_out.push_str("typedef struct ");
                         self->type_out.push_str(base.as_str_const());
@@ -1687,27 +1723,12 @@ pub struct TypeEmitter {
             case .Union(union_decl_id) => {
                 switch (self->tables->unions.get_const(union_decl_id)) {
                     case .Some(union_decl) => {
-                        emitted = true;
-
-                        var name_opt: Option<const uint8*> = .None;
-
-                        switch (union_decl->name) {
-                            case .Some(union_name) => name_opt = .Some(union_name.as_str_const());
-                            else => {}
-                        }
-
-                        var base = mangle::mangle_type(
-                            self->allocator,
-                            mangle::module_for_union(&self->maps, union_decl_id),
-                            name_opt,
-                            union_decl_id
-                        );
+                        var base = self->union_c_name(union_decl_id);
                         base.push_str("__");
                         base.push_str(targs.as_str_const());
 
-                        var owned_name = String.from_str(self->allocator, base.as_str_const());
-                        self->generic_inst_names.push(owned_name);
-                        self->generic_inst_sigs.push(sig);
+                        var owned_name = base.clone(self->allocator);
+                        inst_index = .Some(self->record_generic_inst_name(sig, owned_name));
 
                         self->type_out.push_str("typedef union ");
                         self->type_out.push_str(base.as_str_const());
@@ -1778,28 +1799,13 @@ pub struct TypeEmitter {
             case .Enum(enum_decl_id) => {
                 switch (self->tables->enums.get_const(enum_decl_id)) {
                     case .Some(enum_decl) => {
-                        emitted = true;
-
-                        var name_opt: Option<const uint8*> = .None;
-
-                        switch (enum_decl->name) {
-                            case .Some(enum_name) => name_opt = .Some(enum_name.as_str_const());
-                            else => {}
-                        }
-
-                        var base = mangle::mangle_type(
-                            self->allocator,
-                            mangle::module_for_enum(&self->maps, enum_decl_id),
-                            name_opt,
-                            enum_decl_id
-                        );
+                        var base = self->enum_c_name(enum_decl_id);
 
                         base.push_str("__");
                         base.push_str(targs.as_str_const());
 
-                        var owned_name = String.from_str(self->allocator, base.as_str_const());
-                        self->generic_inst_names.push(owned_name);
-                        self->generic_inst_sigs.push(sig);
+                        var owned_name = base.clone(self->allocator);
+                        inst_index = .Some(self->record_generic_inst_name(sig, owned_name));
 
                         const scalar = is_enum_scalar_optimizable(self->tables, enum_decl);
                         const tags = self->tctx.enum_variant_tags(enum_decl_id, enum_decl);
@@ -1829,9 +1835,8 @@ pub struct TypeEmitter {
                                 self->type_out.push_str(" ((");
                                 self->type_out.push_str(base.as_str_const());
                                 self->type_out.push_str(")");
-                                push_uint32_into(
-                                    &self->type_out,
-                                    self->allocator,
+                                mangle::push_uint32(
+                                    &self->type_out, 
                                     tags->get_owned(variant_index).unwrap()
                                 );
                                 self->type_out.push_str(")\n");
@@ -2018,7 +2023,7 @@ pub struct TypeEmitter {
                                         
                                         self->type_out.push_str(variant.as_str_const());
                                         self->type_out.push_str(" v");
-                                        push_uint32_into(&self->type_out, self->allocator, tag);
+                                        mangle::push_uint32(&self->type_out, tag);
                                         self->type_out.push(';');
                                         
                                         variant.free();
@@ -2026,15 +2031,9 @@ pub struct TypeEmitter {
                                 }
                             }
 
-                            {
-                                var buffer_decl = String.new(self->allocator);
-                                var writer: Writer = dynamic StringWriter.new(&buffer_decl);
-                                writer.write("uint8_t raw[");
-                                format_uint32(writer, enum_payload_size(enum_layout));
-                                writer.write("];");
-                                self->type_out.push_str(buffer_decl.as_str_const());
-                                buffer_decl.free();
-                            }
+                            self->type_out.push_str("uint8_t raw[");
+                            mangle::push_uint32(&self->type_out, enum_payload_size(enum_layout));
+                            self->type_out.push_str("];");
 
                             self->type_out.push_str("}u;};");
 
@@ -2050,7 +2049,7 @@ pub struct TypeEmitter {
                                 self->type_out.push_str(" ((");
                                 self->type_out.push_str(base.as_str_const());
                                 self->type_out.push_str(")");
-                                push_uint32_into(&self->type_out, self->allocator, tag);
+                                mangle::push_uint32(&self->type_out, tag);
                                 self->type_out.push_str(")\n");
                             }
 
@@ -2067,9 +2066,11 @@ pub struct TypeEmitter {
 
         targs.free();
 
-        if (!emitted) {
+        if (inst_index.is_none()) {
             sig.free();
         }
+
+        return inst_index;
     }
 
     fn tuple_type_name(self: Self*, tuple: const cir::TupleType*) String {
@@ -2091,19 +2092,18 @@ pub struct TypeEmitter {
             }
         }
 
-        for (var i: usize = 0; i < self->tuple_sigs.len(); i += 1) {
-            const existing = self->tuple_sigs.get_const(i).unwrap();
-
-            if (existing->as_str_const() == sig.as_str_const()) {
+        switch (self->tuple_map.get_owned(sig.as_str_const())) {
+            case .Some(existing_index) => {
                 sig.free();
-                const existing_name = self->tuple_names.get_const(i).unwrap();
-                return String.from_str(self->allocator, existing_name->as_str_const());
+                const existing_name = self->tuple_names.get_const(existing_index).unwrap();
+                return existing_name->clone(self->allocator);
             }
+            else => {}
         }
 
         var tuple_name = String.new(self->allocator);
         tuple_name.push_str("__tuple_");
-        push_usize_into(&tuple_name, self->allocator, self->tuple_counter);
+        mangle::push_usize(&tuple_name, self->tuple_counter);
         self->tuple_counter += 1;
 
         self->type_out.push_str("typedef struct ");
@@ -2126,10 +2126,13 @@ pub struct TypeEmitter {
         self->type_out.push_str(tuple_name.as_str_const());
         self->type_out.push(';');
 
+        const tuple_index = self->tuple_sigs.len();
+        const sig_key = sig.as_str_const();
         self->tuple_sigs.push(sig);
 
-        var owned_name = String.from_str(self->allocator, tuple_name.as_str_const());
+        var owned_name = tuple_name.clone(self->allocator);
         self->tuple_names.push(owned_name);
+        self->tuple_map.insert(sig_key, tuple_index);
 
         return tuple_name;
     }
@@ -2138,23 +2141,18 @@ pub struct TypeEmitter {
     pub fn array_return_struct_name(self: Self*, array_ty: const cir::SemaType*) String {
         var sig = self->type_name(array_ty);
 
-        for (var i: usize = 0; i < self->array_return_sigs.len(); i += 1) {
-            const existing = self->array_return_sigs.get_const(i).unwrap();
-
-            if (existing->as_str_const() == sig.as_str_const()) {
+        switch (self->array_return_map.get_owned(sig.as_str_const())) {
+            case .Some(existing_index) => {
                 sig.free();
-                const existing_name = self->array_return_names.get_const(i).unwrap();
-                return String.from_str(self->allocator, existing_name->as_str_const());
+                const existing_name = self->array_return_names.get_const(existing_index).unwrap();
+                return existing_name->clone(self->allocator);
             }
+            else => {}
         }
 
         var struct_name = String.new(self->allocator);
         struct_name.push_str("__array_ret_");
-        push_usize_into(
-            &struct_name, 
-            self->allocator, 
-            self->array_return_counter
-        );
+        mangle::push_usize(&struct_name, self->array_return_counter);
         self->array_return_counter += 1;
 
         var field_ty = array_ty->const_inner();
@@ -2169,16 +2167,25 @@ pub struct TypeEmitter {
         self->type_out.push(';');
 
         field_decl.free();
+        const struct_index = self->array_return_sigs.len();
+        const sig_key = sig.as_str_const();
         self->array_return_sigs.push(sig);
 
-        var owned_name = String.from_str(
-            self->allocator, 
-            struct_name.as_str_const()
-        );
-
+        var owned_name = struct_name.clone(self->allocator);
         self->array_return_names.push(owned_name);
+        self->array_return_map.insert(sig_key, struct_index);
         return struct_name;
     }
+}
+
+fn free_cached_names(cache: Vec<Option<String>>*) {
+    for (var i: usize = 0; i < cache->len(); i += 1) {
+        switch (*cache->get_const(i).unwrap()) {
+            case .Some(var name) => name.free();
+            else => {}
+        }
+    }
+    cache->free();
 }
 
 pub fn emit_plain_type(plain: cir::PlainType) const uint8* {
@@ -2221,13 +2228,13 @@ fn push_capacity(
                     switch (literal) {
                         case .Signed(x) => {
                             if (x < 0) {
-                                push_int128_into(out, allocator, x);
+                                mangle::push_int128(out, x);
                             } else {
-                                push_uint128_into(out, allocator, @cast(uint128, x));
+                                mangle::push_uint128(out, @cast(uint128, x));
                             }
                         }
                         case .Unsigned(x) => {
-                            push_uint128_into(out, allocator, x);
+                            mangle::push_uint128(out, x);
                         }
                     }
                 }
@@ -2248,14 +2255,6 @@ fn ensure_newline(out: String*) {
     }
 }
 
-fn push_uint32_into(out: String*, allocator: Allocator, value: uint32) {
-    var buffer = String.new(allocator);
-    var writer: Writer = dynamic StringWriter.new(&buffer);
-    format_uint32(writer, value);
-    out->push_str(buffer.as_str_const());
-    buffer.free();
-}
-
 fn enum_payload_size(layout: const ABITypeLayout*) uint32 {
     for (var i: usize = 0; i < layout->field_offsets.len(); i += 1) {
         const entry = layout->field_offsets.get_const(i).unwrap();
@@ -2273,32 +2272,8 @@ fn enum_payload_size(layout: const ABITypeLayout*) uint32 {
     return layout->size;
 }
 
-fn push_usize_into(out: String*, allocator: Allocator, value: usize) {
-    var buffer = String.new(allocator);
-    var writer: Writer = dynamic StringWriter.new(&buffer);
-    format_usize(writer, value);
-    out->push_str(buffer.as_str_const());
-    buffer.free();
-}
-
-fn push_uint128_into(out: String*, allocator: Allocator, value: uint128) {
-    var buffer = String.new(allocator);
-    var writer: Writer = dynamic StringWriter.new(&buffer);
-    format_uint128(writer, value);
-    out->push_str(buffer.as_str_const());
-    buffer.free();
-}
-
-fn push_int128_into(out: String*, allocator: Allocator, value: int128) {
-    var buffer = String.new(allocator);
-    var writer: Writer = dynamic StringWriter.new(&buffer);
-    format_int128(writer, value);
-    out->push_str(buffer.as_str_const());
-    buffer.free();
-}
-
 fn tuple_field_name(allocator: Allocator, index: usize) String {
     var out = String.from_str(allocator, "f");
-    push_usize_into(&out, allocator, index);
+    mangle::push_usize(&out, index);
     return out;
 }

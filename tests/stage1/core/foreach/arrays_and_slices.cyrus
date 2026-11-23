@@ -1,4 +1,4 @@
-// @stdout: sum=60 copy=1,2,3 mut=10,20,30 const_arr=4,5,6 fn=7,8 idx=0:10,1:20,2:30 slice=20,30 sm=100,200,300 cs=5,6 empty=0 ign=3
+// @stdout: sum=60 copy=1,2,3 mut=10,20,30 const_arr=4,5,6 fn=7,8 index=0:10,1:20,2:30 slice=20,30 sm=100,200,300 cs=5,6 empty=0 ign=3
 
 import std::libc{printf};
 
@@ -55,7 +55,7 @@ pub fn main() {
     }
     printf(" ");
 
-    printf("idx=");
+    printf("index=");
     for (var i, x : int32[3] { 10, 20, 30 }) {
         if (i > 0) {
             printf(",");

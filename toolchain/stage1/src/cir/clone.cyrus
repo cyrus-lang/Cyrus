@@ -20,15 +20,22 @@ fn clone_stmt_kind(
     src: const cir::StmtKind*
 ) cir::StmtKind {
     switch (*src) {
-        case .Foreach(foreach_stmt) => return .Foreach(clone_foreach_stmt(allocator, &foreach_stmt));
+        case .Foreach(foreach_stmt) => {
+            return .Foreach(alloc_init(allocator, clone_foreach_stmt(allocator, foreach_stmt)));
+        }
         case .Switch(switch_stmt) => return .Switch(clone_switch_stmt(allocator, &switch_stmt));
         case .Return(return_stmt) => return .Return(clone_return_stmt(allocator, &return_stmt));
-        case .Variable(var_stmt) => return .Variable(clone_var_stmt(allocator, &var_stmt));
         case .While(while_stmt) => return .While(clone_while_stmt(allocator, &while_stmt));
         case .BlockStmt(block) => return .BlockStmt(clone_typed_block(allocator, &block));
+    
+        case .Variable(var_stmt) => {
+            return .Variable(alloc_init(allocator, clone_var_stmt(allocator, var_stmt)));
+        }
+        case .For(for_stmt) => {
+            return .For(alloc_init(allocator, clone_for_stmt(allocator, for_stmt)));
+        }
         case .Builtin(builtin) => return .Builtin(clone_builtin(allocator, &builtin));
         case .InlineAsm(asm) => return .InlineAsm(clone_inline_asm(allocator, &asm));
-        case .For(for_stmt) => return .For(clone_for_stmt(allocator, &for_stmt));
         case .Interface(interface_stmt) => return .Interface(interface_stmt);
         case .If(if_stmt) => return .If(clone_if_stmt(allocator, &if_stmt));
         case .Continue(continue_stmt) => return .Continue(continue_stmt);
@@ -64,14 +71,14 @@ pub fn clone_typed_block(
     allocator: Allocator, 
     src: const cir::BlockStmt*
 ) cir::BlockStmt {
-    var stmts: Vec<cir::Stmt> = Vec.new(allocator);
+    var stmts: Vec<cir::Stmt> = Vec.with_capacity(allocator, src->stmts.len());
 
     for (var i: usize = 0; i < src->stmts.len(); i += 1) {
         const stmt = src->stmts.get_const(i).unwrap();
         stmts.push(clone_stmt(allocator, stmt));
     }
 
-    var defers: Vec<cir::DeferStmt> = Vec.new(allocator);
+    var defers: Vec<cir::DeferStmt> = Vec.with_capacity(allocator, src->defers.len());
 
     for (var i: usize = 0; i < src->defers.len(); i += 1) {
         const defer_stmt = src->defers.get_const(i).unwrap();
@@ -93,7 +100,7 @@ pub fn clone_func_params(
     allocator: Allocator, 
     src: const cir::FuncParams*
 ) cir::FuncParams {
-    var list: Vec<cir::FuncParamKind> = Vec.new(allocator);
+    var list: Vec<cir::FuncParamKind> = Vec.with_capacity(allocator, src->list.len());
 
     for (var i: usize = 0; i < src->list.len(); i += 1) {
         const param = src->list.get_const(i).unwrap();
@@ -117,7 +124,7 @@ fn clone_var_stmt(allocator: Allocator, src: const cir::VarStmt*) cir::VarStmt {
 }
 
 fn clone_if_stmt(allocator: Allocator, src: const cir::IfStmt*) cir::IfStmt {
-    var branches: Vec<cir::IfStmt> = Vec.new(allocator);
+    var branches: Vec<cir::IfStmt> = Vec.with_capacity(allocator, src->branches.len());
 
     for (var i: usize = 0; i < src->branches.len(); i += 1) {
         const branch = src->branches.get_const(i).unwrap();
@@ -183,7 +190,7 @@ fn clone_foreach_stmt(allocator: Allocator, src: const cir::ForeachStmt*) cir::F
 }
 
 fn clone_switch_stmt(allocator: Allocator, src: const cir::SwitchStmt*) cir::SwitchStmt {
-    var cases: Vec<cir::SwitchCase> = Vec.new(allocator);
+    var cases: Vec<cir::SwitchCase> = Vec.with_capacity(allocator, src->cases.len());
 
     for (var i: usize = 0; i < src->cases.len(); i += 1) {
         const case_item = src->cases.get_const(i).unwrap();
@@ -200,7 +207,7 @@ fn clone_switch_stmt(allocator: Allocator, src: const cir::SwitchStmt*) cir::Swi
 }
 
 fn clone_switch_case(allocator: Allocator, src: const cir::SwitchCase*) cir::SwitchCase {
-    var patterns: Vec<cir::SwitchCasePattern> = Vec.new(allocator);
+    var patterns: Vec<cir::SwitchCasePattern> = Vec.with_capacity(allocator, src->patterns.len());
 
     for (var i: usize = 0; i < src->patterns.len(); i += 1) {
         const pattern = src->patterns.get_const(i).unwrap();
@@ -228,7 +235,7 @@ fn clone_switch_pattern(
         }
 
         case .Range(range) => {
-            kind = .Range(clone_range(allocator, &range));
+            kind = .Range(alloc_init(allocator, clone_range(allocator, range)));
         }
 
         case .Expr(expr) => {
@@ -240,7 +247,7 @@ fn clone_switch_pattern(
         }
 
         case .EnumTupleVariant { ident, items } => {
-            var cloned_items: Vec<cir::SwitchCasePattern> = Vec.new(allocator);
+            var cloned_items: Vec<cir::SwitchCasePattern> = Vec.with_capacity(allocator, items.len());
 
             for (var i: usize = 0; i < items.len(); i += 1) {
                 const item = items.get_const(i).unwrap();
@@ -251,7 +258,10 @@ fn clone_switch_pattern(
         }
 
         case .EnumStructVariant { ident, items, ignore } => {
-            var cloned_items: Vec<cir::SwitchCaseEnumStructPatternField> = Vec.new(allocator);
+            var cloned_items: Vec<cir::SwitchCaseEnumStructPatternField> = Vec.with_capacity(
+                allocator,
+                items.len()
+            );
 
             for (var i: usize = 0; i < items.len(); i += 1) {
                 const item = items.get_const(i).unwrap();
@@ -310,7 +320,7 @@ fn clone_tuple_export_pattern(
 
     switch (src->kind) {
         case .Tuple(patterns) => {
-            var cloned: Vec<cir::TupleExportPattern> = Vec.new(allocator);
+            var cloned: Vec<cir::TupleExportPattern> = Vec.with_capacity(allocator, patterns.len());
 
             for (var i: usize = 0; i < patterns.len(); i += 1) {
                 const pattern = patterns.get_const(i).unwrap();
@@ -320,7 +330,7 @@ fn clone_tuple_export_pattern(
             kind = .Tuple(cloned);
         }
         case .Struct { fields, ignore } => {
-            var cloned: Vec<cir::StructExportPatternField> = Vec.new(allocator);
+            var cloned: Vec<cir::StructExportPatternField> = Vec.with_capacity(allocator, fields.len());
 
             for (var i: usize = 0; i < fields.len(); i += 1) {
                 const field = fields.get_const(i).unwrap();
@@ -375,7 +385,7 @@ fn clone_inline_asm(
     allocator: Allocator, 
     src: const cir::InlineAsm*
 ) cir::InlineAsm {
-    var template: Vec<String> = Vec.new(allocator);
+    var template: Vec<String> = Vec.with_capacity(allocator, src->template.len());
 
     for (var i: usize = 0; i < src->template.len(); i += 1) {
         const part = src->template.get_const(i).unwrap();
@@ -385,7 +395,7 @@ fn clone_inline_asm(
     var outputs: Vec<cir::AsmOperand> = clone_asm_operand_vec(allocator, &src->outputs);
     var inputs: Vec<cir::AsmOperand> = clone_asm_operand_vec(allocator, &src->inputs);
 
-    var clobbers: Vec<cir::AsmClobber> = Vec.new(allocator);
+    var clobbers: Vec<cir::AsmClobber> = Vec.with_capacity(allocator, src->clobbers.len());
 
     for (var i: usize = 0; i < src->clobbers.len(); i += 1) {
         const clobber = src->clobbers.get_const(i).unwrap();
@@ -406,7 +416,7 @@ fn clone_asm_operand_vec(
     allocator: Allocator, 
     src: const Vec<cir::AsmOperand>*
 ) Vec<cir::AsmOperand> {
-    var out: Vec<cir::AsmOperand> = Vec.new(allocator);
+    var out: Vec<cir::AsmOperand> = Vec.with_capacity(allocator, src->len());
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const operand = src->get_const(i).unwrap();
@@ -584,30 +594,30 @@ fn clone_expr_kind(
         }
 
         case .Try(try_expr) => {
-            return .Try(cir::TryExpr {
-                operand: clone_expr_alloc(allocator, try_expr.operand),
-                branch_dispatch: try_expr.branch_dispatch,
-                from_error_dispatch: try_expr.from_error_dispatch,
-                control_flow_type: try_expr.control_flow_type,
-                value_type: try_expr.value_type,
-                error_type: try_expr.error_type,
-                ret_error_type: try_expr.ret_error_type,
-                return_type: try_expr.return_type,
-                span: try_expr.span,
-            });
+            return .Try(alloc_init(allocator, cir::TryExpr {
+                operand: clone_expr_alloc(allocator, try_expr->operand),
+                branch_dispatch: try_expr->branch_dispatch,
+                from_error_dispatch: try_expr->from_error_dispatch,
+                control_flow_type: try_expr->control_flow_type,
+                value_type: try_expr->value_type,
+                error_type: try_expr->error_type,
+                ret_error_type: try_expr->ret_error_type,
+                return_type: try_expr->return_type,
+                span: try_expr->span,
+            }));
         }
 
         case .TryCatch(try_catch_expr) => {
-            return .TryCatch(cir::TryCatchExpr {
-                operand: clone_expr_alloc(allocator, try_catch_expr.operand),
-                error_binding: try_catch_expr.error_binding,
-                catch_body: clone_typed_block(allocator, &try_catch_expr.catch_body),
-                branch_dispatch: try_catch_expr.branch_dispatch,
-                control_flow_type: try_catch_expr.control_flow_type,
-                value_type: try_catch_expr.value_type,
-                error_type: try_catch_expr.error_type,
-                span: try_catch_expr.span,
-            });
+            return .TryCatch(alloc_init(allocator, cir::TryCatchExpr {
+                operand: clone_expr_alloc(allocator, try_catch_expr->operand),
+                error_binding: try_catch_expr->error_binding,
+                catch_body: clone_typed_block(allocator, &try_catch_expr->catch_body),
+                branch_dispatch: try_catch_expr->branch_dispatch,
+                control_flow_type: try_catch_expr->control_flow_type,
+                value_type: try_catch_expr->value_type,
+                error_type: try_catch_expr->error_type,
+                span: try_catch_expr->span,
+            }));
         }
 
         case .Dynamic(dynamic_) => {
@@ -723,7 +733,7 @@ fn clone_field_init_vec(
     allocator: Allocator, 
     src: const Vec<cir::FieldInit>*
 ) Vec<cir::FieldInit> {
-    var out: Vec<cir::FieldInit> = Vec.new(allocator);
+    var out: Vec<cir::FieldInit> = Vec.with_capacity(allocator, src->len());
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const init = src->get_const(i).unwrap();
@@ -741,7 +751,7 @@ fn clone_variant_field_init_vec(
     allocator: Allocator,
     src: const Vec<cir::EnumStructVariantFieldInit>*
 ) Vec<cir::EnumStructVariantFieldInit> {
-    var out: Vec<cir::EnumStructVariantFieldInit> = Vec.new(allocator);
+    var out: Vec<cir::EnumStructVariantFieldInit> = Vec.with_capacity(allocator, src->len());
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const init = src->get_const(i).unwrap();
@@ -760,7 +770,7 @@ fn clone_unnamed_struct_field_vec(
     allocator: Allocator,
     src: const Vec<cir::UnnamedStructValueField>*
 ) Vec<cir::UnnamedStructValueField> {
-    var out: Vec<cir::UnnamedStructValueField> = Vec.new(allocator);
+    var out: Vec<cir::UnnamedStructValueField> = Vec.with_capacity(allocator, src->len());
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const field = src->get_const(i).unwrap();
@@ -779,7 +789,7 @@ fn clone_unnamed_union_field_vec(
     allocator: Allocator,
     src: const Vec<cir::UnnamedUnionValueField>*
 ) Vec<cir::UnnamedUnionValueField> {
-    var out: Vec<cir::UnnamedUnionValueField> = Vec.new(allocator);
+    var out: Vec<cir::UnnamedUnionValueField> = Vec.with_capacity(allocator, src->len());
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const field = src->get_const(i).unwrap();
@@ -798,7 +808,7 @@ fn clone_expr_vec(
     allocator: Allocator, 
     src: const Vec<cir::Expr>*
 ) Vec<cir::Expr> {
-    var out: Vec<cir::Expr> = Vec.new(allocator);
+    var out: Vec<cir::Expr> = Vec.with_capacity(allocator, src->len());
 
     for (var i: usize = 0; i < src->len(); i += 1) {
         const expr = src->get_const(i).unwrap();
@@ -854,20 +864,20 @@ pub fn clone_typed_type_args(
     allocator: Allocator,
     src: const cir::TypeArgs*
 ) cir::TypeArgs {
-    var list: Vec<cir::TypeArg> = Vec.new(allocator);
+    var out = cir::TypeArgs.with_capacity(allocator, src->len());
     
     for (var i: usize = 0; i < src->len(); i += 1) {
-        list.push(*src->get(i).unwrap());
+        out.push(*src->get(i).unwrap());
     }
 
-    return cir::TypeArgs { list };
+    return out;
 }
 
 pub fn clone_method_decls(
     allocator: Allocator,
     src: const cir::MethodDecls*
 ) cir::MethodDecls {
-    var out = cir::MethodDecls.new(allocator);
+    var out = cir::MethodDecls.with_capacity(allocator, src->entries.len());
     
     for (var i: usize = 0; i < src->entries.len(); i += 1) {
         const entry = src->entries.get_const(i).unwrap();

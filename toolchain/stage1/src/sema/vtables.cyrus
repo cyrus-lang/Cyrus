@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::collections::hash_map{HashMap};
+import std::hash{hash_usize, eq_usize};
 import std::collections{Vec};
 import std::mem{Allocator};
 import std::option{Option};
@@ -38,11 +40,13 @@ pub struct VTableInfo {
 pub struct VTableRegistry {
     pub allocator: Allocator,
     pub tables: Vec<VTableInfo>,
+    buckets: HashMap<usize, Vec<cir::VTableId>>,
 
     pub fn new(allocator: Allocator) Self {
         return Self {
             allocator,
             tables: Vec.new(allocator),
+            buckets: HashMap.with_hasher(allocator, 32, hash_usize, eq_usize),
         };
     }
 
@@ -56,19 +60,28 @@ pub struct VTableRegistry {
         is_interface_generic: bool,
         span: Span
     ) cir::VTableId {
-        for (var i: usize = 0; i < self->tables.len(); i += 1) {
-            const existing = self->tables.get_const(i).unwrap();
+        switch (self->buckets.get_const(interface_decl_id)) {
+            case .Some(bucket) => {
+                for (var i: usize = 0; i < bucket->len(); i += 1) {
+                    const id = *bucket->get_const(i).unwrap();
+                    const existing = self->tables.get_const(id).unwrap();
 
-            if (existing->interface_decl_id == interface_decl_id 
-                && cir_types_eq(&existing->concrete_type, sema_type) 
-                && type_args_eq(&existing->interface_type_args, interface_type_args)) {
-                return i;
+                    if (existing->interface_decl_id == interface_decl_id 
+                        && cir_types_eq(&existing->concrete_type, sema_type) 
+                        && type_args_eq(&existing->interface_type_args, interface_type_args)) {
+                        return id;
+                    }
+                }
             }
+            case .None => {}
         }
 
         const vtable_id = self->tables.len();
 
-        var monomorphized_methods: Vec<Option<cir::MonomorphId>> = Vec.new(self->allocator);
+        var monomorphized_methods: Vec<Option<cir::MonomorphId>> = Vec.with_capacity(
+            self->allocator,
+            methods->entries.len()
+        );
             
         // Placeholder
         for (var i: usize = 0; i < methods->entries.len(); i += 1) {
@@ -85,6 +98,17 @@ pub struct VTableRegistry {
             monomorphized_methods,
             span,
         });
+
+        switch (self->buckets.get(interface_decl_id)) {
+            case .Some(bucket) => {
+                bucket->push(vtable_id);
+            }
+            case .None => {
+                var bucket: Vec<cir::VTableId> = Vec.new(self->allocator);
+                bucket.push(vtable_id);
+                self->buckets.insert(interface_decl_id, bucket);
+            }
+        }
 
         return vtable_id;
     }
@@ -108,6 +132,20 @@ pub struct VTableRegistry {
     }
 
     pub fn free(self: Self*) {
+        var bucket_iter = self->buckets.iter_owned();
+
+        while (true) {
+            switch (bucket_iter.next_owned()) {
+                case .Some(entry) => {
+                    var bucket = entry.1;
+                    bucket.free();
+                }
+                case .None => break;
+            }
+        }
+
+        self->buckets.free();
+
         for (var i: usize = 0; i < self->tables.len(); i += 1) {
             const entry = self->tables.get(i).unwrap();
             entry->free();

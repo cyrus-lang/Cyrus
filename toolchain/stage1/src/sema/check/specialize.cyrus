@@ -109,7 +109,14 @@ pub fn instantiate_enum_decl_with_type_args(
     enum_decl: const cir::EnumDecl*,
     type_args: const cir::TypeArgs*
 ) cir::EnumDecl {
-    var variants: Vec<cir::EnumVariant> = Vec.new(allocator);
+    if (enum_decl->generic_params.is_empty() || type_args->is_empty()) {
+        return *enum_decl;
+    }
+
+    var variants: Vec<cir::EnumVariant> = Vec.with_capacity(
+        allocator,
+        enum_decl->variants.len()
+    );
 
     for (var i: usize = 0; i < enum_decl->variants.len(); i += 1) {
         const variant = enum_decl->variants.get_const(i).unwrap();
@@ -122,7 +129,10 @@ pub fn instantiate_enum_decl_with_type_args(
                 variants.push(.Valued { ident, value });
             }
             case .Tuple { ident, fields } => {
-                var new_fields: Vec<cir::EnumVariantTupleField> = Vec.new(allocator);
+                var new_fields: Vec<cir::EnumVariantTupleField> = Vec.with_capacity(
+                    allocator,
+                    fields.len()
+                );
 
                 for (var j: usize = 0; j < fields.len(); j += 1) {
                     const field = fields.get_const(j).unwrap();
@@ -141,7 +151,10 @@ pub fn instantiate_enum_decl_with_type_args(
                 variants.push(.Tuple { ident, fields: new_fields });
             }
             case .Struct { ident, fields } => {
-                var new_fields: Vec<cir::EnumVariantStructField> = Vec.new(allocator);
+                var new_fields: Vec<cir::EnumVariantStructField> = Vec.with_capacity(
+                    allocator,
+                    fields.len()
+                );
 
                 for (var j: usize = 0; j < fields.len(); j += 1) {
                     const field = fields.get_const(j).unwrap();
@@ -256,11 +269,12 @@ fn specialize_func_body(
     var body = cir::clone::clone_typed_block(context->allocator, template_body);
 
     var decl_map: HashMap<usize, cir::VarDeclId> = HashMap.with_hasher(
-        context->allocator,
+        context->heap_allocator,
         64,
         hash_usize,
         eq_usize
     );
+    defer decl_map.free();
 
     instantiate_and_specialize_func_params(context, params, &decl_map);
 
@@ -323,47 +337,45 @@ fn specialize_stmt(
 
             *kind = .TupleExport(tuple_export);
         }
-        case .For(var for_stmt) => {
-            switch (for_stmt.initializer) {
+        case .For(for_stmt) => {
+            switch (for_stmt->initializer) {
                 case .Some(var initializer) => {
                     specialize_var_stmt(context, &initializer, decl_map);
-                    for_stmt.initializer = .Some(initializer);
+                    for_stmt->initializer = .Some(initializer);
                 }
                 else => {}
             }
 
-            switch (for_stmt.cond) {
+            switch (for_stmt->cond) {
                 case .Some(var cond) => {
                     specialize_expr(context, &cond, decl_map);
-                    for_stmt.cond = .Some(cond);
+                    for_stmt->cond = .Some(cond);
                 }
                 else => {}
             }
 
-            switch (for_stmt.increment) {
+            switch (for_stmt->increment) {
                 case .Some(var increment) => {
                     specialize_expr(context, &increment, decl_map);
-                    for_stmt.increment = .Some(increment);
+                    for_stmt->increment = .Some(increment);
                 }
                 else => {}
             }
 
-            specialize_block(context, for_stmt.body, decl_map);
-            *kind = .For(for_stmt);
+            specialize_block(context, for_stmt->body, decl_map);
         }
-        case .Foreach(var foreach_stmt) => {
-            switch (foreach_stmt.index_pattern) {
+        case .Foreach(foreach_stmt) => {
+            switch (foreach_stmt->index_pattern) {
                 case .Some(var idx_pat) => {
                     specialize_tuple_export_pattern(context, &idx_pat, decl_map);
-                    foreach_stmt.index_pattern = .Some(idx_pat);
+                    foreach_stmt->index_pattern = .Some(idx_pat);
                 }
                 case .None => {}
             }
 
-            specialize_tuple_export_pattern(context, &foreach_stmt.item_pattern, decl_map);
-            specialize_expr(context, &foreach_stmt.iterable, decl_map);
-            specialize_block(context, foreach_stmt.body, decl_map);
-            *kind = .Foreach(foreach_stmt);
+            specialize_tuple_export_pattern(context, &foreach_stmt->item_pattern, decl_map);
+            specialize_expr(context, &foreach_stmt->iterable, decl_map);
+            specialize_block(context, foreach_stmt->body, decl_map);
         }
         case .Switch(var switch_stmt) => {
             specialize_expr(context, &switch_stmt.operand, decl_map);
@@ -434,9 +446,8 @@ fn specialize_stmt(
             specialize_expr(context, &expr, decl_map);
             *kind = .Expr(expr);
         }
-        case .Variable(var var_stmt) => {
-            specialize_var_stmt(context, &var_stmt, decl_map);
-            *kind = .Variable(var_stmt);
+        case .Variable(var_stmt) => {
+            specialize_var_stmt(context, var_stmt, decl_map);
         }
         case .Defer(var defer_stmt) => {
             switch (defer_stmt.error_binding) {
@@ -561,10 +572,9 @@ fn specialize_switch_pattern(
             }
         }
         
-        case .Range(var range) => {
-            specialize_expr(context, &range.lower, decl_map);
-            specialize_expr(context, &range.upper, decl_map);
-            pattern->kind = .Range(range);
+        case .Range(range) => {
+            specialize_expr(context, &range->lower, decl_map);
+            specialize_expr(context, &range->upper, decl_map);
         }
         
         case .Expr(var expr) => {
@@ -764,27 +774,26 @@ fn specialize_expr(
         }
 
         case .Try(try_expr) => {
-            specialize_expr(context, try_expr.operand, decl_map);
+            specialize_expr(context, try_expr->operand, decl_map);
         }
 
-        case .TryCatch(var try_catch_expr) => {
-            specialize_expr(context, try_catch_expr.operand, decl_map);
+        case .TryCatch(try_catch_expr) => {
+            specialize_expr(context, try_catch_expr->operand, decl_map);
 
-            switch (try_catch_expr.error_binding) {
+            switch (try_catch_expr->error_binding) {
                 case .Some(var_decl_id) => {
                     instantiate_fresh_var_decl_from_tables(context, var_decl_id, decl_map);
 
                     switch (remap_var_decl_id(context, decl_map, var_decl_id)) {
-                        case .Some(new_id) => try_catch_expr.error_binding = .Some(new_id);
+                        case .Some(new_id) => try_catch_expr->error_binding = .Some(new_id);
                         else => {}
                     }
                 }
                 case .None => {}
             }
 
-            collect_fresh_var_decls_in_block(context, &try_catch_expr.catch_body, decl_map);
-            specialize_block(context, &try_catch_expr.catch_body, decl_map);
-            expr->kind = .TryCatch(try_catch_expr);
+            collect_fresh_var_decls_in_block(context, &try_catch_expr->catch_body, decl_map);
+            specialize_block(context, &try_catch_expr->catch_body, decl_map);
         }
 
         case .Slice(slice_expr) => {
@@ -915,25 +924,25 @@ fn collect_and_instantiate_fresh_var_decls(
             }
         }
         case .For(for_stmt) => {
-            switch (for_stmt.initializer) {
+            switch (for_stmt->initializer) {
                 case .Some(var var_stmt) => {
                     instantiate_fresh_var_stmt(context, &var_stmt, decl_map);
                 }
                 else => {}
             }
 
-            collect_fresh_var_decls_in_block(context, for_stmt.body, decl_map);
+            collect_fresh_var_decls_in_block(context, for_stmt->body, decl_map);
         }
         case .Foreach(foreach_stmt) => {
-            switch (foreach_stmt.index_pattern) {
+            switch (foreach_stmt->index_pattern) {
                 case .Some(idx_pat) => {
                     collect_fresh_var_decls_of_tuple_pattern(context, &idx_pat, decl_map);
                 }
                 case .None => {}
             }
 
-            collect_fresh_var_decls_of_tuple_pattern(context, &foreach_stmt.item_pattern, decl_map);
-            collect_fresh_var_decls_in_block(context, foreach_stmt.body, decl_map);
+            collect_fresh_var_decls_of_tuple_pattern(context, &foreach_stmt->item_pattern, decl_map);
+            collect_fresh_var_decls_in_block(context, foreach_stmt->body, decl_map);
         }
         case .Expr(expr) => {
             switch (expr.kind) {
@@ -971,7 +980,7 @@ fn collect_and_instantiate_fresh_var_decls(
             collect_fresh_var_decls_in_block(context, &block, decl_map);
         }
         case .Variable(var_stmt) => {
-            instantiate_fresh_var_stmt(context, &var_stmt, decl_map);
+            instantiate_fresh_var_stmt(context, var_stmt, decl_map);
         }
         case .If(if_) => {
             collect_fresh_var_decls_of_if(context, &if_, decl_map);

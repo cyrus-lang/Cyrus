@@ -87,6 +87,7 @@ pub struct AnalysisContext {
 
         var analyzer_context = AnalyzerContext.new(
             dynamic self->arena,
+            self->context->allocator,
             &self->context->dctx,
             &self->resolver->global_symbols,
             &self->resolver->decl_tables,
