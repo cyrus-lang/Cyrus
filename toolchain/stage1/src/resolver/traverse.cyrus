@@ -345,7 +345,7 @@ fn resolve_stmt(
     switch (*node) {
         case .Var(variable) => {
             switch (resolve_var(ctx, program, &variable)) {
-                case .Some(stmt) => return .Some(cir::Stmt.new(.Variable(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.Variable(alloc_init(ctx->allocator, stmt))));
                 case .None => return .None;
             }
         }
@@ -373,13 +373,13 @@ fn resolve_stmt(
         }
         case .For(for_stmt) => {
             switch (resolve_for_stmt(ctx, program, &for_stmt)) {
-                case .Some(stmt) => return .Some(cir::Stmt.new(.For(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.For(alloc_init(ctx->allocator, stmt))));
                 case .None => return .None;
             }
         }
         case .Foreach(foreach_stmt) => {
             switch (resolve_foreach_stmt(ctx, program, &foreach_stmt)) {
-                case .Some(stmt) => return .Some(cir::Stmt.new(.Foreach(stmt)));
+                case .Some(stmt) => return .Some(cir::Stmt.new(.Foreach(alloc_init(ctx->allocator, stmt))));
                 case .None => return .None;
             }
         }
@@ -451,7 +451,7 @@ fn resolve_stmt(
 
             switch (defer_stmt.error_binding) {
                 case .Some(ident) => {
-                    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+                    ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
                     opened_scope = true;
 
                     const name = ident.str.as_str_const();
@@ -709,8 +709,8 @@ fn resolve_module_import(
 
     var i: usize = 1;
 
-    for (var idx: usize = 1; idx < segments->len(); idx += 1) {
-        const seg = segments->get_const(idx).unwrap();
+    for (var i: usize = 1; i < segments->len(); i += 1) {
+        const seg = segments->get_const(i).unwrap();
 
         var seg_ident: ast::ASTIdent;
 
@@ -722,7 +722,7 @@ fn resolve_module_import(
                 diags::report_expected_ident_in_import(
                     ctx->dctx,
                     ctx->diag_allocator,
-                    segment_span_at(segments, idx)
+                    segment_span_at(segments, i)
                 );
                 return .None;
             }
@@ -784,7 +784,7 @@ fn resolve_module_import(
                     case .None => {}
                 }
 
-                if (idx + 1 == segments->len()) {
+                if (i + 1 == segments->len()) {
                     switch (check_and_select_scope_binding(
                         ctx, 
                         next_binding, 
@@ -813,7 +813,6 @@ fn resolve_module_import(
                 );
 
                 module_name.free();
-
                 return .None;
             }
         }
@@ -1264,7 +1263,7 @@ fn resolve_for_stmt(
     program: const ast::ASTProgram*,
     for_stmt: const ast::ASTFor*
 ) Option<cir::ForStmt> {
-    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+    ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
 
     var initializer: Option<cir::VarStmt> = .None;
 
@@ -1332,7 +1331,7 @@ fn resolve_foreach_stmt(
         foreach_stmt->span
     );
 
-    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+    ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
 
     var index_pattern: Option<cir::TupleExportPattern> = .None;
 
@@ -1385,7 +1384,7 @@ fn resolve_while_stmt(
     program: const ast::ASTProgram*,
     while_stmt: const ast::ASTWhile*
 ) Option<cir::WhileStmt> {
-    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+    ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
 
     const cond = resolve_expr_or_poisoned(
         ctx, 
@@ -1524,7 +1523,7 @@ fn resolve_switch_case(
     program: const ast::ASTProgram*,
     switch_case: const ast::ASTSwitchCase*
 ) Option<cir::SwitchCase> {
-    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+    ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
 
     switch (resolve_switch_patterns(ctx, program, &switch_case->patterns)) {
         case .None => {
@@ -1605,12 +1604,12 @@ fn resolve_switch_pattern(
                         case .None => return .None;
                         case .Some(upper) => {
                             return .Some(cir::SwitchCasePattern {
-                                kind: .Range(cir::Range {
+                                kind: .Range(alloc_init(ctx->allocator, cir::Range {
                                     lower,
                                     upper,
                                     inclusive_upper: range.inclusive_upper,
                                     span: range.span,
-                                }),
+                                })),
                                 span: pattern->span,
                             });
                         }
@@ -1711,7 +1710,7 @@ fn resolve_block_stmt(
     program: const ast::ASTProgram*,
     block_stmt: const ast::ASTBlock*
 ) Option<cir::BlockStmt> {
-    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+    ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
 
     collect_labels_in_block(ctx, program, block_stmt);
 
@@ -1931,7 +1930,7 @@ fn enter_generic_scope(
     ctx: TraverseContext*,
     generic_params: const cir::GenericParams*
 ) {
-    var scope = GenericScope.new(ctx->allocator);
+    var scope = GenericScope.new(ctx->diag_allocator);
 
     for (var i: usize = 0; i < generic_params->ids.len(); i += 1) {
         const param_id = generic_params->ids.get_owned(i).unwrap();
@@ -2341,7 +2340,7 @@ fn resolve_method_bodies(
                         var entry = ctx->decl_tables->methods.get(method_decl_id).unwrap();
 
                         enter_generic_scope(ctx, &entry->func_decl.generic_params);
-                        ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+                        ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
 
                         const params_ok = insert_func_params_into_current_scope(ctx, &entry->func_decl.params);
 
@@ -2585,7 +2584,7 @@ fn resolve_func_def(
             var typed_body: Option<cir::BlockStmt> = .None;
 
             enter_generic_scope(ctx, &sig.generic_params);
-            ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+            ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
 
             const params_ok = insert_func_params_into_current_scope(ctx, &params);
 
@@ -3162,7 +3161,7 @@ fn resolve_builtin(
                 !is_conditional_block;
 
             if (is_test_case || !builtin_block.is_toplevel) {
-                ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+                ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
             }
 
             switch (*operand_node(program, builtin_block.block)) {
@@ -3428,8 +3427,8 @@ fn try_resolve_type_scoped_member(
         case .None => return .None;
     }
 
-    for (var idx: usize = 1; idx + 1 < seg_count; idx += 1) {
-        const seg = module_import->segments.get_const(idx).unwrap();
+    for (var index: usize = 1; index + 1 < seg_count; index += 1) {
+        const seg = module_import->segments.get_const(index).unwrap();
         
         var seg_ident: ast::ASTIdent;
         
@@ -3733,7 +3732,7 @@ fn resolve_lambda_expr(
     program: const ast::ASTProgram*,
     lambda: const ast::ASTLambda*
 ) Option<cir::Expr> {
-    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+    ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
 
     var empty_generic_params: ast::ASTGenericParams = Vec.new(ctx->allocator);
 
@@ -4227,7 +4226,7 @@ fn resolve_try_expr(
 ) Option<cir::Expr> {
     switch (resolve_expr_node(ctx, program, try_expr->expr)) {
         case .Some(operand) => {
-            return .Some(cir::Expr.new(.Try(cir::TryExpr {
+            return .Some(cir::Expr.new(.Try(alloc_init(ctx->allocator, cir::TryExpr {
                 operand: alloc_init(ctx->allocator, operand),
                 branch_dispatch: .Unresolved,
                 from_error_dispatch: .Unresolved,
@@ -4237,7 +4236,7 @@ fn resolve_try_expr(
                 ret_error_type: .None,
                 return_type: .None,
                 span: try_expr->span,
-            }), try_expr->span));
+            })), try_expr->span));
         }
         else => {}
     }
@@ -4254,7 +4253,7 @@ fn resolve_try_catch_expr(
         return .None;
     }
 
-    ctx->enter_local_scope(LocalScope.new(ctx->allocator));
+    ctx->enter_local_scope(LocalScope.new(ctx->diag_allocator));
 
     var error_binding: Option<cir::VarDeclId> = .None;
     switch (try_catch_expr->error_binding) {
@@ -4300,7 +4299,7 @@ fn resolve_try_catch_expr(
 
     switch (resolved_block) {
         case .Some(catch_body) => {
-            return .Some(cir::Expr.new(.TryCatch(cir::TryCatchExpr {
+            return .Some(cir::Expr.new(.TryCatch(alloc_init(ctx->allocator, cir::TryCatchExpr {
                 operand: alloc_init(ctx->allocator, operand),
                 error_binding,
                 catch_body,
@@ -4309,7 +4308,7 @@ fn resolve_try_catch_expr(
                 value_type: .None,
                 error_type: .None,
                 span: try_catch_expr->span,
-            }), try_catch_expr->span));
+            })), try_catch_expr->span));
         }
         case .None => return .None;
     }

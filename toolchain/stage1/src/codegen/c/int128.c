@@ -182,6 +182,12 @@ static void __cyrus_u128_setbit(__cyrus_uint128 *a, uint64_t i) {
 __cyrus_uint128 __cyrus_u128_mul(__cyrus_uint128 a, __cyrus_uint128 b) {
   __cyrus_uint128 r;
 
+  if (a.hi == 0 && b.hi == 0 && a.lo <= 0xFFFFFFFFULL && b.lo <= 0xFFFFFFFFULL) {
+    r.lo = a.lo * b.lo;
+    r.hi = 0;
+    return r;
+  }
+
   r.lo = 0;
   r.hi = 0;
 
@@ -209,6 +215,11 @@ __cyrus_uint128 __cyrus_u128_div(__cyrus_uint128 a, __cyrus_uint128 b) {
   if (b.lo == 0 && b.hi == 0)
     return q;
 
+  if (a.hi == 0 && b.hi == 0) {
+    q.lo = a.lo / b.lo;
+    return q;
+  }
+
   for (int i = 127; i >= 0; i -= 1) {
     rem = __cyrus_u128_shl(rem, 1);
     if (__cyrus_u128_bit(a, (uint64_t)i)) {
@@ -226,6 +237,13 @@ __cyrus_uint128 __cyrus_u128_div(__cyrus_uint128 a, __cyrus_uint128 b) {
 __cyrus_uint128 __cyrus_u128_mod(__cyrus_uint128 a, __cyrus_uint128 b) {
   if (b.lo == 0 && b.hi == 0)
     return a;
+
+  if (a.hi == 0 && b.hi == 0) {
+    __cyrus_uint128 r;
+    r.lo = a.lo % b.lo;
+    r.hi = 0;
+    return r;
+  }
 
   return __cyrus_u128_sub(a, __cyrus_u128_mul(__cyrus_u128_div(a, b), b));
 }

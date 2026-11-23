@@ -614,16 +614,16 @@ pub fn format_typed_expr(
         }
         case .Try(try_expr) => {
             var out = String.from_str(allocator, "try ");
-            var op = format_typed_expr(allocator, registry, tables, try_expr.operand);
-            out.push_str(op.as_str_const());
-            op.free();
+            var operand = format_typed_expr(allocator, registry, tables, try_expr->operand);
+            out.push_str(operand.as_str_const());
+            operand.free();
             return out;
         }
         case .TryCatch(try_catch_expr) => {
             var out = String.from_str(allocator, "try ");
-            var op = format_typed_expr(allocator, registry, tables, try_catch_expr.operand);
-            out.push_str(op.as_str_const());
-            op.free();
+            var operand = format_typed_expr(allocator, registry, tables, try_catch_expr->operand);
+            out.push_str(operand.as_str_const());
+            operand.free();
             out.push_str(" catch { ... }");
             return out;
         }

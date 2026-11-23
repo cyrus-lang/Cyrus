@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::collections::hash_map{HashMap};
 import std::mem{Allocator, alloc_init};
+import std::hash{hash_str, eq_str};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
@@ -82,41 +84,35 @@ pub struct ScopeBinding {
 
 pub struct ScopeTable {
     pub bindings: Vec<ScopeBinding>,
+    index_map: HashMap<const uint8*, usize>,
     allocator: Allocator,
 
     pub fn new(allocator: Allocator) Self {
-        return Self { bindings: Vec.new(allocator), allocator };
+        return Self {
+            bindings: Vec.new(allocator),
+            index_map: HashMap.with_hasher(allocator, 16, hash_str, eq_str),
+            allocator,
+        };
     }
 
     pub fn lookup(self: const Self*, name: const uint8*) Option<cir::SymbolId> {
-        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
-            const binding = self->bindings.get_const(i).unwrap();
-
-            if (binding->name.as_str_const() == name) {
-                return .Some(binding->symbol_id);
-            }
+        switch (self->lookup_binding(name)) {
+            case .Some(binding) => return .Some(binding->symbol_id);
+            else => return .None;
         }
-
-        return .None;
     }
 
     pub fn lookup_binding(self: const Self*, name: const uint8*) Option<const ScopeBinding*> {
-        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
-            const binding = self->bindings.get_const(i).unwrap();
-
-            if (binding->name.as_str_const() == name) {
-                return .Some(binding);
-            }
+        switch (self->index_map.get_owned(name)) {
+            case .Some(index) => return .Some(self->bindings.get_const(index).unwrap());
+            else => return .None;
         }
-
-        return .None;
     }
 
     pub fn bind(self: Self*, name: const uint8*, symbol_id: cir::SymbolId) Option<cir::SymbolId> {
-        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
-            var binding = self->bindings.get(i).unwrap();
-
-            if (binding->name.as_str_const() == name) {
+        switch (self->index_map.get_owned(name)) {
+            case .Some(index) => {
+                var binding = self->bindings.get(index).unwrap();
                 const previous = binding->symbol_id;
                 binding->symbol_id = symbol_id;
                 binding->debug_symbol_id = .Some(symbol_id);
@@ -125,16 +121,22 @@ pub struct ScopeTable {
                 binding->availability = ProfileSet.all();
                 return .Some(previous);
             }
+            else => {}
         }
 
+        const owned_name = String.from_str(self->allocator, name);
+        const key_ptr = owned_name.as_str_const();
+        const index = self->bindings.len();
+
         self->bindings.push(ScopeBinding {
-            name: String.from_str(self->allocator, name),
+            name: owned_name,
             symbol_id,
             debug_symbol_id: .Some(symbol_id),
             release_symbol_id: .Some(symbol_id),
             test_symbol_id: .Some(symbol_id),
             availability: ProfileSet.all(),
         });
+        self->index_map.insert(key_ptr, index);
 
         return .None;
     }
@@ -162,10 +164,9 @@ pub struct ScopeTable {
             test_symbol_id = .Some(symbol_id);
         }
 
-        for (var i: usize = 0; i < self->bindings.len(); i += 1) {
-            var binding = self->bindings.get(i).unwrap();
-
-            if (binding->name.as_str_const() == name) {
+        switch (self->index_map.get_owned(name)) {
+            case .Some(index) => {
+                var binding = self->bindings.get(index).unwrap();
                 const previous = binding->symbol_id;
 
                 if (profiles.debug) {
@@ -188,16 +189,22 @@ pub struct ScopeTable {
 
                 return .Some(previous);
             }
+            else => {}
         }
 
+        const owned_name = String.from_str(self->allocator, name);
+        const key_ptr = owned_name.as_str_const();
+        const index = self->bindings.len();
+
         self->bindings.push(ScopeBinding {
-            name: String.from_str(self->allocator, name),
+            name: owned_name,
             symbol_id,
             debug_symbol_id,
             release_symbol_id,
             test_symbol_id,
             availability: profiles,
         });
+        self->index_map.insert(key_ptr, index);
 
         return .None;
     }
@@ -211,6 +218,8 @@ pub struct ScopeTable {
 
     pub fn free(self: Self*) {
         const allocator = self->allocator;
+
+        self->index_map.free();
 
         for (var i: usize = 0; i < self->bindings.len(); i += 1) {
             var binding = self->bindings.get_owned(i).unwrap();

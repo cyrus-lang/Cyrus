@@ -284,15 +284,15 @@ struct DumpContext {
                 self->write(name.str.as_str_const());
             }
             case .Range(range) => {
-                self->write_expr(&range.lower);
+                self->write_expr(&range->lower);
 
-                if (range.inclusive_upper) {
+                if (range->inclusive_upper) {
                     self->write("..=");
                 } else {
                     self->write("..");
                 }
 
-                self->write_expr(&range.upper);
+                self->write_expr(&range->upper);
             }
             case .Expr(expr) => {
                 self->write_expr(&expr);
@@ -585,7 +585,7 @@ struct DumpContext {
                 self->write(";\n");
             }
             case .Variable(var_stmt) => {
-                self->write_var_content(&var_stmt);
+                self->write_var_content(var_stmt);
                 self->write(";\n");
             }
             case .GlobalVar(global_stmt) => {
@@ -612,7 +612,7 @@ struct DumpContext {
             case .For(for_stmt) => {
                 self->write("for (");
 
-                switch (for_stmt.initializer) {
+                switch (for_stmt->initializer) {
                     case .Some(initializer) => {
                         self->write_var_content(&initializer);
                     }
@@ -621,27 +621,27 @@ struct DumpContext {
 
                 self->write("; ");
 
-                switch (for_stmt.cond) {
+                switch (for_stmt->cond) {
                     case .Some(cond) => self->write_expr(&cond);
                     case .None => {}
                 }
 
                 self->write("; ");
 
-                switch (for_stmt.increment) {
+                switch (for_stmt->increment) {
                     case .Some(increment) => self->write_expr(&increment);
                     case .None => {}
                 }
 
                 self->write(") {\n");
-                self->dump_block_body(for_stmt.body, depth);
+                self->dump_block_body(for_stmt->body, depth);
                 self->indent(depth);
                 self->write("}\n");
             }
             case .Foreach(foreach_stmt) => {
                 self->write("for (");
 
-                switch (foreach_stmt.index_pattern) {
+                switch (foreach_stmt->index_pattern) {
                     case .Some(idx_pat) => {
                         self->write_export_pattern(&idx_pat);
                         self->write(", ");
@@ -649,11 +649,11 @@ struct DumpContext {
                     case .None => {}
                 }
 
-                self->write_export_pattern(&foreach_stmt.item_pattern);
+                self->write_export_pattern(&foreach_stmt->item_pattern);
                 self->write(" : ");
-                self->write_expr_typed(&foreach_stmt.iterable);
+                self->write_expr_typed(&foreach_stmt->iterable);
                 self->write(") {\n");
-                self->dump_block_body(foreach_stmt.body, depth);
+                self->dump_block_body(foreach_stmt->body, depth);
                 self->indent(depth);
                 self->write("}\n");
             }

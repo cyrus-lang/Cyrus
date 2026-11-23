@@ -53,23 +53,29 @@ pub struct Source {
     pub loffs: Vec<usize>, // Byte offsets where each line start
 
     pub fn new(allocator: Allocator, path: Path, content: String) Self {
-        const loffs: Vec<usize> = Vec.new(allocator);
+        const loffs: Vec<usize> = Vec.with_capacity(
+            allocator, 
+            (content.len() / 32) + 16
+        );
         var source = Self { content, path, loffs };
         source.compute_line_offsets();
         return source;
     }
 
     [[inline]]
-    fn compute_line_offsets(self: const Self*) {
+    fn compute_line_offsets(self: Self*) {
         // First line starts at byte offset zero
         self->loffs.push(0);
 
-        for (var i: usize = 0; i < self->content.len(); i += 1) {
-            const char = self->content.get(i).unwrap();
+        const bytes = self->content.as_str_const();
+        const content_len = self->content.len();
 
-            if (is_newline(char)) {
+        for (var i: usize = 0; i < content_len; i += 1) {
+            const ch = bytes[i];
+
+            if (ch == '\n' || ch == '\r' || ch == '\v' || ch == '\f') {
                 // Next line starts right after the newline
-                self->loffs.push(i + 1); 
+                self->loffs.push(i + 1);
             }
         }
     }

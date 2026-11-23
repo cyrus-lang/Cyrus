@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::collections::hash_map{HashMap};
 import std::mem{Allocator, alloc_init};
+import std::hash{hash_str, eq_str};
 import std::collections{Vec};
 import std::option{Option};
 import std::string{String};
@@ -62,6 +64,7 @@ pub struct ModuleGraph {
     pub order: Vec<usize>,
     pub has_errors: bool,
     active: Vec<usize>,
+    key_map: HashMap<const uint8*, usize>,
 
     pub fn discover(
         allocator: Allocator,
@@ -75,14 +78,18 @@ pub struct ModuleGraph {
         var graph = Self {
             allocator,
             dctx,
+            has_errors: false,
             nodes: Vec.new(allocator),
             order: Vec.new(allocator),
             active: Vec.new(allocator),
-            has_errors: false,
+            key_map: HashMap.with_hasher(allocator, 32, hash_str, eq_str),
         };
 
+        const entry_key = visit_key(allocator, entry_file_path);
+        const entry_key_ptr = entry_key.as_str_const();
+
         graph.nodes.push(ModuleNode {
-            key: visit_key(allocator, entry_file_path),
+            key: entry_key,
             file_path: String.from_str(allocator, entry_file_path),
             source_id: entry_source_id,
             program: entry_program,
@@ -94,12 +101,15 @@ pub struct ModuleGraph {
             parent_edge: .None,
             symbol: .None,
         });
+        graph.key_map.insert(entry_key_ptr, 0);
 
         graph.visit_node(0, lexical, opts);
         return graph;
     }
 
     pub fn free(self: Self*) {
+        self->key_map.free();
+
         for (var i: usize = 0; i < self->nodes.len(); i += 1) {
             var node = self->nodes.get(i).unwrap();
 
@@ -129,16 +139,9 @@ pub struct ModuleGraph {
         self->active.free();
     }
 
+    [[inline]]
     pub fn index_of(self: const Self*, key: const uint8*) Option<usize> {
-        for (var i: usize = 0; i < self->nodes.len(); i += 1) {
-            const node = self->nodes.get_const(i).unwrap();
-
-            if (node->key.as_str_const() == key) {
-                return .Some(i);
-            }
-        }
-
-        return .None;
+        return self->key_map.get_owned(key);
     }
 
     fn active_contains(self: const Self*, index: usize) bool {
@@ -349,6 +352,7 @@ pub struct ModuleGraph {
 
                 switch (lexical->tokenize_source(path)) case .Value(var source_tokens) else {
                     const target = self->nodes.len();
+                    const key_ptr = key.as_str_const();
 
                     self->nodes.push(ModuleNode {
                         key,
@@ -363,6 +367,7 @@ pub struct ModuleGraph {
                         parent_edge: .None,
                         symbol: .None,
                     });
+                    self->key_map.insert(key_ptr, target);
                     
                     self->push_edge(from, import_, import_node, target, resolved);
                     self->nodes.get(from).unwrap()->has_errors = true;
@@ -375,6 +380,7 @@ pub struct ModuleGraph {
                 switch (lexical->parse_source(source_tokens)) case .Value(var parsed) else {
                     source_tokens.free();
                     const target = self->nodes.len();
+                    const key_ptr = key.as_str_const();
 
                     self->nodes.push(ModuleNode {
                         key,
@@ -389,6 +395,7 @@ pub struct ModuleGraph {
                         parent_edge: .None,
                         symbol: .None,
                     });
+                    self->key_map.insert(key_ptr, target);
 
                     self->push_edge(from, import_, import_node, target, resolved);
                     self->nodes.get(from).unwrap()->has_errors = true;
@@ -397,6 +404,7 @@ pub struct ModuleGraph {
                 }
 
                 const target = self->nodes.len();
+                const key_ptr = key.as_str_const();
 
                 self->nodes.push(ModuleNode {
                     file_path: String.from_str(allocator, resolved.file_path.as_str_const()),
@@ -411,6 +419,7 @@ pub struct ModuleGraph {
                     symbol: .None,
                     key,
                 });
+                self->key_map.insert(key_ptr, target);
 
                 self->push_edge(from, import_, import_node, target, resolved);
 

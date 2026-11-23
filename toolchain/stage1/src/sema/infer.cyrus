@@ -51,6 +51,10 @@ pub struct InferContext {
     }
 
     pub fn resolve(self: const Self*, ty: const cir::SemaType*) cir::SemaType {
+        if (self->bindings.is_empty() || !ty->contains_infer_var()) {
+            return *ty;
+        }
+
         switch (*ty) {
             case .InferVar(id) => {
                 const bound = self->bindings.get_const(id);
@@ -62,7 +66,10 @@ pub struct InferContext {
             }
 
             case .Named(named_type) => {
-                var type_args = cir::TypeArgs.new(self->allocator);
+                var type_args = cir::TypeArgs.with_capacity(
+                    self->allocator,
+                    named_type.type_args.len()
+                );
 
                 for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
                     const arg = named_type.type_args.get(i).unwrap();

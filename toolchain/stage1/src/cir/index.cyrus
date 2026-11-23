@@ -1828,8 +1828,11 @@ pub enum SemaType {
             | .Err 
             | .Unresolved 
             | .Plain 
-            | .SelfType 
-            | .InterfaceObject => return false;
+            | .SelfType => return false;
+
+            case .InterfaceObject(interface_object) => {
+                return interface_object.concrete_type->contains_generic_param();
+            }
 
             case .Tuple(tuple) => {
                 for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
@@ -1915,6 +1918,18 @@ pub enum SemaType {
                     }
                 }
 
+                switch (func_ty.params.variadic) {
+                    case .Some(variadic) => switch (*variadic) {
+                        case .Typed(ty) => {
+                            if (ty.contains_self_type()) {
+                                return true;
+                            }
+                        }
+                        else => {}
+                    }
+                    else => {}
+                }
+
                 return func_ty.ret_type->contains_self_type();
             }
 
@@ -1938,13 +1953,99 @@ pub enum SemaType {
             
             case .SelfType => return true;
 
-            case .InterfaceObject
-            | .Plain
+            case .InterfaceObject(interface_object) => {
+                return interface_object.concrete_type->contains_self_type();
+            }
+
+            case .Plain
             | .GenericParam
             | .InferVar
             | .Unresolved
             | .Err
             | .Placeholder => return false;
+        }
+    }
+
+    pub fn needs_typedef_expansion(self: const Self*) bool {
+        switch (*self) {
+            case .Placeholder
+            | .InferVar
+            | .GenericParam
+            | .Err
+            | .Unresolved
+            | .Plain
+            | .SelfType
+            | .InterfaceObject => return false;
+
+            case .Named(named_type) => {
+                switch (named_type.type_decl_id) {
+                    case .Typedef => return true;
+                    else => {}
+                }
+
+                for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
+                    const type_arg = named_type.type_args.get(i).unwrap();
+
+                    switch (*type_arg) {
+                        case .Type(ty, _) => {
+                            if (ty.needs_typedef_expansion()) {
+                                return true;
+                            }
+                        }
+                        else => {}
+                    }
+                }
+
+                return false;
+            }
+
+            case .Tuple(tuple) => {
+                for (var i: usize = 0; i < tuple.elements.len(); i += 1) {
+                    const element = tuple.elements.get_const(i).unwrap();
+                    if (element->ty.needs_typedef_expansion()) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            case .FuncType(func) => {
+                for (var i: usize = 0; i < func.params.list.len(); i += 1) {
+                    const param = func.params.list.get_const(i).unwrap();
+                    if (param->needs_typedef_expansion()) {
+                        return true;
+                    }
+                }
+
+                switch (func.params.variadic) {
+                    case .Some(variadic) => switch (*variadic) {
+                        case .Typed(ty) => {
+                            if (ty.needs_typedef_expansion()) {
+                                return true;
+                            }
+                        }
+                        else => {}
+                    }
+                    else => {}
+                }
+
+                return func.ret_type->needs_typedef_expansion();
+            }
+
+            case .Array(array) => {
+                return array.element_type->needs_typedef_expansion();
+            }
+            
+            case .Const(inner) => {
+                if (inner->is_const()) {
+                    return true;
+                }
+                return inner->needs_typedef_expansion();
+            }
+
+            case .Pointer(inner) => {
+                return inner->needs_typedef_expansion();
+            }
         }
     }
 }
@@ -2577,6 +2678,7 @@ pub enum ExprKind {
     ArrayIndex(ArrayIndexExpr),
     FieldAccess(FieldAccess),
     UnionInit(UnionInitExpr),
+    TryCatch(TryCatchExpr*),
     MethodCall(MethodCall),
     InlineAsm(InlineAsm),
     Literal(LiteralExpr),
@@ -2594,8 +2696,7 @@ pub enum ExprKind {
     Array(ArrayExpr),
     Tuple(TupleExpr),
     Slice(SliceExpr),
-    Try(TryExpr),
-    TryCatch(TryCatchExpr),
+    Try(TryExpr*),
     SemaType {
         ty: SemaType,
         span: Span
@@ -3106,13 +3207,13 @@ pub enum StmtKind {
     FuncDecl(FuncDeclStmt),
     FuncDef(FuncDefStmt),
     InlineAsm(InlineAsm),
-    Foreach(ForeachStmt),
+    Foreach(ForeachStmt*),
     Typedef(TypedefStmt),
     BlockStmt(BlockStmt),
     Switch(SwitchStmt),
     Return(ReturnStmt),
     Struct(StructStmt),
-    Variable(VarStmt),
+    Variable(VarStmt*),
     Builtin(Builtin),
     While(WhileStmt),
     Label(LabelStmt),
@@ -3121,37 +3222,37 @@ pub enum StmtKind {
     Defer(DeferStmt),
     Goto(GotoStmt),
     Enum(EnumStmt),
-    For(ForStmt),
+    For(ForStmt*),
     If(IfStmt),
     Expr(Expr),
 
     pub fn span(self: const Self*) Span {
         switch (*self) {
-            case .BlockStmt(typed_block_statement) => return typed_block_statement.span;
-            case .GlobalVar(typed_global_variable) => return typed_global_variable.span;
-            case .TupleExport(export_tuple_values) => return export_tuple_values.span;
-            case .Interface(typed_interface) => return typed_interface.span;
-            case .FuncDecl(typed_func_decl) => return typed_func_decl.span;
-            case .Label(typed_label_stmt) => return typed_label_stmt.span;
-            case .Variable(typed_variable) => return typed_variable.span;
-            case .Continue(typed_continue) => return typed_continue.span;
-            case .FuncDef(typed_func_def) => return typed_func_def.span;
-            case .Builtin(typed_builtin) => return typed_builtin.span();
-            case .Goto(typed_goto_stmt) => return typed_goto_stmt.span;
-            case .Foreach(typed_foreach) => return typed_foreach.span;
-            case .Typedef(typed_typedef) => return typed_typedef.span;
-            case .Switch(typed_switch) => return typed_switch.span;
-            case .Return(typed_return) => return typed_return.span;
-            case .Struct(struct_stmt) => return struct_stmt.span;
-            case .Defer(typed_defer) => return typed_defer.span;
-            case .Break(typed_break) => return typed_break.span;
-            case .While(while_stmt) => return while_stmt.span;
-            case .Union(union_stmt) => return union_stmt.span;
-            case .Expr(typed_expr) => return typed_expr.span;
-            case .Enum(typed_enum) => return typed_enum.span;
-            case .For(typed_for) => return typed_for.span;
-            case .If(typed_if) => return typed_if.span;
+            case .TupleExport(tuple_export) => return tuple_export.span;
+            case .GlobalVar(global_Var) => return global_Var.span;
+            case .Interface(interface_) => return interface_.span;
+            case .FuncDecl(func_decl) => return func_decl.span;
+            case .Continue(continue_) => return continue_.span;
+            case .FuncDef(func_def_) => return func_def_.span;
+            case .Builtin(builtin) => return builtin.span();
+            case .Foreach(foreach) => return foreach->span;
+            case .Typedef(typedef) => return typedef.span;
+            case .Switch(switch_) => return switch_.span;
+            case .Return(return_) => return return_.span;
+            case .Struct(struct_) => return struct_.span;
+            case .BlockStmt(block) => return block.span;
+            case .Defer(defer_) => return defer_.span;
+            case .Break(break_) => return break_.span;
+            case .While(while_) => return while_.span;
+            case .Union(union_) => return union_.span;
+            case .Variable(var_) => return var_->span;
             case .InlineAsm(asm) => return asm.span;
+            case .Label(label) => return label.span;
+            case .Enum(enum_) => return enum_.span;
+            case .Expr(expr) => return expr.span;
+            case .For(for_) => return for_->span;
+            case .Goto(goto_) => return goto_.span;
+            case .If(if_) => return if_.span;
         }
     }
 }
@@ -3693,7 +3794,7 @@ pub enum SwitchCasePatternKind {
     },
 
     /// `1..10` or `1..=10`
-    Range(Range),
+    Range(Range*),
 
     /// literal / constant expression
     Expr(Expr),
@@ -3777,6 +3878,11 @@ pub struct TypeArgs {
     }
 
     [[inline]]
+    pub fn with_capacity(allocator: Allocator, cap: usize) Self {
+        return Self { list: Vec.with_capacity(allocator, cap) };
+    }
+
+    [[inline]]
     pub fn get(self: const Self*, index: usize) Option<TypeArg*> {
         return self->list.get(index);
     }
@@ -3824,6 +3930,11 @@ pub struct MethodDecls {
     [[inline]]
     pub fn new(allocator: Allocator) Self {
         return Self { entries: Vec.new(allocator) };
+    }
+
+    [[inline]]
+    pub fn with_capacity(allocator: Allocator, cap: usize) Self {
+        return Self { entries: Vec.with_capacity(allocator, cap) };
     }
 
     [[inline]]
@@ -4191,6 +4302,11 @@ pub struct StmtArena {
         return Self { allocator, items: Vec.new(allocator) };
     }
 
+    [[inline]]
+    pub fn from_vec(allocator: Allocator, items: Vec<Stmt>) Self {
+        return Self { allocator, items };
+    }
+
     pub fn alloc(self: Self*, stmt: Stmt) StmtId {
         const index = self->items.len();
 
@@ -4214,6 +4330,7 @@ pub struct StmtArena {
         return self->items.get(id.as_usize()).unwrap();
     }
 
+    [[inline]]
     pub fn len(self: const Self*) usize {
         return self->items.len();
     }
@@ -4260,6 +4377,10 @@ pub fn instantiate_method_decl(
     generic_params: const GenericParams*,
     type_args: const TypeArgs*
 ) MethodDecl {
+    if (generic_params->is_empty() || type_args->is_empty()) {
+        return *method_decl;
+    }
+
     return MethodDecl {
         object_name: method_decl->object_name,
         func_decl: instantiate_func_decl(
@@ -4279,6 +4400,10 @@ pub fn instantiate_func_decl(
     generic_params: const GenericParams*,
     type_args: const TypeArgs*
 ) FuncDecl {
+    if (generic_params->is_empty() || type_args->is_empty()) {
+        return *decl;
+    }
+
     const params = substitute_func_params_with_type_args(
         allocator,
         &decl->params, 
@@ -4316,6 +4441,13 @@ pub fn substitute_sema_type_with_type_args(
     generic_params: const GenericParams*,
     type_args: const TypeArgs*
 ) SemaType {
+    if (generic_params->is_empty() || 
+        type_args->is_empty() || 
+        !ty->contains_generic_param()) 
+    {
+        return *ty;
+    }
+
     switch (*ty) {
         case .GenericParam(generic_param_id) => {
             var pos: usize;
@@ -4351,7 +4483,10 @@ pub fn substitute_sema_type_with_type_args(
         }
 
         case .Named(named_type) => {
-            var new_args = TypeArgs.new(allocator);
+            var new_args = TypeArgs.with_capacity(
+                allocator, 
+                named_type.type_args.len()
+            );
             
             for (var i: usize = 0; i < named_type.type_args.len(); i += 1) {
                 const arg = named_type.type_args.get(i).unwrap();
@@ -4530,7 +4665,14 @@ pub fn substitute_func_params_with_type_args(
     generic_params: const GenericParams*,
     type_args: const TypeArgs*
 ) FuncParams {
-    var list: Vec<FuncParamKind> = Vec.new(allocator);
+    if (generic_params->is_empty() || type_args->is_empty()) {
+        return *params;
+    }
+
+    var list: Vec<FuncParamKind> = Vec.with_capacity(
+        allocator, 
+        params->list.len()
+    );
 
     for (var i: usize = 0; i < params->list.len(); i += 1) {
         const kind = params->list.get_const(i).unwrap();

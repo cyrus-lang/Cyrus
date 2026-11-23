@@ -28,6 +28,7 @@ const TYPE_CACHE_INITIAL_SIZE: usize = 64;
 
 pub struct AnalyzerContext {
     pub allocator: Allocator,
+    pub heap_allocator: Allocator,
     pub arena: ArenaAllocator,
     pub scratch_arena: ArenaAllocator,
     pub dctx: DiagContext*,
@@ -51,27 +52,29 @@ pub struct AnalyzerContext {
 
     pub fn new(
         allocator: Allocator,
+        heap_allocator: Allocator,
         dctx: DiagContext*,
         registry: GlobalSymbolRegistry*,
         decl_tables: tables::DeclTables*,
         trees: Vec<cir::ProgramTree>,
         dispatcher: AnalyzerDispatcher
     ) Self {
-        const scratch_arena = ArenaAllocator.new(allocator, SCRATCH_ARENA_INITIAL_SIZE);
-        const reported_const_cycles: Vec<cir::GlobalVarDeclId> = Vec.new(allocator);
-        const control_region_stack: Vec<flow::ControlRegion> = Vec.new(allocator);
-        const arena = ArenaAllocator.new(allocator, ANALYZER_ARENA_INITIAL_SIZE);
-        const generic_env_stack: Vec<env::GenericEnv*> = Vec.new(allocator);
-        const reported_typedef_cycles: Vec<String> = Vec.new(allocator);
-        const instantiations: Vec<InstanceSite> = Vec.new(allocator);
-        const monomorph_registry = MonomorphRegistry.new(allocator);
-        const vtable_registry = VTableRegistry.new(allocator);
-        const typedef_stack: Vec<usize> = Vec.new(allocator);
-        const func_env = env::FuncEnv.new(allocator);
-        const type_cache = TypeCache.new(allocator);
+        const scratch_arena = ArenaAllocator.new(heap_allocator, SCRATCH_ARENA_INITIAL_SIZE);
+        const reported_const_cycles: Vec<cir::GlobalVarDeclId> = Vec.new(heap_allocator);
+        const control_region_stack: Vec<flow::ControlRegion> = Vec.new(heap_allocator);
+        const arena = ArenaAllocator.new(heap_allocator, ANALYZER_ARENA_INITIAL_SIZE);
+        const generic_env_stack: Vec<env::GenericEnv*> = Vec.new(heap_allocator);
+        const reported_typedef_cycles: Vec<String> = Vec.new(heap_allocator);
+        const instantiations: Vec<InstanceSite> = Vec.new(heap_allocator);
+        const monomorph_registry = MonomorphRegistry.new(heap_allocator);
+        const vtable_registry = VTableRegistry.new(heap_allocator);
+        const typedef_stack: Vec<usize> = Vec.new(heap_allocator);
+        const func_env = env::FuncEnv.new(heap_allocator);
+        const type_cache = TypeCache.new(heap_allocator);
 
         return Self {
             allocator,
+            heap_allocator,
             arena,
             scratch_arena,
             dctx,

@@ -56,9 +56,9 @@ pub struct TraverseContext {
             enabled_features,
             target,
             current_scope: .Some(module_scope_id),
-            scope_table_stack: Vec.new(allocator),
-            local_scopes: Vec.new(allocator),
-            generic_scopes: Vec.new(allocator),
+            local_scopes: Vec.new(diag_allocator),
+            generic_scopes: Vec.new(diag_allocator),
+            scope_table_stack: Vec.new(diag_allocator),
             next_label_id: 0,
         };
     }
