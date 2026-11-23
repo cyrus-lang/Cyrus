@@ -1153,8 +1153,8 @@ fn analyze_global_var(
             switch (global_var->rhs) {
                 case .Some(expr) => {
                     switch (expr.ty) {
-                        case .Some(expr_ty) => {
-                            global_var->ty = .Some(expr_ty);
+                        case .Some(expr_type) => {
+                            global_var->ty = .Some(expr_type);
                         }
                         case .None => {
                             global_var->ty = .Some(cir::SemaType.Err(global_var->span));
@@ -1206,8 +1206,13 @@ fn analyze_global_var(
             switch (global_var->ty) {
                 case .Some(target_type) => {
                     switch (expr.ty) {
-                        case .Some(expr_ty) => {
-                            if (!cir::cir_types_eq(expr_ty.const_inner(), target_type.const_inner())) {
+                        case .Some(expr_type) => {
+                            if (!is_assignable_to(
+                                context, 
+                                expr_type, 
+                                target_type, 
+                                global_var->span
+                            )) {
                                 var lhs_name = format::format_sema_type(
                                     context->allocator,
                                     context->decl_tables,
@@ -1217,7 +1222,7 @@ fn analyze_global_var(
                                 var rhs_name = format::format_sema_type(
                                     context->allocator,
                                     context->decl_tables,
-                                    &expr_ty
+                                    &expr_type
                                 );
                                 defer rhs_name.free();
                                 diags::report_assignment_type_mismatch(
@@ -1351,8 +1356,8 @@ fn analyze_var(
                     var skip_mismatch = target_type.contains_error();
 
                     switch (expr.ty) {
-                        case .Some(expr_ty) => {
-                            if (expr_ty.contains_error()) {
+                        case .Some(expr_type) => {
+                            if (expr_type.contains_error()) {
                                 skip_mismatch = true;
                             }
                         }
@@ -1361,8 +1366,8 @@ fn analyze_var(
 
                     if (!skip_mismatch) {
                         switch (expr.ty) {
-                            case .Some(expr_ty) => {
-                                if (!is_assignable_to(context, expr_ty, target_type, var_->span)) {
+                            case .Some(expr_type) => {
+                                if (!is_assignable_to(context, expr_type, target_type, var_->span)) {
                                     var lhs_name = format::format_sema_type(
                                         context->allocator,
                                         context->decl_tables,
@@ -1371,7 +1376,7 @@ fn analyze_var(
                                     var rhs_name = format::format_sema_type(
                                         context->allocator,
                                         context->decl_tables,
-                                        &expr_ty
+                                        &expr_type
                                     );
 
                                     diags::report_assignment_type_mismatch(

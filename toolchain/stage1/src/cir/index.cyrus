@@ -3001,6 +3001,7 @@ pub struct TryExpr {
     pub control_flow_type: Option<SemaType>,
     pub value_type: Option<SemaType>,
     pub error_type: Option<SemaType>,
+    pub ret_error_type: Option<SemaType>,
     pub return_type: Option<SemaType>,
     pub span: Span,
 }

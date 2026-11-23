@@ -591,6 +591,7 @@ fn clone_expr_kind(
                 control_flow_type: try_expr.control_flow_type,
                 value_type: try_expr.value_type,
                 error_type: try_expr.error_type,
+                ret_error_type: try_expr.ret_error_type,
                 return_type: try_expr.return_type,
                 span: try_expr.span,
             });
