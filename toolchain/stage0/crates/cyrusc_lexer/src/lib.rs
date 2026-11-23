@@ -773,7 +773,6 @@ fn lookup_identifier(ident: String) -> TokenKind {
         "return" => TokenKind::Return,
         "for" => TokenKind::For,
         "while" => TokenKind::While,
-        "foreach" => TokenKind::Foreach,
         "break" => TokenKind::Break,
         "continue" => TokenKind::Continue,
         "true" => TokenKind::True,

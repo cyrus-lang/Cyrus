@@ -17,6 +17,7 @@ import source{SourceId};
 
 pub struct TraverseContext {
     pub allocator: Allocator,
+    pub heap_allocator: Allocator,
     pub diag_allocator: Allocator,
     pub dctx: DiagContext*,
     pub registry: GlobalSymbolRegistry*,
@@ -34,6 +35,7 @@ pub struct TraverseContext {
 
     pub fn new(
         allocator: Allocator,
+        heap_allocator: Allocator,
         diag_allocator: Allocator,
         dctx: DiagContext*,
         registry: GlobalSymbolRegistry*,
@@ -46,6 +48,7 @@ pub struct TraverseContext {
     ) Self {
         return Self {
             allocator,
+            heap_allocator,
             diag_allocator,
             dctx,
             registry,
@@ -56,9 +59,9 @@ pub struct TraverseContext {
             enabled_features,
             target,
             current_scope: .Some(module_scope_id),
-            local_scopes: Vec.new(diag_allocator),
-            generic_scopes: Vec.new(diag_allocator),
-            scope_table_stack: Vec.new(diag_allocator),
+            local_scopes: Vec.new(heap_allocator),
+            generic_scopes: Vec.new(heap_allocator),
+            scope_table_stack: Vec.new(heap_allocator),
             next_label_id: 0,
         };
     }

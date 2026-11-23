@@ -3233,9 +3233,9 @@ pub enum StmtKind {
             case .Interface(interface_) => return interface_.span;
             case .FuncDecl(func_decl) => return func_decl.span;
             case .Continue(continue_) => return continue_.span;
-            case .FuncDef(func_def_) => return func_def_.span;
+            case .FuncDef(func_def) => return func_def.span;
             case .Builtin(builtin) => return builtin.span();
-            case .Foreach(foreach) => return foreach->span;
+            case .Foreach(foreach_) => return foreach_->span;
             case .Typedef(typedef) => return typedef.span;
             case .Switch(switch_) => return switch_.span;
             case .Return(return_) => return return_.span;
