@@ -449,18 +449,18 @@ pub struct Args {
     }
 
     [[inline]]
-    pub fn has(self: const Self*, idx: usize) bool {
-        return idx < self->values->len();
+    pub fn has(self: const Self*, index: usize) bool {
+        return index < self->values->len();
     }
 
     [[inline]]
-    pub fn get(self: const Self*, idx: usize) Option<const Value*> {
-        return self->values->get_const(idx);
+    pub fn get(self: const Self*, index: usize) Option<const Value*> {
+        return self->values->get_const(index);
     }
 
     [[inline]]
-    pub fn get_str(self: const Self*, idx: usize) Option<const uint8*> {
-        switch (self->get(idx)) {
+    pub fn get_str(self: const Self*, index: usize) Option<const uint8*> {
+        switch (self->get(index)) {
             case .Some(val) => {
                 switch (*val) {
                     case .Str(s) => return .Some(s.as_str_const());
@@ -472,8 +472,8 @@ pub struct Args {
     }
 
     [[inline]]
-    pub fn get_int(self: const Self*, idx: usize) Option<int64> {
-        switch (self->get(idx)) {
+    pub fn get_int(self: const Self*, index: usize) Option<int64> {
+        switch (self->get(index)) {
             case .Some(val) => {
                 switch (*val) {
                     case .Int(n) => return .Some(n);
@@ -485,8 +485,8 @@ pub struct Args {
     }
 
     [[inline]]
-    pub fn get_float(self: const Self*, idx: usize) Option<float64> {
-        switch (self->get(idx)) {
+    pub fn get_float(self: const Self*, index: usize) Option<float64> {
+        switch (self->get(index)) {
             case .Some(val) => {
                 switch (*val) {
                     case .Float(f) => return .Some(f);
@@ -498,8 +498,8 @@ pub struct Args {
     }
 
     [[inline]]
-    pub fn get_bool(self: const Self*, idx: usize) Option<bool> {
-        switch (self->get(idx)) {
+    pub fn get_bool(self: const Self*, index: usize) Option<bool> {
+        switch (self->get(index)) {
             case .Some(val) => {
                 switch (*val) {
                     case .Bool(b) => return .Some(b);
@@ -1007,11 +1007,11 @@ pub fn validate(args: const Args*, cmd: const Cmd*) bool {
         fprintf(stderr, "Please use `--help` to see how it works\n");
     };
 
-    const argument_type_error = fn(idx: usize, got: const uint8*, expected: const uint8*) {
+    const argument_type_error = fn(index: usize, got: const uint8*, expected: const uint8*) {
         fprintf(
             stderr,
             "Argument at index %lu got type %s but expected to be %s\n",
-            idx, 
+            index, 
             got, 
             expected
         );

@@ -14,8 +14,10 @@ pub fn hash_str(str: const uint8*) uint64 {
 
 pub fn hash_usize(val: usize) uint64 {
     var x: uint64 = @cast(uint64, val);
-    x = x ^ (x >> 33);
-    x = x ^ (x >> 17);
+    x = x ^ (x >> 32) ^ (x << 13);
+    x = ((x & 0xffffffff) * 0x45d9f3b) ^ ((x >> 32) * 0x119de1f3);
+    x = x ^ (x >> 16);
+    x = ((x & 0xffffffff) * 0x45d9f3b) ^ ((x >> 32) * 0x119de1f3);
     x = x ^ (x >> 16);
     return x;
 }

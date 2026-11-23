@@ -3,10 +3,7 @@
 
 import std::iterator{Iter, IterConst, IterOwned};
 import std::libc{memmove, malloc};
-import std::math::checked{
-    checked_mul,
-    checked_add,
-};
+import std::math::checked{checked_add};
 import std::mem{Allocator};
 import std::option{Option};
 
@@ -17,16 +14,10 @@ pub struct Vec<T> {
     len: usize,
 
     pub fn new(allocator: Allocator) Self {
-        const data: T* = allocator.alloc(@size_of(T));
-
-        if (!data) {
-            @panic("allocation failed");
-        }
-
         return Self {
             allocator,
-            data,
-            cap: 1,
+            data: null,
+            cap: 0,
             len: 0,
         };
     }
@@ -35,23 +26,26 @@ pub struct Vec<T> {
     [[inline]]
     pub fn with_capacity(allocator: Allocator, cap: usize) Self {
         if (cap == 0) {
-            const data: T* = allocator.alloc(@size_of(T));
-            
-            if (!data) {
-                @panic("allocation failed");
-            }
-
             return Self {
                 allocator,
-                data,
-                cap: 1,
+                data: null,
+                cap: 0,
                 len: 0,
             };
         }
 
-        const size = checked_mul(cap, @size_of(T)).unwrap();
+        const elem_size = @size_of(T);
+        var byte_size: usize = cap;
 
-        const data: T* = allocator.alloc(size);
+        if (elem_size != 1) {
+            const max_usize: usize = ~(@cast(usize, 0));
+            if (elem_size > 0 && cap > max_usize / elem_size) {
+                @panic("allocation size overflow");
+            }
+            byte_size = cap * elem_size;
+        }
+
+        const data: T* = allocator.alloc(byte_size);
 
         if (data == null) {
             @panic("initial allocation failed");
@@ -60,7 +54,11 @@ pub struct Vec<T> {
         return Self { allocator, data, cap, len: 0 };
     }
 
-    pub fn extend(self: const Self*, other: const Self*) {
+    pub fn extend(self: Self*, other: const Self*) {
+        if (other->len == 0) {
+            return;
+        }
+
         if (self == other) {
             const original_len = self->len;
 
@@ -69,16 +67,16 @@ pub struct Vec<T> {
             memmove(
                 self->data + original_len,
                 self->data,
-                checked_mul(original_len, @size_of(T)).unwrap()
+                original_len * @size_of(T)
             );
 
-            self->len = checked_add(self->len, original_len).unwrap();
+            self->len += original_len;
         } else {
             self->extend_from_ptr(other->data, other->len);
         }
     }
 
-    pub fn extend_from_ptr(self: Self*, ptr: T*, len: usize) {
+    pub fn extend_from_ptr(self: Self*, ptr: const T*, len: usize) {
         if (len == 0) {
             return;
         }
@@ -88,17 +86,21 @@ pub struct Vec<T> {
         self->reserve(len);
 
         memmove(
-            self->data + old_len,
-            ptr,
-            checked_mul(len, @size_of(T)).unwrap()
+            @cast(void*, self->data + old_len),
+            @cast(const void*, ptr),
+            len * @size_of(T)
         );
 
-        self->len = checked_add(old_len, len).unwrap();
+        self->len = old_len + len;
     }
 
     /// Deep copy of the array. 
     [[inline]]
     pub fn clone(self: const Self*, allocator: Allocator) Self {
+        if (self->len == 0) {
+            return Vec.new(allocator);
+        }
+
         var vec: Vec<T> = Vec.with_capacity(allocator, self->len);
         vec.extend_from_ptr(self->data, self->len);
         return vec;
@@ -119,17 +121,18 @@ pub struct Vec<T> {
     }
 
     pub fn reserve(self: Self*, extra: usize) {
-        const required = checked_add(self->len, extra).unwrap();
-
-        if (required <= self->cap) {
+        if (extra == 0 || extra <= self->cap - self->len) {
             return;
         }
 
+        const required = checked_add(self->len, extra).unwrap();
         self->grow(required);
     }
 
     pub fn push(self: Self*, value: T) {
-        self->reserve(1);
+        if (self->len == self->cap) {
+            self->grow(self->len + 1);
+        }
 
         self->data[self->len] = value;
         self->len += 1;
@@ -150,13 +153,16 @@ pub struct Vec<T> {
             @panic("insertion index out of bounds");
         }
 
-        self->reserve(1);
+        if (self->len == self->cap) {
+            self->grow(self->len + 1);
+        }
 
-        const src: T* = self->data + index;
-        const dest: T* = self->data + index + 1;
         const count = self->len - index;
-
-        memmove(dest, src, count * @size_of(T));
+        if (count > 0) {
+            const src: T* = self->data + index;
+            const dest: T* = self->data + index + 1;
+            memmove(dest, src, count * @size_of(T));
+        }
 
         self->data[index] = value;
         self->len += 1;
@@ -292,8 +298,9 @@ pub struct Vec<T> {
         const dest = self->data + index;
 
         const count = self->len - index - 1;
-
-        memmove(dest, src, count * @size_of(T));
+        if (count > 0) {
+            memmove(dest, src, count * @size_of(T));
+        }
 
         self->len -= 1;
 
@@ -303,6 +310,11 @@ pub struct Vec<T> {
     [[inline]]
     pub fn len(self: const Self*) usize {
         return self->len;
+    }
+
+    [[inline]]
+    pub fn set_len(self: Self*, new_len: usize) {
+        self->len = new_len;
     }
 
     [[inline]]
@@ -337,36 +349,58 @@ pub struct Vec<T> {
 
     [[inline]]
     pub fn iter(self: Self*) VecIter<T> {
-        return VecIter<T> { vec: self, idx: 0 };
+        return VecIter<T> { vec: self, index: 0 };
     }
 
     [[inline]]
     pub fn iter_const(self: Self*) VecIterConst<T> {
-        return VecIterConst<T> { vec: self, idx: 0 };
+        return VecIterConst<T> { vec: self, index: 0 };
     }
 
     [[inline]]
     pub fn iter_owned(self: Self*) VecIterOwned<T> {
-        return VecIterOwned<T> { vec: self, idx: 0 };
+        return VecIterOwned<T> { vec: self, index: 0 };
     }
 
     fn grow(self: Self*, min_cap: usize) {
         var new_cap: usize;
+        const elem_size = @size_of(T);
 
         if (self->cap == 0) {
-            new_cap = 1;
+            if (elem_size <= 16) {
+                new_cap = 8;
+            } else {
+                new_cap = 1;
+            }
         } else {
             new_cap = self->cap;
+            if (elem_size <= 16 && new_cap < 8) {
+                new_cap = 8;
+            }
         }
+
+        const max_usize: usize = ~(@cast(usize, 0));
+        const half_max = max_usize >> 1;
 
         // Exponential growth (2x)
         while (new_cap < min_cap) {
-            new_cap = checked_mul(new_cap, 2).unwrap();
+            if (new_cap > half_max) {
+                @panic("capacity overflow");
+            }
+            new_cap = new_cap * 2;
+        }
+
+        var byte_size: usize = new_cap;
+        if (elem_size != 1) {
+            if (elem_size > 0 && new_cap > max_usize / elem_size) {
+                @panic("allocation size overflow");
+            }
+            byte_size = new_cap * elem_size;
         }
 
         const new_data: T* = self->allocator.realloc(
             self->data,
-            checked_mul(new_cap, @size_of(T)).unwrap()
+            byte_size
         );
 
         if (new_data == null) {
@@ -389,45 +423,45 @@ pub struct Vec<T> {
 
 pub struct VecIter<T> : Iter<T> {
     vec: Vec<T>*,
-    idx: usize,
+    index: usize,
 
     pub fn next(self: Self*) Option<T*> {
-        if (self->idx + 1 > self->vec->len()) {
+        if (self->index + 1 > self->vec->len()) {
             return .None;
         }
 
-        const item = self->vec->get(self->idx).unwrap();
-        self->idx += 1;
+        const item = self->vec->get(self->index).unwrap();
+        self->index += 1;
         return .Some(item);
     }
 }
 
 pub struct VecIterConst<T> : IterConst<T> {
     vec: const Vec<T>*,
-    idx: usize,
+    index: usize,
 
     pub fn next_const(self: Self*) Option<const T*> {
-        if (self->idx + 1 > self->vec->len()) {
+        if (self->index + 1 > self->vec->len()) {
             return .None;
         }
 
-        const item = self->vec->get_const(self->idx).unwrap();
-        self->idx += 1;
+        const item = self->vec->get_const(self->index).unwrap();
+        self->index += 1;
         return .Some(item);
     }
 }
 
 pub struct VecIterOwned<T> : IterOwned<T> {
     vec: const Vec<T>*,
-    idx: usize,
+    index: usize,
 
     pub fn next_owned(self: Self*) Option<T> {
-        if (self->idx + 1 > self->vec->len()) {
+        if (self->index + 1 > self->vec->len()) {
             return .None;
         }
 
-        const item = self->vec->get_owned(self->idx).unwrap();
-        self->idx += 1;
+        const item = self->vec->get_owned(self->index).unwrap();
+        self->index += 1;
         return .Some(item);
     }
 }
