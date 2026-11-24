@@ -687,6 +687,10 @@ pub struct BuildProfile {
     pub has_overflow_checks: bool,
     pub has_lto: bool,
     pub has_strip: bool,
+    pub linker_program: Option<String>,
+    pub linker_args: Vec<String>,
+    pub linker_lib_paths: Vec<String>,
+    pub linker_libs: Vec<String>,
     pub enabled_features: Vec<String>,
 
     pub fn new(allocator: Allocator, name: const uint8*) Self {
@@ -699,8 +703,36 @@ pub struct BuildProfile {
             has_overflow_checks: false,
             has_lto: false,
             has_strip: false,
+            linker_program: .None,
+            linker_args: Vec.new(allocator),
+            linker_lib_paths: Vec.new(allocator),
+            linker_libs: Vec.new(allocator),
             enabled_features: Vec.new(allocator),
         };
+    }
+
+    pub fn linker(self: Self*, program: const uint8*) Self* {
+        switch (self->linker_program) {
+            case .Some(var existing) => existing.free();
+            case .None => {}
+        }
+        self->linker_program = .Some(String.from_str(self->allocator, program));
+        return self;
+    }
+
+    pub fn linker_arg(self: Self*, arg: const uint8*) Self* {
+        self->linker_args.push(String.from_str(self->allocator, arg));
+        return self;
+    }
+
+    pub fn lib_path(self: Self*, path: const uint8*) Self* {
+        self->linker_lib_paths.push(String.from_str(self->allocator, path));
+        return self;
+    }
+
+    pub fn link_lib(self: Self*, lib: const uint8*) Self* {
+        self->linker_libs.push(String.from_str(self->allocator, lib));
+        return self;
     }
 
     pub fn optimization(self: Self*, level: int32) Self* {
@@ -740,6 +772,15 @@ pub struct BuildProfile {
 
     pub fn free(self: Self*) {
         self->name.free();
+
+        switch (self->linker_program) {
+            case .Some(var program) => program.free();
+            case .None => {}
+        }
+
+        free_strings(&self->linker_args);
+        free_strings(&self->linker_lib_paths);
+        free_strings(&self->linker_libs);
         free_strings(&self->enabled_features);
     }
 }
@@ -1301,6 +1342,33 @@ pub struct Builder {
             push_bool_str(&out, profile->has_strip);
             out.push('\n');
 
+            switch (profile->linker_program) {
+                case .Some(program) => {
+                    out.push_str("PROF_LINKER\t");
+                    push_escaped_tsv_field(&out, program.as_str_const());
+                    out.push('\n');
+                }
+                case .None => {}
+            }
+
+            for (var k: usize = 0; k < profile->linker_args.len(); k += 1) {
+                out.push_str("PROF_LINK_ARG\t");
+                push_escaped_tsv_field(&out, profile->linker_args.get_const(k).unwrap()->as_str_const());
+                out.push('\n');
+            }
+
+            for (var k: usize = 0; k < profile->linker_lib_paths.len(); k += 1) {
+                out.push_str("PROF_LIB_PATH\t");
+                push_escaped_tsv_field(&out, profile->linker_lib_paths.get_const(k).unwrap()->as_str_const());
+                out.push('\n');
+            }
+
+            for (var k: usize = 0; k < profile->linker_libs.len(); k += 1) {
+                out.push_str("PROF_LINK_LIB\t");
+                push_escaped_tsv_field(&out, profile->linker_libs.get_const(k).unwrap()->as_str_const());
+                out.push('\n');
+            }
+
             for (var k: usize = 0; k < profile->enabled_features.len(); k += 1) {
                 out.push_str("PROF_FEAT\t");
                 push_escaped_tsv_field(&out, profile->enabled_features.get_const(k).unwrap()->as_str_const());
@@ -1584,6 +1652,14 @@ pub struct Builder {
                     profile->overflow_checks(parts.get_const(5).unwrap()->as_str_const() == "1");
                     profile->lto(parts.get_const(6).unwrap()->as_str_const() == "1");
                     profile->strip(parts.get_const(7).unwrap()->as_str_const() == "1");
+                } else if (tag == "PROF_LINKER" && current_prof != null && parts.len() >= 2) {
+                    current_prof->linker(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "PROF_LINK_ARG" && current_prof != null && parts.len() >= 2) {
+                    current_prof->linker_arg(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "PROF_LIB_PATH" && current_prof != null && parts.len() >= 2) {
+                    current_prof->lib_path(parts.get_const(1).unwrap()->as_str_const());
+                } else if (tag == "PROF_LINK_LIB" && current_prof != null && parts.len() >= 2) {
+                    current_prof->link_lib(parts.get_const(1).unwrap()->as_str_const());
                 } else if (tag == "PROF_FEAT" && current_prof != null && parts.len() >= 2) {
                     current_prof->enable_feature(parts.get_const(1).unwrap()->as_str_const());
                 } else if (tag == "GEN" && parts.len() >= 3) {
