@@ -429,6 +429,7 @@ fn compile_file(
         null,
         null,
         .None,
+        null,
         null
     );
 }

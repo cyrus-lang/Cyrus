@@ -11,6 +11,7 @@ import std::mem{Allocator};
 import std::os::process;
 import std::os::dir;
 import std::os::env;
+import std::build;
 import std::cli;
 import std::os;
 
@@ -521,6 +522,22 @@ fn push_unique_feature(
     list->push(String.from_str(allocator, item));
 }
 
+fn default_linker_for_profile(
+    profile: Profile,
+    os: abi::target::OS
+) const uint8* {
+    if (profile != .Release) {
+        return "tcc";
+    }
+
+    switch (os) {
+        case .MacOS => return "clang";
+        case .Windows => return "cl";
+        case .Linux => return "gcc";
+        else => return "tcc";
+    }
+}
+
 pub fn compile_source_with_options(
     allocator: Allocator,
     action: cli::ActionContext,
@@ -533,7 +550,8 @@ pub fn compile_source_with_options(
     extra_lib_paths: const Vec<String>*,
     extra_libraries: const Vec<String>*,
     profile_override: Option<Profile>,
-    extra_features: const Vec<String>*
+    extra_features: const Vec<String>*,
+    active_build_profile: const build::BuildProfile*
 ) int32 {
     if (module_merge_mode_unsupported(action.opts)) {
         compile_error("unsupported module merge mode (expected `separate`)");
@@ -650,7 +668,41 @@ pub fn compile_source_with_options(
         opts.profile = .Test;
     }
 
-    var linker_program: const uint8* = "tcc";
+    var linker_program: const uint8* = default_linker_for_profile(opts.profile, target.os);
+    var opt_level: OptLevel = .O0;
+
+    if (opts.profile == .Release) {
+        opt_level = .O2;
+    }
+
+    var debug_info = opts.profile == .Debug;
+    var extra_linker_args: const Vec<String>* = null;
+    var strip = false;
+    var lto = false;
+
+    if (active_build_profile != null) {
+        switch (active_build_profile->linker_program) {
+            case .Some(prog) => {
+                linker_program = prog.as_str_const();
+            }
+            case .None => {}
+        }
+
+        if (active_build_profile->opt_level >= 3) {
+            opt_level = .O3;
+        } else if (active_build_profile->opt_level == 2) {
+            opt_level = .O2;
+        } else if (active_build_profile->opt_level == 1) {
+            opt_level = .O1;
+        } else {
+            opt_level = .O0;
+        }
+
+        debug_info = active_build_profile->has_debug_info;
+        lto = active_build_profile->has_lto;
+        strip = active_build_profile->has_strip;
+        extra_linker_args = &active_build_profile->linker_args;
+    }
 
     switch (action.opts->find("linker")) {
         case .Some(opt) => {
@@ -667,12 +719,6 @@ pub fn compile_source_with_options(
             }
         }
         else => {}
-    }
-
-    var opt_level: OptLevel = .O0;
-
-    if (opts.profile == .Release) {
-        opt_level = .O2;
     }
 
     switch (action.opts->find("optimize")) {
@@ -700,10 +746,19 @@ pub fn compile_source_with_options(
         else => {}
     }
 
-    const debug_info = action.opts->enabled("debug") || opts.profile == .Debug;
+    if (action.opts->enabled("debug")) {
+        debug_info = true;
+    }
 
     var codegen = CodegenContext.new(allocator, backend, target);
-    codegen.set_linker_options(linker_program, opt_level, debug_info);
+    codegen.set_linker_options(
+        linker_program,
+        opt_level,
+        debug_info,
+        lto,
+        strip,
+        extra_linker_args
+    );
 
     var out = String.new(allocator);
     defer out.free();

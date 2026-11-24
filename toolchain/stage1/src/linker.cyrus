@@ -51,6 +51,9 @@ pub struct Linker {
     program: String,
     opt_level: OptLevel,
     debug_info: bool,
+    lto: bool,
+    strip: bool,
+    extra_args: const Vec<String>*,
 
     pub fn new(
         allocator: Allocator,
@@ -63,7 +66,21 @@ pub struct Linker {
             program: String.from_str(allocator, program),
             opt_level,
             debug_info,
+            lto: false,
+            strip: false,
+            extra_args: null,
         };
+    }
+
+    pub fn set_flags(
+        self: Self*,
+        lto: bool,
+        strip: bool,
+        extra_args: const Vec<String>*
+    ) {
+        self->lto = lto;
+        self->strip = strip;
+        self->extra_args = extra_args;
     }
 
     pub fn free(self: Self*) {
@@ -128,20 +145,81 @@ pub struct Linker {
         }
         defer temp_dir.free();
 
-        var c_path = join_path(self->allocator, temp_dir.path(), "unit.c");
-        defer c_path.free();
-        defer dir::remove_file(c_path.as_str_const());
+        var unit_path = join_path(self->allocator, temp_dir.path(), "unit.c");
+        defer unit_path.free();
+        defer dir::remove_file(unit_path.as_str_const());
 
-        if (!write_c_source_file(self->allocator, c_path.as_str_const(), source)) {
+        if (!write_c_source_file(
+            self->allocator, 
+            unit_path.as_str_const(), 
+            source
+        )) {
             return false;
         }
 
         var cmd = String.new(self->allocator);
         defer cmd.free();
 
-        cmd.push_str(self->program.as_str_const());
+        const prog = self->program.as_str_const();
+        
+        const is_msvc = 
+            prog == "msvc" || prog == "cl" || prog == "cl.exe";
+
+        if (is_msvc) {
+            if (prog == "msvc") {
+                cmd.push_str("cl");
+            } else {
+                cmd.push_str(prog);
+            }
+
+            cmd.push_str(" /nologo /w /TC");
+            push_shell_quoted_arg(&cmd, unit_path.as_str_const());
+
+            var fe_arg = String.from_str(self->allocator, "/Fe:");
+            fe_arg.push_str(output_path);
+            push_shell_quoted_arg(&cmd, fe_arg.as_str_const());
+            fe_arg.free();
+
+            switch (self->opt_level) {
+                case .O0 => cmd.push_str(" /Od");
+                case .O1 | .Os | .Oz => cmd.push_str(" /O1");
+                case .O2 | .O3 => cmd.push_str(" /O2");
+            }
+
+            if (self->debug_info) {
+                cmd.push_str(" /Zi");
+            }
+
+            if (self->lto) {
+                cmd.push_str(" /GL");
+            }
+
+            push_newline_items(self->allocator, &cmd, extra_files, "");
+
+            if (self->extra_args != null) {
+                for (var i: usize = 0; i < self->extra_args->len(); i += 1) {
+                    push_shell_quoted_arg(
+                        &cmd, 
+                        self->extra_args->get_const(i).unwrap()->as_str_const()
+                    );
+                }
+            }
+
+            const has_lib_paths = lib_paths != null && lib_paths[0] != '\0';
+            const has_libs = libraries != null && libraries[0] != '\0';
+            
+            if (has_lib_paths || has_libs) {
+                cmd.push_str(" /link");
+                push_newline_items(self->allocator, &cmd, lib_paths, "/LIBPATH:");
+                push_newline_items(self->allocator, &cmd, libraries, "");
+            }
+
+            return wait_status_ok(process::exec(cmd.as_str_const()));
+        }
+
+        cmd.push_str(prog);
         cmd.push_str(" -x c");
-        push_shell_quoted_arg(&cmd, c_path.as_str_const());
+        push_shell_quoted_arg(&cmd, unit_path.as_str_const());
         cmd.push_str(" -x none -o");
         push_shell_quoted_arg(&cmd, output_path);
         cmd.push(' ');
@@ -151,7 +229,21 @@ pub struct Linker {
             cmd.push_str(" -g");
         }
 
+        if (self->lto) {
+            cmd.push_str(" -flto");
+        }
+
+        if (self->strip) {
+            cmd.push_str(" -s");
+        }
+
         cmd.push_str(" -w -Wno-incompatible-pointer-types");
+
+        if (self->extra_args != null) {
+            for (var i: usize = 0; i < self->extra_args->len(); i += 1) {
+                push_shell_quoted_arg(&cmd, self->extra_args->get_const(i).unwrap()->as_str_const());
+            }
+        }
 
         push_newline_items(self->allocator, &cmd, extra_files, "");
         push_newline_items(self->allocator, &cmd, lib_paths, "-L");

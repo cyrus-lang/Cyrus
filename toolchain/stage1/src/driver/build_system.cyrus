@@ -101,7 +101,7 @@ pub fn build_or_run_project(
     defer builder.free();
 
     if (builder.packages.len() == 0) {
-        compile_error("`build.cyrus` did not define a package via `b->package(...)`");
+        compile_error("`build.cyrus` did not define a package via `builder->package(...)`");
         return 1;
     }
 
@@ -566,17 +566,35 @@ pub fn build_or_run_project(
 
     var active_features: Vec<String> = Vec.new(allocator);
     defer free_strings(&active_features);
+
+    var extra_lib_paths: Vec<String> = Vec.new(allocator);
+    defer free_strings(&extra_lib_paths);
     
     for (var i: usize = 0; i < requested_features.len(); i += 1) {
         const feature = requested_features.get_const(i).unwrap()->as_str_const();
         push_unique_str(allocator, &active_features, feature);
     }
+
+    var active_profile_ptr: const build::BuildProfile* = null;
     
     switch (find_active_build_profile(action, &builder)) {
         case .Some(profile) => {
+            active_profile_ptr = profile;
+
             for (var i: usize = 0; i < profile->enabled_features.len(); i += 1) {
                 const enabled_feature = profile->enabled_features.get_const(i).unwrap()->as_str_const();
                 push_unique_str(allocator, &active_features, enabled_feature);
+            }
+
+            for (var i: usize = 0; i < profile->linker_lib_paths.len(); i += 1) {
+                const raw_path = profile->linker_lib_paths.get_const(i).unwrap()->as_str_const();
+                const resolved_path = resolve_project_path(allocator, project_root, raw_path);
+                extra_lib_paths.push(resolved_path);
+            }
+
+            for (var i: usize = 0; i < profile->linker_libs.len(); i += 1) {
+                const lib = profile->linker_libs.get_const(i).unwrap()->as_str_const();
+                push_unique_str(allocator, &native_link_libs, lib);
             }
         }
         case .None => {}
@@ -603,10 +621,11 @@ pub fn build_or_run_project(
             &extra_source_dirs,
             &module_aliases,
             &extra_native_files,
-            null,
+            &extra_lib_paths,
             &native_link_libs,
             profile_override,
-            &active_features
+            &active_features,
+            active_profile_ptr
         );
         if (status != 0) {
             return status;
@@ -651,10 +670,11 @@ pub fn build_or_run_project(
         &extra_source_dirs,
         &module_aliases,
         &extra_native_files,
-        null,
+        &extra_lib_paths,
         &native_link_libs,
         profile_override,
-        &active_features
+        &active_features,
+        active_profile_ptr
     );
 }
 
@@ -866,12 +886,12 @@ fn find_mangled_build_fn(
                     }
 
                     if (func_def.modifiers.vis != .Public) {
-                        compile_error("`build` function in `build.cyrus` must be declared `pub fn build(b: Builder*)`");
+                        compile_error("`build` function in `build.cyrus` must be declared `pub fn build(builder: Builder*)`");
                         return .None;
                     }
 
                     if (func_def.params.list.len() != 1 || !func_def.ret_type.is_void()) {
-                        compile_error("`build` function in `build.cyrus` must have signature `pub fn build(b: Builder*)`");
+                        compile_error("`build` function in `build.cyrus` must have signature `pub fn build(builder: Builder*)`");
                         return .None;
                     }
 
@@ -907,7 +927,7 @@ fn find_mangled_build_fn(
         }
     }
 
-    compile_error("`build.cyrus` must define `pub fn build(b: Builder*)`");
+    compile_error("`build.cyrus` must define `pub fn build(builder: Builder*)`");
     return .None;
 }
 
@@ -1460,6 +1480,7 @@ fn run_build_generators(
                     null,
                     null,
                     .None,
+                    null,
                     null
                 );
                 if (status != 0) {

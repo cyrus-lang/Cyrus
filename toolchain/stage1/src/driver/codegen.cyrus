@@ -2,6 +2,8 @@
 // Copyright (c) 2026 The Cyrus Language
 
 import std::io{Writer, FileWriter};
+import std::collections{Vec};
+import std::string{String};
 import std::mem{Allocator};
 import std::option{Option};
 import std::path{Path};
@@ -36,6 +38,9 @@ pub struct CodegenContext {
     pub linker_program: const uint8*,
     pub opt_level: OptLevel,
     pub debug_info: bool,
+    pub lto: bool,
+    pub strip: bool,
+    pub extra_linker_args: const Vec<String>*,
 
     pub fn new(
         allocator: Allocator, 
@@ -49,6 +54,9 @@ pub struct CodegenContext {
             linker_program: "tcc",
             opt_level: .O0,
             debug_info: false,
+            lto: false,
+            strip: false,
+            extra_linker_args: null,
         };
     }
 
@@ -56,11 +64,17 @@ pub struct CodegenContext {
         self: Self*,
         linker_program: const uint8*,
         opt_level: OptLevel,
-        debug_info: bool
+        debug_info: bool,
+        lto: bool,
+        strip: bool,
+        extra_linker_args: const Vec<String>*
     ) {
         self->linker_program = linker_program;
         self->opt_level = opt_level;
         self->debug_info = debug_info;
+        self->lto = lto;
+        self->strip = strip;
+        self->extra_linker_args = extra_linker_args;
     }
 
     pub fn emit(
@@ -122,6 +136,8 @@ pub struct CodegenContext {
                     self->debug_info
                 );
                 defer linker.free();
+
+                linker.set_flags(self->lto, self->strip, self->extra_linker_args);
 
                 return linker.compile_c_and_link(
                     source,
