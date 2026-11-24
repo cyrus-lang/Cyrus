@@ -1,18 +1,281 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 The Cyrus Language
 
+import std::io{Writer, FileWriter};
+import std::path{Path, join_path};
 import std::collections{Vec};
+import std::option{Option};
 import std::string{String};
+import std::mem{Allocator};
+import std::libc{strlen};
+import std::os::process;
+import std::os::dir;
+import std::os{File};
 
-pub struct Linker {
-    pub fn trigger(
-        linker: String,
-        object_files: const Vec<String>*,
-        library_paths: const Vec<String>*,
-        library_names: const Vec<String>*
-    ) {
-        @todo();
+import escape{push_shell_quoted_arg};
+
+pub enum OptLevel {
+    O0,
+    O1,
+    O2,
+    O3,
+    Os,
+    Oz,
+
+    pub fn from_str(value: const uint8*) Option<Self> {
+        switch (value) {
+            case "o0" | "O0" | "0" => return .Some(.O0);
+            case "o1" | "O1" | "1" => return .Some(.O1);
+            case "o2" | "O2" | "2" => return .Some(.O2);
+            case "o3" | "O3" | "3" => return .Some(.O3);
+            case "os" | "Os" | "s" => return .Some(.Os);
+            case "oz" | "Oz" | "z" => return .Some(.Oz);
+            else => return .None;
+        }
+    }
+
+    pub fn as_flag(self: const Self*) const uint8* {
+        switch (*self) {
+            case .O0 => return "-O0";
+            case .O1 => return "-O1";
+            case .O2 => return "-O2";
+            case .O3 => return "-O3";
+            case .Os => return "-Os";
+            case .Oz => return "-Oz";
+        }
     }
 }
 
+pub struct Linker {
+    allocator: Allocator,
+    program: String,
+    opt_level: OptLevel,
+    debug_info: bool,
 
+    pub fn new(
+        allocator: Allocator,
+        program: const uint8*,
+        opt_level: OptLevel,
+        debug_info: bool
+    ) Self {
+        return Self {
+            allocator,
+            program: String.from_str(allocator, program),
+            opt_level,
+            debug_info,
+        };
+    }
+
+    pub fn free(self: Self*) {
+        self->program.free();
+    }
+
+    pub fn trigger(
+        allocator: Allocator,
+        linker: String,
+        output_path: const uint8*,
+        object_files: const Vec<String>*,
+        library_paths: const Vec<String>*,
+        library_names: const Vec<String>*
+    ) bool {
+        var cmd = String.new(allocator);
+        defer cmd.free();
+
+        push_shell_quoted_arg(&cmd, linker.as_str_const());
+        cmd.push_str(" -o");
+        push_shell_quoted_arg(&cmd, output_path);
+
+        if (object_files != null) {
+            for (var i: usize = 0; i < object_files->len(); i += 1) {
+                push_shell_quoted_arg(
+                    &cmd, 
+                    object_files->get_const(i).unwrap()->as_str_const()
+                );
+            }
+        }
+
+        if (library_paths != null) {
+            for (var i: usize = 0; i < library_paths->len(); i += 1) {
+                var flag = String.from_str(allocator, "-L");
+                flag.push_str(library_paths->get_const(i).unwrap()->as_str_const());
+                push_shell_quoted_arg(&cmd, flag.as_str_const());
+                flag.free();
+            }
+        }
+
+        if (library_names != null) {
+            for (var i: usize = 0; i < library_names->len(); i += 1) {
+                var flag = String.from_str(allocator, "-l");
+                flag.push_str(library_names->get_const(i).unwrap()->as_str_const());
+                push_shell_quoted_arg(&cmd, flag.as_str_const());
+                flag.free();
+            }
+        }
+
+        return wait_status_ok(process::exec(cmd.as_str_const()));
+    }
+
+    pub fn compile_c_and_link(
+        self: const Self*,
+        source: const uint8*,
+        output_path: const uint8*,
+        extra_files: const uint8*,
+        lib_paths: const uint8*,
+        libraries: const uint8*
+    ) bool {
+        switch (dir::TempDir.create(self->allocator)) case .Some(var temp_dir) else {
+            return false;
+        }
+        defer temp_dir.free();
+
+        var c_path = join_path(self->allocator, temp_dir.path(), "unit.c");
+        defer c_path.free();
+        defer dir::remove_file(c_path.as_str_const());
+
+        if (!write_c_source_file(self->allocator, c_path.as_str_const(), source)) {
+            return false;
+        }
+
+        var cmd = String.new(self->allocator);
+        defer cmd.free();
+
+        cmd.push_str(self->program.as_str_const());
+        cmd.push_str(" -x c");
+        push_shell_quoted_arg(&cmd, c_path.as_str_const());
+        cmd.push_str(" -x none -o");
+        push_shell_quoted_arg(&cmd, output_path);
+        cmd.push(' ');
+        cmd.push_str(self->opt_level.as_flag());
+
+        if (self->debug_info) {
+            cmd.push_str(" -g");
+        }
+
+        cmd.push_str(" -w -Wno-incompatible-pointer-types");
+
+        push_newline_items(self->allocator, &cmd, extra_files, "");
+        push_newline_items(self->allocator, &cmd, lib_paths, "-L");
+        push_newline_items(self->allocator, &cmd, libraries, "-l");
+
+        if (has_newline_item(libraries, "tcc")) {
+            cmd.push_str(" -ldl -lpthread");
+        }
+
+        return wait_status_ok(process::exec(cmd.as_str_const()));
+    }
+}
+
+fn write_c_source_file(
+    allocator: Allocator, 
+    file_path: const uint8*, 
+    source: const uint8*
+) bool {
+    const path = Path.new(allocator, file_path);
+    defer path.free();
+
+    switch (File.open(&path, .Write)) case .Value(var file) else {
+        return false;
+    }
+    defer file.close();
+
+    var writer: Writer = dynamic FileWriter.new(&file);
+    writer.write_all(source);
+    return true;
+}
+
+fn push_newline_items(
+    allocator: Allocator, 
+    cmd: String*, 
+    items: const uint8*, 
+    prefix: const uint8*
+) {
+    if (items == null || items[0] == '\0') {
+        return;
+    }
+
+    const prefix_len = strlen(prefix);
+
+    var pos: usize = 0;
+
+    while (items[pos] != '\0') {
+        var end = pos;
+
+        while (items[end] != '\0' && items[end] != '\n') {
+            end += 1;
+        }
+
+        if (end > pos) {
+            var item = String.with_capacity(allocator, prefix_len + (end - pos));
+            
+            if (prefix_len > 0) {
+                item.push_bytes(prefix, prefix_len);
+            }
+            
+            item.push_bytes(items + pos, end - pos);
+            push_shell_quoted_arg(cmd, item.as_str_const());
+            item.free();
+        }
+
+        if (items[end] == '\n') {
+            pos = end + 1;
+        } else {
+            pos = end;
+        }
+    }
+}
+
+fn has_newline_item(items: const uint8*, target: const uint8*) bool {
+    if (items == null || items[0] == '\0') {
+        return false;
+    }
+
+    const target_len = strlen(target);
+    
+    var pos: usize = 0;
+
+    while (items[pos] != '\0') {
+        var end = pos;
+
+        while (items[end] != '\0' && items[end] != '\n') {
+            end += 1;
+        }
+
+        if (end - pos == target_len) {
+            var matches = true;
+
+            for (var i: usize = 0; i < target_len; i += 1) {
+                if (items[pos + i] != target[i]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                return true;
+            }
+        }
+
+        if (items[end] == '\n') {
+            pos = end + 1;
+        } else {
+            pos = end;
+        }
+    }
+
+    return false;
+}
+
+fn wait_status_ok(exit_status: int32) bool {
+    if (exit_status == -1) {
+        return false;
+    }
+
+    const child_status = @cast(uint32, exit_status);
+    const termination_signal = child_status & 0x7f;
+    
+    if (termination_signal != 0) {
+        return false;
+    }
+
+    const code = (child_status >> 8) & 0xff;
+    return code == 0;
+}

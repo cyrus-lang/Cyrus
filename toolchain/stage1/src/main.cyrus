@@ -56,6 +56,18 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->help("Backend compiler (c | llvm)")
     );
 
+    const linker_opt = opts.add(
+        *cli::Opt.new(allocator, "linker")
+        .arg(.Str)
+        ->help("Linker / C compiler driver (tcc | gcc | clang | cc)")
+    );
+
+    const optimize_opt = opts.add(
+        *cli::Opt.new(allocator, "optimize")
+        .arg(.Str)
+        ->help("Optimization level (o0 | o1 | o2 | o3 | os | oz)")
+    );
+
     const release_opt = opts.add(
         *cli::Opt.new(allocator, "release")
         .short('r')
@@ -175,6 +187,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(package_opt)
         ->add_option(feature_opt)
         ->add_option(backend_opt)
+        ->add_option(linker_opt)
+        ->add_option(optimize_opt)
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
         ->add_option(profile_opt)
@@ -197,6 +211,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(package_opt)
         ->add_option(feature_opt)
         ->add_option(backend_opt)
+        ->add_option(linker_opt)
+        ->add_option(optimize_opt)
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
         ->add_option(profile_opt)
@@ -219,6 +235,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(package_opt)
         ->add_option(feature_opt)
         ->add_option(backend_opt)
+        ->add_option(linker_opt)
+        ->add_option(optimize_opt)
         ->add_option(output_opt)
         ->add_option(stdlib_opt)
         ->add_option(profile_opt)
@@ -266,6 +284,8 @@ fn app(argc: c_int, argv: c_char**) int32 {
         ->add_option(target_opt)
         ->add_option(feature_opt)
         ->add_option(backend_opt)
+        ->add_option(linker_opt)
+        ->add_option(optimize_opt)
         ->add_option(output_opt)
         ->add_option(time_opt);
 

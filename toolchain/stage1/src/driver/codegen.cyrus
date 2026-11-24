@@ -11,6 +11,7 @@ import std::os::env;
 import sema::context{AnalyzerContext};
 import .::index{CompilerContext};
 import resolver::index{Resolver};
+import linker{Linker, OptLevel};
 import abi::target{TargetInfo};
 import codegen::c{CodegenC};
 import .::tcc;
@@ -32,6 +33,9 @@ pub struct CodegenContext {
     pub allocator: Allocator,
     pub backend: Backend,
     pub target: TargetInfo,
+    pub linker_program: const uint8*,
+    pub opt_level: OptLevel,
+    pub debug_info: bool,
 
     pub fn new(
         allocator: Allocator, 
@@ -41,8 +45,22 @@ pub struct CodegenContext {
         return Self { 
             allocator, 
             backend, 
-            target
+            target,
+            linker_program: "tcc",
+            opt_level: .O0,
+            debug_info: false,
         };
+    }
+
+    pub fn set_linker_options(
+        self: Self*,
+        linker_program: const uint8*,
+        opt_level: OptLevel,
+        debug_info: bool
+    ) {
+        self->linker_program = linker_program;
+        self->opt_level = opt_level;
+        self->debug_info = debug_info;
     }
 
     pub fn emit(
@@ -86,10 +104,28 @@ pub struct CodegenContext {
             case .C => {
                 self->write_debug_source(source);
 
-                return tcc::compile(
+                if (self->linker_program == "tcc") {
+                    return tcc::compile(
+                        source,
+                        output_path,
+                        tcc::OutputKind.EXE,
+                        extra_files,
+                        lib_paths,
+                        libraries
+                    );
+                }
+
+                var linker = Linker.new(
+                    self->allocator,
+                    self->linker_program,
+                    self->opt_level,
+                    self->debug_info
+                );
+                defer linker.free();
+
+                return linker.compile_c_and_link(
                     source,
                     output_path,
-                    tcc::OutputKind.EXE,
                     extra_files,
                     lib_paths,
                     libraries
